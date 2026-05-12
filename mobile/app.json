@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "WordWar Live",
+    "slug": "wordwar-live",
+    "version": "0.1.0",
+
+    "orientation": "portrait",
+    "scheme": "wordwar",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+
+    "icon": "./assets/icon.png",
+
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F1115"
+    },
+
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.bonhomie.wordwar",
+      "buildNumber": "1",
+
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+
+    "android": {
+      "package": "com.bonhomie.wordwar",
+      "versionCode": 1,
+
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F1115"
+      },
+
+      "edgeToEdgeEnabled": true
+    },
+
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "userTrackingPermission": "This identifier will be used to deliver personalized ads to you."
+        }
+      ]
+    ],
+
+    "experiments": {
+      "typedRoutes": true
+    },
+
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
