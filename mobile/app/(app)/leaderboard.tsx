@@ -10,7 +10,7 @@
 // Refreshes whenever the screen is focused so the player sees their result
 // reflected immediately after a match.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -40,17 +40,25 @@ const PERIODS: ReadonlyArray<{ key: LeaderboardPeriod; label: string }> = [
     { key: 'all_time', label: 'All-time' },
 ];
 
+type Mode = 'overall' | 'classic' | 'mystery';
+const MODES: ReadonlyArray<{ key: Mode; label: string }> = [
+    { key: 'overall', label: 'All' },
+    { key: 'classic', label: 'Classic' },
+    { key: 'mystery', label: 'Mystery' },
+];
+
 export default function LeaderboardScreen() {
     const me = useAuthStore((s) => s.user);
     const [period, setPeriod] = useState<LeaderboardPeriod>('weekly');
+    const [mode, setMode] = useState<Mode>('overall');
     const [data, setData] = useState<LeaderboardResponse | null>(null);
     const [loading, setLoading] = useState(false);
 
     const load = useCallback(
-        async (p: LeaderboardPeriod) => {
+        async (p: LeaderboardPeriod, m: Mode) => {
             setLoading(true);
             try {
-                const r = await leaderboardApi.fetch(p, 50);
+                const r = await leaderboardApi.fetch(p, m, 50);
                 setData(r);
             } catch (err) {
                 // Soft-fail; the empty state below renders.
@@ -66,22 +74,42 @@ export default function LeaderboardScreen() {
 
     useFocusEffect(
         useCallback(() => {
-            load(period);
-        }, [load, period])
+            load(period, mode);
+        }, [load, period, mode])
     );
 
     function onPeriodChange(p: LeaderboardPeriod) {
         if (p === period) return;
         setPeriod(p);
-        load(p);
+        load(p, mode);
     }
 
+    function onModeChange(m: Mode) {
+        if (m === mode) return;
+        setMode(m);
+        load(period, m);
+    }
+
+    // Show top 100 by default. If "you" rank is beyond 100, the goto-me
+    // pill scrolls to your row regardless.
     const top3 = data?.entries.slice(0, 3) ?? [];
-    const rest = data?.entries.slice(3) ?? [];
+    const rest = (data?.entries ?? []).slice(3, 100);
     const youInTop = data?.you
         ? data.entries.some((e) => e.userId === data.you?.userId)
         : false;
     const showYouPill = !!data?.you && !youInTop;
+    const listRef = useRef<FlatList<typeof rest[number]>>(null);
+
+    function scrollToMe() {
+        if (!data?.you) return;
+        const idx = rest.findIndex((e) => e.userId === data.you?.userId);
+        if (idx < 0) {
+            // I'm not on this screen at all (rank > 100). Soft-fail; the
+            // pill will keep showing, and the user knows their rank from it.
+            return;
+        }
+        listRef.current?.scrollToIndex({ index: idx, viewPosition: 0.5, animated: true });
+    }
 
     return (
         <SafeAreaView style={styles.safe}>
@@ -118,6 +146,32 @@ export default function LeaderboardScreen() {
                 ))}
             </View>
 
+            {/* Mode picker — segmented control under period tabs. Classic and
+                Mystery are mode-specific; "All" combines them. */}
+            <View style={styles.modeRow}>
+                {MODES.map((m) => (
+                    <Pressable
+                        key={m.key}
+                        onPress={() => onModeChange(m.key)}
+                        style={({ pressed }) => [
+                            styles.modeTab,
+                            m.key === mode ? styles.modeTabActive : null,
+                            pressed ? { opacity: 0.85 } : null,
+                        ]}
+                    >
+                        <Text
+                            style={[
+                                styles.modeLabel,
+                                m.key === mode ? styles.modeLabelActive : null,
+                            ]}
+                            allowFontScaling={false}
+                        >
+                            {m.label}
+                        </Text>
+                    </Pressable>
+                ))}
+            </View>
+
             {loading && !data ? (
                 <View style={styles.loadingWrap}>
                     <ActivityIndicator color={colors.primary} />
@@ -140,9 +194,20 @@ export default function LeaderboardScreen() {
                 </View>
             ) : (
                 <FlatList
+                    ref={listRef}
                     data={rest}
                     keyExtractor={(e) => e.userId}
                     contentContainerStyle={styles.listContent}
+                    onScrollToIndexFailed={(info) => {
+                        // Happens when the index isn't yet rendered. Wait,
+                        // then retry. Soft fallback so a tap never freezes.
+                        setTimeout(() => {
+                            listRef.current?.scrollToOffset({
+                                offset: info.averageItemLength * info.index,
+                                animated: true,
+                            });
+                        }, 100);
+                    }}
                     ListHeaderComponent={
                         top3.length > 0 ? (
                             <Podium
@@ -159,20 +224,26 @@ export default function LeaderboardScreen() {
 
             {showYouPill && data?.you ? (
                 <View style={styles.youPillWrap} pointerEvents="box-none">
-                    <View style={styles.youPill}>
+                    <Pressable
+                        onPress={scrollToMe}
+                        style={({ pressed }) => [
+                            styles.youPill,
+                            pressed ? { opacity: 0.85 } : null,
+                        ]}
+                    >
                         <Text style={styles.youPillRank} allowFontScaling={false}>
                             #{data.you.rankInLeaderboard}
                         </Text>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.youPillName} allowFontScaling={false}>
-                                You
+                                You (tap to find)
                             </Text>
                             <Text style={styles.youPillStats} allowFontScaling={false}>
                                 {data.you.wins} W · {data.you.losses} L
                             </Text>
                         </View>
                         <RankBadge tier={data.you.rankTier as RankTier} size="sm" />
-                    </View>
+                    </Pressable>
                 </View>
             ) : null}
         </SafeAreaView>
@@ -319,7 +390,7 @@ function Row({
             <View style={{ flex: 1 }}>
                 <Text style={styles.rowName} numberOfLines={1} allowFontScaling={false}>
                     {entry.username}
-                    {isMe ? '  (you)' : ''}
+                    {isMe ? '  (ME)' : ''}
                 </Text>
                 <Text style={styles.rowStats} allowFontScaling={false}>
                     {entry.wins} W · {entry.losses} L
@@ -365,6 +436,33 @@ const styles = StyleSheet.create({
     periodTabActive: {
         backgroundColor: colors.surfaceElevated,
         borderColor: colors.primary,
+    },
+    modeRow: {
+        flexDirection: 'row',
+        gap: 4,
+        paddingHorizontal: spacing.lg,
+        marginBottom: spacing.sm,
+    },
+    modeTab: {
+        flex: 1,
+        paddingVertical: 6,
+        borderRadius: radius.sm,
+        alignItems: 'center',
+        backgroundColor: colors.bg,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    modeTabActive: {
+        backgroundColor: colors.surface,
+        borderColor: colors.warning,
+    },
+    modeLabel: {
+        color: colors.textMuted,
+        fontSize: typography.sizes.xs,
+        fontWeight: typography.weights.semibold,
+    },
+    modeLabelActive: {
+        color: colors.warning,
     },
     periodLabel: {
         color: colors.textDim,

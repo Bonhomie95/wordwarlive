@@ -9,12 +9,21 @@ import Animated, {
 } from 'react-native-reanimated';
 import { colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
+import { useGameStore } from '../../store/gameStore';
 
 interface Props {
-    msRemaining: number;
+    /** Optional override — if omitted, reads from the gameStore directly so
+     *  the per-second tick stays scoped to this component instead of
+     *  triggering a re-render of every match-screen consumer. */
+    msRemaining?: number;
 }
 
-const TimerRaw: React.FC<Props> = ({ msRemaining }) => {
+const TimerRaw: React.FC<Props> = ({ msRemaining: msProp }) => {
+    // Subscribing here means only Timer rerenders each tick. Match.tsx
+    // doesn't read msRemaining at all in the optimized path.
+    const msFromStore = useGameStore((s) => s.msRemaining);
+    const msRemaining = msProp ?? msFromStore;
+
     const pulse = useSharedValue(0);
     const danger = msRemaining < 10_000;
     const critical = msRemaining < 5_000;

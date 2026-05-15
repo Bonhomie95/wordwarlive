@@ -3,10 +3,29 @@ import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
 import { findUserById, updateEquippedCosmetic } from '../services/userService.js';
 import { getCosmetic } from '../services/cosmeticsService.js';
+import { applyResetIfNeeded } from '../services/rankSeasonService.js';
+import { effectiveStreak } from '../services/streakService.js';
 
 export const usersRouter = Router();
 
-function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>) {
+async function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>) {
+    // Resolve render_data for each equipped cosmetic. Lets the client apply
+    // the actual visual change (board tile colors, victory animation type)
+    // without a second roundtrip.
+    const equippedIds = [
+        u.equipped_board_theme,
+        u.equipped_victory_anim,
+        u.equipped_avatar,
+        u.equipped_nameplate,
+        u.equipped_profile_border,
+    ].filter((id): id is string => !!id);
+
+    const renderDataById: Record<string, Record<string, unknown>> = {};
+    for (const id of equippedIds) {
+        const cos = await getCosmetic(id);
+        if (cos) renderDataById[id] = cos.render_data;
+    }
+
     return {
         id: u.id,
         username: u.username,
@@ -24,6 +43,7 @@ function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>) {
             nameplate: u.equipped_nameplate,
             profileBorder: u.equipped_profile_border,
         },
+        equippedRenderData: renderDataById,
         battlePass: {
             xp: u.battle_pass_xp,
             premium: u.battle_pass_premium,
@@ -49,7 +69,7 @@ function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>) {
         hintCredits: u.hint_credits,
         lifetimeHintsUsed: u.lifetime_hints_used,
         streak: {
-            playStreak: u.play_streak,
+            playStreak: effectiveStreak(u.play_streak, u.last_play_date),
             playStreakBest: u.play_streak_best,
             lastPlayDate: u.last_play_date,
         },
@@ -80,9 +100,12 @@ function shapePublic(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>) {
 }
 
 usersRouter.get('/me', requireAuth, async (req, res) => {
+    // Apply rank-season reset if needed. Lazy migration — every player picks
+    // up the reset the first time they hit /me after a new season starts.
+    await applyResetIfNeeded(req.session!.userId);
     const user = await findUserById(req.session!.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(shapeMe(user));
+    res.json(await shapeMe(user));
 });
 
 usersRouter.get('/users/:id', async (req, res) => {
@@ -125,5 +148,5 @@ usersRouter.patch('/me/equip', requireAuth, async (req, res) => {
         return res.status(400).json({ error: msg });
     }
     const user = await findUserById(req.session!.userId);
-    res.json(shapeMe(user!));
+    res.json(await shapeMe(user!));
 });

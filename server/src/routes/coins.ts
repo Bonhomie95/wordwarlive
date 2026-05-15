@@ -12,7 +12,7 @@ import {
     fulfillCoinPackPurchase,
 } from '../services/coinsService.js';
 import { findUserById } from '../services/userService.js';
-import { MILESTONES, nextMilestone } from '../services/streakService.js';
+import { effectiveStreak, MILESTONES, nextMilestone } from '../services/streakService.js';
 
 export const coinsRouter = Router();
 
@@ -44,9 +44,10 @@ coinsRouter.post('/coins/packs/:id/purchase', requireAuth, async (req, res) => {
 coinsRouter.get('/streak', requireAuth, async (req, res) => {
     const u = await findUserById(req.session!.userId);
     if (!u) return res.status(404).json({ error: 'User not found' });
-    const next = nextMilestone(u.play_streak);
+    const effective = effectiveStreak(u.play_streak, u.last_play_date);
+    const next = nextMilestone(effective);
     res.json({
-        playStreak: u.play_streak,
+        playStreak: effective,
         playStreakBest: u.play_streak_best,
         lastPlayDate: u.last_play_date
             ? new Date(u.last_play_date).toISOString().slice(0, 10)

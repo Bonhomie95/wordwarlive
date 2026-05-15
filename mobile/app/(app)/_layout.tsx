@@ -19,9 +19,9 @@ export default function AppTabsLayout() {
                         tabBarStyle: {
                             backgroundColor: colors.surface,
                             borderTopColor: colors.border,
-                            height: 50,
+                            height: 54,
                             paddingTop: 4,
-                            paddingBottom: 8,
+                            paddingBottom: 6,
                         },
                         tabBarActiveTintColor: colors.primary,
                         tabBarInactiveTintColor: colors.textMuted,
@@ -79,6 +79,11 @@ export default function AppTabsLayout() {
                     <Tabs.Screen name="matchmaking" options={{ href: null }} />
                     <Tabs.Screen name="match" options={{ href: null }} />
                     <Tabs.Screen name="post-game" options={{ href: null }} />
+                    <Tabs.Screen name="settings" options={{ href: null }} />
+                    <Tabs.Screen name="daily" options={{ href: null }} />
+                    <Tabs.Screen name="mystery" options={{ href: null }} />
+                    <Tabs.Screen name="friends" options={{ href: null }} />
+                    <Tabs.Screen name="replays" options={{ href: null }} />
                 </Tabs>
             </View>
             {/* Banner sits between content and tab bar. Hidden when ads_removed. */}

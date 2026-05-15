@@ -27,6 +27,14 @@ interface Props {
      *  soft gold "ghost" letter at the matching position in the active
      *  typing row — zero added vertical space. */
     hintsRevealed?: Record<number, string>;
+    /** Optional color palette from an equipped board_theme cosmetic.
+     *  Threaded into every Tile so the whole grid re-skins. */
+    boardOverride?: {
+        correct?: string;
+        misplaced?: string;
+        wrong?: string;
+        bg?: string;
+    } | null;
 }
 
 const DEFAULT_MAX_ROWS = 6;
@@ -43,9 +51,10 @@ function tileSizeFor(wordLength: number, screenWidth: number): number {
     const sizeFromWidth = Math.floor(
         (available - GAP * (wordLength - 1)) / wordLength
     );
-    // Clamp: never bigger than 56 (looks goofy on 4-letter words on a wide
-    // tablet) and never smaller than 32 (illegible).
-    return Math.max(32, Math.min(56, sizeFromWidth));
+    // Clamp: never bigger than 48 (was 56 — bumped down to free vertical
+    // space for the keyboard above the tab bar + banner) and never smaller
+    // than 30.
+    return Math.max(30, Math.min(48, sizeFromWidth));
 }
 
 export const Grid: React.FC<Props> = ({
@@ -56,6 +65,7 @@ export const Grid: React.FC<Props> = ({
     onTilePress,
     maxRows = DEFAULT_MAX_ROWS,
     hintsRevealed,
+    boardOverride,
 }) => {
     const { width } = useWindowDimensions();
     const tileSize = tileSizeFor(wordLength, width);
@@ -107,6 +117,7 @@ export const Grid: React.FC<Props> = ({
                                 revealDelayMs={colIdx * 80}
                                 size={tileSize}
                                 cursor={isCursor}
+                                boardOverride={boardOverride ?? null}
                             />
                         );
                         if (isActiveRow && onTilePress) {

@@ -7,7 +7,7 @@
 // All state flows through useGameStore; the socket layer pushes updates.
 // When match_over fires, we navigate to /post-game.
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     Pressable,
@@ -30,6 +30,8 @@ import { OpponentGrid } from '../../src/components/game/OpponentGrid';
 import { Keyboard, deriveLetterStates } from '../../src/components/game/Keyboard';
 import { Timer } from '../../src/components/game/Timer';
 import { HintButton } from '../../src/components/game/HintButton';
+import { VsSplash } from '../../src/components/game/VsSplash';
+import { PlayerStatsModal } from '../../src/components/game/PlayerStatsModal';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { Toast } from '../../src/components/ui/Toast';
 import { useGameStore } from '../../src/store/gameStore';
@@ -47,7 +49,9 @@ export default function Match() {
     const oppGuesses = useGameStore((s) => s.oppGuesses);
     const inputCells = useGameStore((s) => s.inputCells);
     const inputCursor = useGameStore((s) => s.inputCursor);
-    const msRemaining = useGameStore((s) => s.msRemaining);
+    // NOTE: msRemaining intentionally NOT read here. Timer subscribes
+    // itself, so per-second ticks only re-render the Timer node — not the
+    // whole match screen. Big win for phone-heat on long matches.
     const lastError = useGameStore((s) => s.lastError);
     const submitting = useGameStore((s) => s.submitting);
     const scrambled = useGameStore((s) => s.scrambled);
@@ -100,12 +104,42 @@ export default function Match() {
 
     const letterStates = useMemo(() => deriveLetterStates(myGuesses), [myGuesses]);
 
+    // Player stats modal (tap a player card to open). Must be declared
+    // BEFORE the early-return-on-no-matchFound below, or hooks order
+    // changes between renders and React throws "Rendered fewer hooks than
+    // expected" — which crashes the whole tab layout.
+    //
+    // PublicUser is the type used inside MatchFound for both `you` and
+    // `opponent`. We type loosely as `unknown` here because we don't have
+    // `matchFound` resolved yet — the modal handles null + we narrow at
+    // the call sites below.
+    type StatsPlayer = { player: NonNullable<typeof matchFound>['you']; title: string } | null;
+    const [statsPlayer, setStatsPlayer] = useState<StatsPlayer>(null);
+
     if (!matchFound) return null;
 
     const opponent = matchFound.opponent;
     const oppTier = (opponent.rankTier ?? 'stone') as RankTier;
     const me = matchFound.you;
     const meTier = (me.rankTier ?? 'stone') as RankTier;
+
+    // Resolve the equipped board theme's render_data into the typed shape
+    // Tile expects. user is typed as PublicUser | MeResponse so we narrow
+    // by checking the field exists (MeResponse has it, PublicUser doesn't).
+    const meUser =
+        user && 'equippedRenderData' in user ? user : null;
+    const equippedBoardId = meUser?.equipped?.boardTheme ?? null;
+    const boardOverride = (() => {
+        if (!equippedBoardId || !meUser) return null;
+        const rd = meUser.equippedRenderData?.[equippedBoardId];
+        if (!rd) return null;
+        return {
+            bg: typeof rd.bg === 'string' ? rd.bg : undefined,
+            correct: typeof rd.correct === 'string' ? rd.correct : undefined,
+            misplaced: typeof rd.misplaced === 'string' ? rd.misplaced : undefined,
+            wrong: typeof rd.wrong === 'string' ? rd.wrong : undefined,
+        };
+    })();
 
     async function onEnter() {
         const ack = await submitGuess();
@@ -160,23 +194,40 @@ export default function Match() {
 
     return (
         <SafeAreaView style={styles.safe}>
-            {/* Header: opponent and timer. Quit floats over the corner so it
-                takes no layout space and can't push the keyboard offscreen. */}
+            {/* Stats modal — tap any player card in the header to open. */}
+            <PlayerStatsModal
+                player={statsPlayer?.player ?? null}
+                title={statsPlayer?.title ?? ''}
+                onClose={() => setStatsPlayer(null)}
+            />
+            {/* VS splash before the game starts. Auto-dismisses when phase
+                flips to 'playing' (server sends match_start ~1s after
+                match_found). */}
+            {phase === 'matched' ? (
+                <VsSplash me={matchFound.you} opponent={matchFound.opponent} />
+            ) : null}
+            {/* Header: opponent and timer. Back arrow floats top-left and
+                doubles as the forfeit button — quitting an active match is
+                the same action functionally. Confirm dialog protects taps. */}
             <View style={styles.header}>
                 <Pressable
                     onPress={onQuitMatch}
                     style={({ pressed }) => [
-                        styles.quitBtn,
+                        styles.backBtn,
                         pressed ? { opacity: 0.7, transform: [{ scale: 0.96 }] } : null,
                     ]}
                     hitSlop={10}
                 >
-                    <Ionicons name="flag" size={12} color={colors.danger} />
-                    <Text style={styles.quitLabel} allowFontScaling={false}>
-                        FORFEIT
+                    <Ionicons name="chevron-back" size={16} color={colors.danger} />
+                    <Text style={styles.backLabel} allowFontScaling={false}>
+                        QUIT
                     </Text>
                 </Pressable>
-                <View style={styles.playerCard}>
+                <Pressable
+                    style={styles.playerCard}
+                    onPress={() => setStatsPlayer({ player: opponent, title: 'Opponent' })}
+                    hitSlop={6}
+                >
                     <Text style={styles.playerLabel} allowFontScaling={false}>
                         Opponent
                     </Text>
@@ -184,9 +235,13 @@ export default function Match() {
                         {opponent.username}
                     </Text>
                     <RankBadge tier={oppTier} size="sm" />
-                </View>
-                <Timer msRemaining={msRemaining} />
-                <View style={styles.playerCard}>
+                </Pressable>
+                <Timer />
+                <Pressable
+                    style={styles.playerCard}
+                    onPress={() => setStatsPlayer({ player: me, title: 'Your Stats' })}
+                    hitSlop={6}
+                >
                     <Text style={styles.playerLabel} allowFontScaling={false}>
                         You
                     </Text>
@@ -194,7 +249,7 @@ export default function Match() {
                         {me.username}
                     </Text>
                     <RankBadge tier={meTier} size="sm" />
-                </View>
+                </Pressable>
             </View>
 
             {/* Opponent's mini-grid — hint button floats on the right */}
@@ -230,6 +285,7 @@ export default function Match() {
                     inputCursor={inputCursor}
                     onTilePress={seekCursor}
                     hintsRevealed={hintsRevealed}
+                    boardOverride={boardOverride}
                 />
                 {scrambled ? (
                     <View style={styles.scrambledOverlay}>
@@ -281,15 +337,16 @@ export default function Match() {
 void Alert;
 
 const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg, paddingTop: spacing.sm },
-    quitBtn: {
+    safe: { flex: 1, backgroundColor: colors.bg, paddingTop: 4 },
+    backBtn: {
         position: 'absolute',
         top: -2,
-        right: spacing.md,
+        left: spacing.md,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 8,
+        gap: 2,
+        paddingLeft: 4,
+        paddingRight: 8,
         paddingVertical: 3,
         borderRadius: 999,
         backgroundColor: colors.bg,
@@ -297,7 +354,7 @@ const styles = StyleSheet.create({
         borderColor: colors.danger,
         zIndex: 10,
     },
-    quitLabel: {
+    backLabel: {
         color: colors.danger,
         fontSize: 10,
         fontWeight: '700',
@@ -308,21 +365,21 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: spacing.md,
-        marginBottom: spacing.md,
+        marginBottom: spacing.xs,
     },
     playerCard: {
-        gap: spacing.xs,
+        gap: 2,
         minWidth: 100,
     },
     playerLabel: {
         color: colors.textMuted,
-        fontSize: typography.sizes.xs,
+        fontSize: 10,
         textTransform: 'uppercase',
         letterSpacing: 1,
     },
     playerName: {
         color: colors.text,
-        fontSize: typography.sizes.md,
+        fontSize: typography.sizes.sm,
         fontWeight: typography.weights.bold,
     },
     botBanner: {
@@ -330,18 +387,18 @@ const styles = StyleSheet.create({
         borderColor: colors.warning,
         borderWidth: 1,
         marginHorizontal: spacing.lg,
-        padding: spacing.sm,
+        padding: 4,
         borderRadius: radius.sm,
-        marginBottom: spacing.sm,
+        marginBottom: 4,
     },
     botBannerText: {
         color: colors.warning,
-        fontSize: typography.sizes.xs,
+        fontSize: 10,
         textAlign: 'center',
     },
     oppWrap: {
         alignItems: 'center',
-        gap: spacing.xs,
+        gap: 2,
         marginBottom: spacing.xs,
         // Anchor for the absolutely-positioned hint button.
         position: 'relative',
@@ -356,7 +413,7 @@ const styles = StyleSheet.create({
     },
     oppLabel: {
         color: colors.textDim,
-        fontSize: typography.sizes.xs,
+        fontSize: 10,
         textTransform: 'uppercase',
         letterSpacing: 1,
     },
@@ -374,16 +431,17 @@ const styles = StyleSheet.create({
         color: colors.warning,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
-        letterSpacing: 2,
+        letterSpacing: 4,
     },
     errorText: {
         textAlign: 'center',
         color: colors.danger,
         fontSize: typography.sizes.sm,
-        marginBottom: spacing.sm,
+        marginBottom: spacing.xs,
     },
     kbWrap: {
-        marginTop: 'auto',
-        paddingBottom: spacing.sm,
+        // ~half-inch breathing room below the last keyboard row, since the
+        // banner + tab bar are visible on this screen now.
+        paddingBottom: spacing.lg,
     },
 });

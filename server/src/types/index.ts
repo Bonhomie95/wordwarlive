@@ -119,16 +119,46 @@ export interface ClientToServerEvents {
         payload: Record<string, never>,
         ack: (resp: { ok: boolean; reason?: string }) => void
     ) => void;
+    /** Fire an emoji reaction at the opponent. Rate-limited server-side
+     *  (1 per second). */
+    emoji_send: (payload: { emoji: string }) => void;
+    /** Enter the mystery-mode queue. Requires a pending submission via the
+     *  /api/mystery/submit REST endpoint first. Server polls every few
+     *  seconds to find a same-length opponent and creates the match. */
+    mystery_queue: (
+        payload: Record<string, never>,
+        ack: (resp: { ok: boolean; error?: string }) => void
+    ) => void;
+    /** Leave the mystery queue (without withdrawing the submission). */
+    mystery_leave: (payload: Record<string, never>) => void;
+    /** Join a private match by code. The host must have an open socket and
+     *  the code must still be valid (15min TTL). On success both sockets
+     *  enter the same match (mode='classic' for now). */
+    private_join: (
+        payload: { code: string },
+        ack: (resp: { ok: boolean; error?: string }) => void
+    ) => void;
 }
 
 export interface ServerToClientEvents {
     queue_status: (payload: QueueStatus) => void;
+    /** Mystery-queue-specific status. Pushed each tick while the player is
+     *  waiting. Lets the UI show a countdown to bot-fallback. */
+    mystery_queue_status: (payload: MysteryQueueStatus) => void;
     match_found: (payload: MatchFound) => void;
     match_start: (payload: MatchStart) => void;
     /** Pushed to BOTH players whenever either submits a guess. */
     guess_result: (payload: GuessBroadcast) => void;
     /** Push that the opponent's screen got scrambled (visual only). */
     opponent_scramble: () => void;
+    /** Reveal-powerup result: a single (position, letter) tuple sent only
+     *  to the requester. */
+    powerup_reveal_letter: (payload: { position: number; letter: string }) => void;
+    /** The OPPONENT just locked you — you can't use powerups for durationMs. */
+    powerup_locked: (payload: { durationMs: number }) => void;
+    /** Opponent fired an emoji reaction. The client renders it briefly
+     *  over the opponent's grid. */
+    opponent_emoji: (payload: { emoji: string }) => void;
     match_tick: (payload: { msRemaining: number }) => void;
     match_over: (payload: MatchOver) => void;
     error: (payload: { message: string; code?: string }) => void;
@@ -137,6 +167,14 @@ export interface ServerToClientEvents {
 export interface QueueStatus {
     state: 'searching' | 'expanded_search' | 'matching_with_bot';
     waitedMs: number;
+}
+
+export interface MysteryQueueStatus {
+    state: 'searching' | 'matching_with_bot';
+    waitedMs: number;
+    /** When waitedMs crosses this, a bot is spawned. UI uses it for the
+     *  "Searching… 12 / 18s" display. */
+    botAfterMs: number;
 }
 
 export interface MatchFound {

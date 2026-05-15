@@ -2,6 +2,7 @@
 // most recent matches. Sign-out lives down here too.
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
 import {
     Alert,
     FlatList,
@@ -20,6 +21,7 @@ import { colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 export default function Profile() {
+    const router = useRouter();
     const user = useAuthStore((s) => s.user);
     const signOut = useAuthStore((s) => s.signOut);
     const refreshMe = useAuthStore((s) => s.refreshMe);
@@ -93,6 +95,11 @@ export default function Profile() {
                 contentContainerStyle={styles.listContent}
                 ListFooterComponent={
                     <View style={styles.footer}>
+                        <Button
+                            label="⚙️  Settings &amp; Theme"
+                            onPress={() => router.push('/(app)/settings')}
+                            variant="secondary"
+                        />
                         <Button label="Sign out" onPress={onSignOut} variant="ghost" />
                     </View>
                 }
@@ -223,5 +230,5 @@ const styles = StyleSheet.create({
         color: colors.textDim,
         marginTop: spacing.xl,
     },
-    footer: { marginTop: spacing.xl },
+    footer: { marginTop: spacing.xl, gap: spacing.sm },
 });

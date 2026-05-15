@@ -51,6 +51,11 @@ interface GameState {
     submitting: boolean;
     /** "scrambled" visual flag — opponent power-up trigger. */
     scrambled: boolean;
+    /** Set by opponent's Lock powerup. Our powerup buttons disable while
+     *  Date.now() < lockedUntilMs. */
+    lockedUntilMs: number | null;
+    /** Brief opponent emoji reaction. UI shows ~2.5s. */
+    opponentEmoji: { emoji: string; at: number } | null;
     /** Match counter for interstitial frequency capping. */
     matchesPlayedSession: number;
     /** Matches completed since the last interstitial. We compare this against
@@ -84,10 +89,12 @@ interface GameState {
     } | null;
 
     // ─── Actions ─────────────────────────────────────────────────────────────
-    connectAndQueue: (token: string) => void;
+    connectAndQueue: (token: string, mode?: 'classic' | 'mystery') => void;
     leaveQueue: () => void;
     /** Forfeit the active match. Opponent wins immediately. */
     quitMatch: () => void;
+    /** Fire an emoji reaction at the opponent. Rate-limited server-side. */
+    sendEmoji: (emoji: string) => void;
     appendLetter: (l: string) => void;
     backspace: () => void;
     clearInput: () => void;
@@ -126,6 +133,11 @@ const initial = {
     inputCursor: 0,
     submitting: false,
     scrambled: false,
+    /** When non-null and > Date.now(), our powerups are locked by the
+     *  opponent's Lock powerup. */
+    lockedUntilMs: null as number | null,
+    /** Last emoji the opponent fired, plus when. UI shows it for ~2.5s. */
+    opponentEmoji: null as { emoji: string; at: number } | null,
     hintsRevealed: {} as Record<number, string>,
     freeHintAvailable: true,
     hintRequesting: false,
@@ -156,7 +168,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     lastInterstitialAt: 0,
     lastMatchDurationSec: 0,
 
-    connectAndQueue: (token) => {
+    connectAndQueue: (token, mode = 'classic') => {
         // Reset transient state for a fresh match.
         set({
             ...initial,
@@ -249,6 +261,32 @@ export const useGameStore = create<GameState>((set, get) => ({
                 set({ scrambled: true });
                 setTimeout(() => set({ scrambled: false }), 1500);
             });
+            sock.off('powerup_reveal_letter').on(
+                'powerup_reveal_letter',
+                (payload: { position: number; letter: string }) => {
+                    // Reveal lands in hintsRevealed so the same ghost-letter
+                    // UI surfaces it on the active row.
+                    set((s) => ({
+                        hintsRevealed: {
+                            ...s.hintsRevealed,
+                            [payload.position]: payload.letter,
+                        },
+                    }));
+                }
+            );
+            sock.off('powerup_locked').on('powerup_locked', (payload) => {
+                set({
+                    lockedUntilMs: Date.now() + payload.durationMs,
+                });
+                // Lock expires automatically; UI checks Date.now().
+            });
+            sock.off('opponent_emoji').on(
+                'opponent_emoji',
+                (payload: { emoji: string }) => {
+                    set({ opponentEmoji: { emoji: payload.emoji, at: Date.now() } });
+                    setTimeout(() => set({ opponentEmoji: null }), 2500);
+                }
+            );
             sock.off('error').on('error', (e) => {
                 set({ lastError: e.message });
             });
@@ -257,14 +295,36 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (sock.connected) wireUp();
         else sock.once('connect', wireUp);
 
-        // Fire queue_join once the socket is connected.
-        if (sock.connected) sock.emit('queue_join');
-        else sock.once('connect', () => sock.emit('queue_join'));
+        // Fire the right queue event once the socket is connected. Mystery
+        // mode goes through mystery_queue (handled by mysteryHub on the
+        // server). Classic uses queue_join. Both end up firing match_found
+        // when matched, so the rest of the flow is identical from here.
+        const fireQueue = () => {
+            if (mode === 'mystery') {
+                sock.emit('mystery_queue', {}, (resp) => {
+                    if (!resp.ok) {
+                        // Surface the error via the same lastError channel
+                        // the rest of the app uses.
+                        set({
+                            lastError: resp.error ?? 'Could not queue',
+                            phase: 'idle',
+                        });
+                    }
+                });
+            } else {
+                sock.emit('queue_join');
+            }
+        };
+        if (sock.connected) fireQueue();
+        else sock.once('connect', fireQueue);
     },
 
     leaveQueue: () => {
         const sock = getSocket();
+        // Emit both — the server ignores the irrelevant one. Cheap and
+        // means we don't have to track which mode the user queued for.
         sock?.emit('queue_leave');
+        sock?.emit('mystery_leave', {});
         set({ phase: 'idle', queueStatus: null });
     },
 
@@ -281,6 +341,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             // UI transition. If quit failed for some reason (match already
             // ended), match_over already fired and we're fine.
         });
+    },
+
+    sendEmoji: (emoji) => {
+        const sock = getSocket();
+        sock?.emit('emoji_send', { emoji });
     },
 
     appendLetter: (l) => {

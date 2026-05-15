@@ -142,3 +142,36 @@ export async function advanceStreakOnMatchComplete(
 export function nextMilestone(playStreak: number): Milestone | null {
     return MILESTONES.find((m) => m.day > playStreak) ?? null;
 }
+
+/**
+ * Compute the player's *effective* current streak — what we should display
+ * right now, before they've played a match today.
+ *
+ * The stored play_streak only updates when a match completes. If the player
+ * missed yesterday entirely and opens the app today, the stored value is
+ * stale. This function looks at last_play_date and returns:
+ *
+ *   - last == today UTC      → stored streak (they already played today)
+ *   - last == yesterday UTC  → stored streak (still alive — they need to
+ *                              play today to extend, but it hasn't broken)
+ *   - last < yesterday UTC   → 0 (streak has lapsed; will reset to 1 on
+ *                              their next match)
+ *   - last NULL              → 0 (never played)
+ *
+ * Pure function on (storedStreak, lastPlayDate). Easy to unit-test if we
+ * want to.
+ */
+export function effectiveStreak(
+    storedStreak: number,
+    lastPlayDate: Date | string | null
+): number {
+    if (!lastPlayDate) return 0;
+    const today = todayUtcDateString();
+    const yesterday = yesterdayUtcDateString();
+    const lastStr =
+        lastPlayDate instanceof Date
+            ? lastPlayDate.toISOString().slice(0, 10)
+            : String(lastPlayDate).slice(0, 10);
+    if (lastStr === today || lastStr === yesterday) return storedStreak;
+    return 0;
+}

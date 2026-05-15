@@ -3,51 +3,37 @@
     "name": "WordWar Live",
     "slug": "wordwar-live",
     "version": "0.1.0",
-
     "orientation": "portrait",
     "scheme": "wordwar",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-
-    "icon": "./assets/icon.png",
-
     "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0F1115"
+      "backgroundColor": "#0F1115",
+      "resizeMode": "contain"
     },
-
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.bonhomie.wordwar",
-      "buildNumber": "1",
-
+      "bundleIdentifier": "dev.bonhomieinc.wordwar",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
-
     "android": {
-      "package": "com.bonhomie.wordwar",
-      "versionCode": 1,
-
+      "package": "dev.bonhomieinc.wordwar",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F1115"
       },
-
       "edgeToEdgeEnabled": true
     },
-
     "web": {
       "bundler": "metro",
       "output": "static"
     },
-
     "plugins": [
       "expo-router",
       "expo-secure-store",
-
+      "expo-apple-authentication",
       [
         "react-native-google-mobile-ads",
         {
@@ -57,11 +43,9 @@
         }
       ]
     ],
-
     "experiments": {
       "typedRoutes": true
     },
-
     "extra": {
       "router": {
         "origin": false

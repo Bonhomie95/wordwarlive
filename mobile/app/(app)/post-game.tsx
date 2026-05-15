@@ -2,7 +2,7 @@
 // both players' guess histories side-by-side so the player can analyze how
 // the match played out.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
+import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { Tile } from '../../src/components/game/Tile';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
@@ -40,6 +41,7 @@ export default function PostGame() {
     const user = useAuthStore((s) => s.user);
     const token = useAuthStore((s) => s.token);
     const connectAndQueue = useGameStore((s) => s.connectAndQueue);
+    const [interstitialLoading, setInterstitialLoading] = useState(false);
 
     useEffect(() => {
         // Pull the latest /me so other tabs see updated rank.
@@ -59,7 +61,12 @@ export default function PostGame() {
             // Small delay so the user sees their result first.
             setTimeout(() => {
                 markInterstitialShown();
-                showInterstitial().catch(() => {});
+                setInterstitialLoading(true);
+                // Block all input until the ad finishes. showInterstitial()
+                // resolves once the user dismisses the ad.
+                showInterstitial()
+                    .catch(() => {})
+                    .finally(() => setInterstitialLoading(false));
             }, 800);
         }
     }, [matchOver, refreshMe, shouldShowInterstitial, markInterstitialShown, user]);
@@ -91,6 +98,10 @@ export default function PostGame() {
 
     return (
         <SafeAreaView style={styles.safe}>
+            <AdLoadingOverlay
+                visible={interstitialLoading}
+                label="Quick ad break…"
+            />
             <ScrollView contentContainerStyle={styles.content}>
                 <Text
                     style={[styles.headline, { color: RESULT_COLOR[matchOver.result] }]}
@@ -315,7 +326,7 @@ const styles = StyleSheet.create({
         marginTop: spacing.xxl,
     },
     headline: {
-        fontSize: 42,
+        fontSize: 48,
         fontWeight: typography.weights.black,
         textAlign: 'center',
         letterSpacing: 2,
@@ -329,9 +340,9 @@ const styles = StyleSheet.create({
     wordCard: {
         backgroundColor: colors.surface,
         borderRadius: radius.lg,
-        padding: spacing.sm,
+        padding: spacing.lg,
         alignItems: 'center',
-        gap: spacing.xs,
+        gap: spacing.sm,
         borderWidth: 1,
         borderColor: colors.border,
     },
@@ -356,7 +367,7 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: colors.surface,
         borderRadius: radius.md,
-        padding: spacing.xs,
+        padding: spacing.md,
         gap: spacing.xs,
         borderWidth: 1,
         borderColor: colors.border,
@@ -374,7 +385,7 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
     },
     boardsRow: { flexDirection: 'row', gap: spacing.md },
-    boardCol: { flex: 1, alignItems: 'center', gap: spacing.xs },
+    boardCol: { flex: 1, alignItems: 'center', gap: spacing.sm },
     boardTitle: {
         color: colors.text,
         fontSize: typography.sizes.sm,
@@ -390,7 +401,7 @@ const styles = StyleSheet.create({
     rewardsCard: {
         backgroundColor: colors.surface,
         borderRadius: radius.md,
-        padding: spacing.sm,
+        padding: spacing.md,
         borderWidth: 1,
         borderColor: colors.border,
         gap: spacing.sm,

@@ -6,6 +6,11 @@ import { pool } from '../db/pool.js';
 import type { GuessResult, MatchOutcome } from '../game/engine.js';
 
 export interface PersistMatchArgs {
+    /** In-memory match id, also used by match_replays.match_id. We pin it
+     *  on the matches row so saveReplay's FK resolves. Otherwise Postgres
+     *  generates a different UUID and the FK insert blows up at end-of-
+     *  match, killing the victory screen for both classic and mystery. */
+    matchId: string;
     player1Id: string;
     player2Id: string;
     word: string;
@@ -29,13 +34,14 @@ export async function persistMatch(args: PersistMatchArgs): Promise<string> {
 
         const matchRes = await client.query<{ id: string }>(
             `INSERT INTO matches
-                (player1_id, player2_id, word, word_length, winner_id,
+                (id, player1_id, player2_id, word, word_length, winner_id,
                  outcome, duration_seconds, p1_rank_delta, p2_rank_delta,
                  p1_is_bot, p2_is_bot, started_at, ended_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                     to_timestamp($12 / 1000.0), now())
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                     to_timestamp($13 / 1000.0), now())
              RETURNING id`,
             [
+                args.matchId,
                 args.player1Id,
                 args.player2Id,
                 args.word.toUpperCase(),

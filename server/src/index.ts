@@ -23,6 +23,12 @@ import { battlePassRouter } from './routes/battlepass.js';
 import { adsRouter } from './routes/ads.js';
 import { coinsRouter } from './routes/coins.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
+import { dailyRouter } from './routes/daily.js';
+import { settingsRouter } from './routes/settings.js';
+import { seasonsRouter } from './routes/seasons.js';
+import { mysteryRouter } from './routes/mystery.js';
+import { friendsRouter } from './routes/friends.js';
+import { replaysRouter } from './routes/replays.js';
 import { createSocketServer } from './socket/server.js';
 
 async function main() {
@@ -50,6 +56,12 @@ async function main() {
     app.use('/api', adsRouter);
     app.use('/api', coinsRouter);
     app.use('/api', leaderboardRouter);
+    app.use('/api', dailyRouter);
+    app.use('/api', settingsRouter);
+    app.use('/api', seasonsRouter);
+    app.use('/api', mysteryRouter);
+    app.use('/api', friendsRouter);
+    app.use('/api', replaysRouter);
 
     app.use(errorHandler);
 

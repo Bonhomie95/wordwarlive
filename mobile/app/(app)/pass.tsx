@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
+import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { adsApi, battlePassApi } from '../../src/api/resources';
 import { adsAvailable, showRewarded } from '../../src/ads';
 import { useAuthStore } from '../../src/store/authStore';
@@ -157,6 +158,7 @@ export default function Pass() {
 
     return (
         <SafeAreaView style={styles.safe}>
+            <AdLoadingOverlay visible={adBusy} label="Loading XP boost ad…" />
             <FlatList
                 data={tierList}
                 keyExtractor={(t) => String(t)}

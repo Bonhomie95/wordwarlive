@@ -1,14 +1,9 @@
-// Adaptive banner ad anchored to the bottom of a screen. Rendered on the
-// tabs (home/profile/leaderboard/shop/pass) but NOT on the match screen,
-// so the user can't accidentally tap an ad while playing.
+// Adaptive banner ad anchored to the bottom. Visible on every screen
+// that has the (app) tab navigator chrome.
 //
-// The component renders nothing if:
+// Renders nothing if:
 //   • the native ads module isn't available (Expo Go);
 //   • the user has purchased Remove Ads.
-//
-// On real devices in dev mode, Google's TestIds.ADAPTIVE_BANNER serves
-// safe test ads — clicking them is allowed and won't get the AdMob
-// account flagged.
 
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';

@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     key: {
-        height: 48,
+        height: 42,
         borderRadius: radius.sm,
         alignItems: 'center',
         justifyContent: 'center',

@@ -22,9 +22,18 @@ interface Props {
     hintLetter?: string | null;
     /** When true, this tile is the active cursor position. */
     cursor?: boolean;
+    /** Optional color palette from an equipped board_theme cosmetic.
+     *  Overrides the default theme tile colors when set. The render_data
+     *  for board themes ships {bg, correct, misplaced, wrong} as hex strings. */
+    boardOverride?: {
+        correct?: string;
+        misplaced?: string;
+        wrong?: string;
+        bg?: string;
+    } | null;
 }
 
-const COLOR_FOR_STATE: Record<TileColor, string> = {
+const DEFAULT_COLOR_FOR_STATE: Record<TileColor, string> = {
     correct: colors.tileCorrect,
     misplaced: colors.tileMisplaced,
     wrong: colors.tileWrong,
@@ -38,6 +47,7 @@ const TileRaw: React.FC<Props> = ({
     revealDelayMs = 0,
     hintLetter,
     cursor,
+    boardOverride,
 }) => {
     const flip = useSharedValue(0);
     useEffect(() => {
@@ -51,21 +61,29 @@ const TileRaw: React.FC<Props> = ({
         }
     }, [state, flip]);
 
+    // Resolve the color palette: override beats default per-key, so a
+    // theme that defines only `correct` still inherits the rest.
+    const palette: Record<TileColor, string> = {
+        correct: boardOverride?.correct ?? DEFAULT_COLOR_FOR_STATE.correct,
+        misplaced: boardOverride?.misplaced ?? DEFAULT_COLOR_FOR_STATE.misplaced,
+        wrong: boardOverride?.wrong ?? DEFAULT_COLOR_FOR_STATE.wrong,
+    };
+
     const animatedStyle = useAnimatedStyle(() => {
         const scaleY = interpolate(flip.value, [0, 0.5, 1], [1, 0.6, 1]);
         const bgColor = state
-            ? COLOR_FOR_STATE[state]
+            ? palette[state]
             : letter
             ? colors.surfaceElevated
-            : colors.tileEmpty;
+            : boardOverride?.bg ?? colors.tileEmpty;
         return {
             backgroundColor: bgColor,
             transform: [{ scaleY }],
         };
     });
 
-    // Resolve size: numeric → pixel value; 'sm' → 22; 'lg' → 56.
-    const dim = typeof size === 'number' ? size : size === 'sm' ? 22 : 56;
+    // Resolve size: numeric → pixel value; 'sm' → 22; 'lg' → 48.
+    const dim = typeof size === 'number' ? size : size === 'sm' ? 22 : 48;
     const isSmall = dim < 28;
     // Font scales with tile size — ~0.4× — so 4-letter tiles aren't huge and
     // 10-letter tiles still look proportionate.

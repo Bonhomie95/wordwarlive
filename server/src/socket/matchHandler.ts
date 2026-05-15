@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { redis } from '../db/redis.js';
+import { query } from '../db/pool.js';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -25,6 +26,8 @@ import { grantCoins } from '../services/coinsService.js';
 import { advanceStreakOnMatchComplete } from '../services/streakService.js';
 import { redeemHint } from '../services/hintService.js';
 import { recordMatchResult } from '../services/leaderboardService.js';
+import { updatePeak as updateSeasonPeak } from '../services/rankSeasonService.js';
+import { saveReplay } from '../services/replayService.js';
 import { chooseBotGuess, thinkTimeMs, type BotDifficulty } from '../ai/bot.js';
 import type { AppIOServer, AppSocket } from './server.js';
 import type { GuessAck, HintAck, MatchOver, PublicUser } from '../types/index.js';
@@ -49,6 +52,8 @@ interface ActiveMatch {
      *  regardless of payment kind (free/credit/coins). */
     p1HintsUsed: number;
     p2HintsUsed: number;
+    /** Match mode: 'classic' (rank-aware word) or 'mystery' (player-submitted). */
+    mode: 'classic' | 'mystery';
     startedAtMs: number;
     durationMs: number;
     botDifficulty?: BotDifficulty;
@@ -60,6 +65,13 @@ interface ActiveMatch {
      *  reconnect before it fires we cancel; otherwise we forfeit them. */
     p1GraceTimer: NodeJS.Timeout | null;
     p2GraceTimer: NodeJS.Timeout | null;
+    /** Lock state — if non-null and in the future, the player can't use
+     *  powerups. Set by the opponent's Lock powerup. */
+    p1LockedUntilMs: number | null;
+    p2LockedUntilMs: number | null;
+    /** Emoji-spam rate limit per slot — ms-epoch of last emoji. */
+    p1LastEmojiMs?: number;
+    p2LastEmojiMs?: number;
 }
 
 /** Grace period for reconnects — players who drop have this long to come
@@ -75,6 +87,11 @@ interface StartArgs {
     p1IsBot: boolean;
     p2IsBot: boolean;
     botDifficulty?: BotDifficulty;
+    /** Optional. If provided, this exact word is used instead of the
+     *  rank-aware pick. Mystery mode passes one of the player-submitted
+     *  words here. */
+    explicitWord?: string;
+    mode?: 'classic' | 'mystery';
 }
 
 class MatchRegistry {
@@ -89,14 +106,14 @@ class MatchRegistry {
         ]);
         if (!p1 || !p2) throw new Error('Player(s) not found for match');
 
-        // Use the higher-ranked player's points to pick the word's length so
-        // both players are challenged. Could also pick from daily_words here
-        // for a "daily challenge" mode.
-        const word = pickRankAwareWord(Math.max(p1.rank_points, p2.rank_points));
+        const word =
+            args.explicitWord ??
+            pickRankAwareWord(Math.max(p1.rank_points, p2.rank_points));
 
         const match: ActiveMatch = {
             id: randomUUID(),
             word,
+            mode: args.mode ?? 'classic',
             p1UserId: p1.id,
             p2UserId: p2.id,
             p1SocketId: args.p1SocketId,
@@ -115,6 +132,8 @@ class MatchRegistry {
             botTimerHandle: null,
             p1GraceTimer: null,
             p2GraceTimer: null,
+            p1LockedUntilMs: null,
+            p2LockedUntilMs: null,
         };
         this.byMatchId.set(match.id, match);
         this.byUserId.set(p1.id, match.id);
@@ -250,22 +269,133 @@ class MatchRegistry {
         return { ok: true };
     }
 
-    /** Power-up handling. For brevity, we only fully implement Reveal here.
-     *  Scramble and Lock are stubbed with the correct envelope so the client
-     *  flow works end-to-end. */
+    /**
+     * Power-up handling.
+     *
+     * - REVEAL: tell only the requesting player one position+letter that
+     *   they haven't yet greened. Consumes 1 from inventory.
+     * - SCRAMBLE: opposing player's tile-typing UI is visually scrambled
+     *   for 1.5s (their typed letters render in random positions).
+     *   Doesn't affect their actual guess submission, just confuses them.
+     *   Consumes 1 from inventory.
+     * - LOCK: opposing player can't use powerups for 8 seconds. Server
+     *   tracks lock expiry on the match record. Consumes 1.
+     *
+     * Note on inventory: we decrement on use (not on award) so failed
+     * uses (e.g. tried to scramble after match ended) don't consume.
+     */
     async handlePowerUp(
-        _io: AppIOServer,
-        _socket: AppSocket,
+        io: AppIOServer,
+        socket: AppSocket,
         kind: 'reveal' | 'scramble' | 'lock',
         _targetGuessIndex: number | null
     ): Promise<{ ok: boolean; error?: string }> {
-        // TODO: wire up actual inventory tracking + effects.
-        // - reveal: pick one of the unrevealed letters of `match.word`,
-        //   tell ONLY the requesting player.
-        // - scramble: emit `opponent_scramble` to opposing socket.
-        // - lock: prevent the opponent from using power-ups for X seconds.
-        logger.info({ kind }, 'powerup_use (stubbed)');
-        return { ok: true };
+        const userId = socket.data.session.userId;
+        const matchId = this.byUserId.get(userId);
+        if (!matchId) return { ok: false, error: 'Not in a match' };
+        const match = this.byMatchId.get(matchId);
+        if (!match || match.ended) return { ok: false, error: 'Game not active' };
+
+        const isP1 = match.p1UserId === userId;
+        const lockedUntil = isP1 ? match.p1LockedUntilMs : match.p2LockedUntilMs;
+        if (lockedUntil && Date.now() < lockedUntil) {
+            return {
+                ok: false,
+                error: 'Your powerups are locked. Wait a moment.',
+            };
+        }
+
+        // Check + decrement inventory atomically.
+        const col = `powerup_${kind}` as 'powerup_reveal' | 'powerup_scramble' | 'powerup_lock';
+        const rows = await query<{ remaining: number }>(
+            `UPDATE users SET ${col} = ${col} - 1, updated_at = now()
+             WHERE id = $1 AND ${col} > 0
+             RETURNING ${col} AS remaining`,
+            [userId]
+        );
+        if (rows.length === 0) {
+            return { ok: false, error: `You have no ${kind} powerups left.` };
+        }
+
+        const opponentSocketId = isP1 ? match.p2SocketId : match.p1SocketId;
+
+        if (kind === 'reveal') {
+            // Pick one position the requester hasn't already greened.
+            const history = isP1 ? match.p1Guesses : match.p2Guesses;
+            const greened = new Set<number>();
+            for (const g of history) {
+                for (let i = 0; i < g.tiles.length; i++) {
+                    if (g.tiles[i] === 'correct') greened.add(i);
+                }
+            }
+            const candidates: { pos: number; letter: string }[] = [];
+            for (let i = 0; i < match.word.length; i++) {
+                if (!greened.has(i)) {
+                    candidates.push({ pos: i, letter: match.word[i]! });
+                }
+            }
+            if (candidates.length === 0) {
+                return { ok: false, error: 'No positions left to reveal.' };
+            }
+            const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
+            // Tell only the requester via a dedicated event.
+            socket.emit('powerup_reveal_letter', {
+                position: pick.pos,
+                letter: pick.letter,
+            });
+            return { ok: true };
+        }
+
+        if (kind === 'scramble') {
+            if (opponentSocketId) {
+                io.to(opponentSocketId).emit('opponent_scramble');
+            }
+            return { ok: true };
+        }
+
+        if (kind === 'lock') {
+            const LOCK_DURATION_MS = 8_000;
+            const lockUntil = Date.now() + LOCK_DURATION_MS;
+            if (isP1) match.p2LockedUntilMs = lockUntil;
+            else match.p1LockedUntilMs = lockUntil;
+            if (opponentSocketId) {
+                io.to(opponentSocketId).emit('powerup_locked', {
+                    durationMs: LOCK_DURATION_MS,
+                });
+            }
+            return { ok: true };
+        }
+
+        return { ok: false, error: 'Unknown powerup' };
+    }
+
+    /**
+     * Forward an emoji reaction to the opponent. Server-side rate limit:
+     * one emoji per user per 1.5s. Outside whitelist → silently dropped.
+     */
+    async handleEmoji(io: AppIOServer, socket: AppSocket, emoji: string): Promise<void> {
+        const userId = socket.data.session.userId;
+        const matchId = this.byUserId.get(userId);
+        if (!matchId) return;
+        const match = this.byMatchId.get(matchId);
+        if (!match || match.ended) return;
+
+        // Whitelist of safe emojis. Anything outside this is dropped.
+        const ALLOWED = new Set(['👍', '😂', '😮', '🔥', '🤔', '🤯', '🎉', '😭']);
+        if (!ALLOWED.has(emoji)) return;
+
+        // Rate limit: stash last-emoji timestamp on the match record.
+        const isP1 = match.p1UserId === userId;
+        const now = Date.now();
+        const lastKey = isP1 ? 'p1LastEmojiMs' : 'p2LastEmojiMs';
+        const last = match[lastKey] ?? 0;
+        if (now - last < 1500) return;
+        match[lastKey] = now;
+
+        const opponentSocketId = isP1 ? match.p2SocketId : match.p1SocketId;
+        if (opponentSocketId) {
+            io.to(opponentSocketId).emit('opponent_emoji', { emoji });
+        }
     }
 
     async handleHint(socket: AppSocket): Promise<HintAck> {
@@ -666,24 +796,54 @@ class MatchRegistry {
                   }),
         ]);
 
-        // Persist the match.
+        // Persist the match + replay. Wrapped because any DB hiccup here
+        // shouldn't prevent the player from seeing their victory screen —
+        // worst case they lose the replay/history, but match_over still
+        // fires below and rank/coins are already applied.
         const winnerId = winner === 'p1' ? p1.id : winner === 'p2' ? p2.id : null;
         const durationSec = Math.round((Date.now() - match.startedAtMs) / 1000);
-        await persistMatch({
-            player1Id: p1.id,
-            player2Id: p2.id,
-            word: match.word,
-            durationSeconds: durationSec,
-            outcome,
-            winnerId,
-            p1RankDelta: p1Delta,
-            p2RankDelta: p2Delta,
-            p1IsBot: match.p1IsBot,
-            p2IsBot: match.p2IsBot,
-            p1Guesses: match.p1Guesses,
-            p2Guesses: match.p2Guesses,
-            startedAtMs: match.startedAtMs,
-        });
+        try {
+            await persistMatch({
+                matchId: match.id,
+                player1Id: p1.id,
+                player2Id: p2.id,
+                word: match.word,
+                durationSeconds: durationSec,
+                outcome,
+                winnerId,
+                p1RankDelta: p1Delta,
+                p2RankDelta: p2Delta,
+                p1IsBot: match.p1IsBot,
+                p2IsBot: match.p2IsBot,
+                p1Guesses: match.p1Guesses,
+                p2Guesses: match.p2Guesses,
+                startedAtMs: match.startedAtMs,
+            });
+
+            // Replay only when at least one human participated.
+            if (!match.p1IsBot || !match.p2IsBot) {
+                await saveReplay({
+                    matchId: match.id,
+                    mode: match.mode,
+                    word: match.word,
+                    p1UserId: p1.id,
+                    p2UserId: p2.id,
+                    p1Username: p1.username,
+                    p2Username: p2.username,
+                    p1Guesses: match.p1Guesses,
+                    p2Guesses: match.p2Guesses,
+                    winner: winner === 'p1' ? 'p1' : winner === 'p2' ? 'p2' : 'tie',
+                    outcome,
+                    durationMs: Date.now() - match.startedAtMs,
+                    startedAtMs: match.startedAtMs,
+                });
+            }
+        } catch (persistErr) {
+            logger.error(
+                { err: persistErr, matchId: match.id },
+                'Failed to persist match / replay — continuing anyway so client gets match_over'
+            );
+        }
 
         // Battle pass XP.
         const p1XpResult = match.p1IsBot
@@ -738,14 +898,18 @@ class MatchRegistry {
                 userId: p1.id,
                 isWin: winner === 'p1',
                 rankPoints: updatedP1.rank_points,
+                mode: match.mode,
             });
+            await updateSeasonPeak(p1.id, updatedP1.rank_points);
         }
         if (!match.p2IsBot) {
             await recordMatchResult({
                 userId: p2.id,
                 isWin: winner === 'p2',
                 rankPoints: updatedP2.rank_points,
+                mode: match.mode,
             });
+            await updateSeasonPeak(p2.id, updatedP2.rank_points);
         }
 
         const p1Result: 'win' | 'loss' | 'tie' =

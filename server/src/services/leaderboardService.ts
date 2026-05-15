@@ -56,14 +56,13 @@ interface RecordResultArgs {
     userId: string;
     isWin: boolean;
     rankPoints: number;
+    /** 'classic' | 'mystery' | 'overall'. We always also write to 'overall'
+     *  for combined leaderboards. */
+    mode: 'classic' | 'mystery';
 }
 
 /**
- * Bump win/loss counters for the user across all four leaderboard periods.
- * Called from matchHandler.endMatch after applyMatchResult writes the new
- * rank_points so we can store the up-to-date snapshot.
- *
- * Bots are filtered out by the caller — we only want real players visible.
+ * Bump win/loss counters for the user across all four periods + (mode, 'overall').
  */
 export async function recordMatchResult(args: RecordResultArgs): Promise<void> {
     const now = new Date();
@@ -74,28 +73,35 @@ export async function recordMatchResult(args: RecordResultArgs): Promise<void> {
         { period: 'daily', bucket: bucketFor('daily', now) },
     ];
 
+    // Write to both the mode-specific row AND the 'overall' row so combined
+    // leaderboards work without scanning multiple modes.
+    const modes: string[] = [args.mode, 'overall'];
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         for (const b of buckets) {
-            await client.query(
-                `INSERT INTO leaderboard_entries
-                    (user_id, period, bucket, wins, losses, rank_points, last_match_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, now())
-                 ON CONFLICT (period, bucket, user_id) DO UPDATE
-                 SET wins = leaderboard_entries.wins + EXCLUDED.wins,
-                     losses = leaderboard_entries.losses + EXCLUDED.losses,
-                     rank_points = EXCLUDED.rank_points,
-                     last_match_at = now()`,
-                [
-                    args.userId,
-                    b.period,
-                    b.bucket,
-                    args.isWin ? 1 : 0,
-                    args.isWin ? 0 : 1,
-                    args.rankPoints,
-                ]
-            );
+            for (const m of modes) {
+                await client.query(
+                    `INSERT INTO leaderboard_entries
+                        (user_id, period, bucket, mode, wins, losses, rank_points, last_match_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+                     ON CONFLICT (period, bucket, mode, user_id) DO UPDATE
+                     SET wins = leaderboard_entries.wins + EXCLUDED.wins,
+                         losses = leaderboard_entries.losses + EXCLUDED.losses,
+                         rank_points = EXCLUDED.rank_points,
+                         last_match_at = now()`,
+                    [
+                        args.userId,
+                        b.period,
+                        b.bucket,
+                        m,
+                        args.isWin ? 1 : 0,
+                        args.isWin ? 0 : 1,
+                        args.rankPoints,
+                    ]
+                );
+            }
         }
         await client.query('COMMIT');
     } catch (err) {
@@ -136,12 +142,15 @@ export interface LeaderboardResponse {
  */
 export async function getLeaderboard(args: {
     period: LeaderboardPeriod;
+    /** 'classic' | 'mystery' | 'overall'. Defaults to 'overall'. */
+    mode?: 'classic' | 'mystery' | 'overall';
     limit?: number;
     /** Optional caller's user id — if provided we also return their own rank. */
     requesterId?: string;
 }): Promise<LeaderboardResponse> {
     const limit = Math.min(args.limit ?? 50, 100);
     const bucket = bucketFor(args.period);
+    const mode = args.mode ?? 'overall';
 
     const { query } = await import('../db/pool.js');
 
@@ -168,11 +177,11 @@ export async function getLeaderboard(args: {
             ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC) AS rank_in_leaderboard
          FROM leaderboard_entries le
          JOIN users u ON u.id = le.user_id
-         WHERE le.period = $1 AND le.bucket = $2
+         WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
            AND u.auth_subject NOT LIKE 'bot-%'
          ORDER BY le.wins DESC, le.rank_points DESC
-         LIMIT $3`,
-        [args.period, bucket, limit]
+         LIMIT $4`,
+        [args.period, bucket, mode, limit]
     );
 
     const entries: LeaderboardEntry[] = topRows.map((r) => ({
@@ -189,8 +198,6 @@ export async function getLeaderboard(args: {
 
     let you: LeaderboardEntry | null = null;
     if (args.requesterId) {
-        // Compute the requesting user's exact position. We rank-order all
-        // entries in the bucket and pull theirs by user_id.
         const youRows = await query<{
             user_id: string;
             username: string;
@@ -215,11 +222,11 @@ export async function getLeaderboard(args: {
                     ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC) AS rank_in_leaderboard
                  FROM leaderboard_entries le
                  JOIN users u ON u.id = le.user_id
-                 WHERE le.period = $1 AND le.bucket = $2
+                 WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
                    AND u.auth_subject NOT LIKE 'bot-%'
             )
-            SELECT * FROM ranked WHERE user_id = $3`,
-            [args.period, bucket, args.requesterId]
+            SELECT * FROM ranked WHERE user_id = $4`,
+            [args.period, bucket, mode, args.requesterId]
         );
         const r = youRows[0];
         if (r) {

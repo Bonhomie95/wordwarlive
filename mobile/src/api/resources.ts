@@ -96,9 +96,171 @@ export const streakApi = {
 };
 
 export const leaderboardApi = {
-    /** Fetch the top-N for a given period plus the requesting user's rank. */
-    fetch: (period: LeaderboardPeriod, limit = 50) =>
+    /** Fetch the top-N for a given period+mode plus the requesting user's rank. */
+    fetch: (
+        period: LeaderboardPeriod,
+        mode: 'classic' | 'mystery' | 'overall' = 'overall',
+        limit = 50
+    ) =>
         apiRequest<LeaderboardResponse>(
-            `/api/leaderboard?period=${period}&limit=${limit}`
+            `/api/leaderboard?period=${period}&mode=${mode}&limit=${limit}`
         ),
+};
+
+export interface UserSettings {
+    sound: boolean;
+    haptics: boolean;
+    colorBlindMode: boolean;
+}
+
+export const settingsApi = {
+    get: () => apiRequest<UserSettings>('/api/settings'),
+    update: (patch: Partial<UserSettings>) =>
+        apiRequest<UserSettings>('/api/settings', {
+            method: 'PATCH',
+            body: patch,
+        }),
+};
+
+export interface DailyChallengeMeta {
+    challengeDate: string;
+    wordLength: number;
+}
+export interface DailyAttempt {
+    guesses: { guess: string; tiles: ('correct' | 'misplaced' | 'wrong')[] }[];
+    solved: boolean;
+    guessCount: number;
+    durationMs: number;
+    startedAt: number;
+}
+
+export const dailyApi = {
+    today: () =>
+        apiRequest<{ challenge: DailyChallengeMeta; attempt: DailyAttempt | null }>(
+            '/api/daily'
+        ),
+    guess: (guess: string) =>
+        apiRequest<{
+            ok: boolean;
+            tiles: ('correct' | 'misplaced' | 'wrong')[];
+            solved: boolean;
+            guessCount: number;
+            error?: string;
+            errorCode?: string;
+        }>('/api/daily/guess', { method: 'POST', body: { guess } }),
+    leaderboard: () =>
+        apiRequest<{
+            entries: {
+                userId: string;
+                username: string;
+                guessCount: number;
+                durationMs: number;
+            }[];
+        }>('/api/daily/board'),
+};
+
+export interface RankSeason {
+    id: number;
+    name: string;
+    startsAt: string;
+    endsAt: string;
+    softResetDelta: number;
+}
+export interface SeasonResetResult {
+    seasonId: number;
+    peakPoints: number;
+    finalPoints: number;
+    finalTier: string;
+}
+
+export const seasonsApi = {
+    current: () =>
+        apiRequest<{
+            season: RankSeason | null;
+            reset: {
+                resetApplied: boolean;
+                previousSeasonResult?: SeasonResetResult;
+            };
+        }>('/api/seasons/current'),
+};
+
+export interface MysterySubmission {
+    id: string;
+    word: string;
+    wordLength: number;
+    available: boolean;
+    createdAt: string;
+}
+
+export const mysteryApi = {
+    submit: (word: string) =>
+        apiRequest<{ ok: boolean; submission?: MysterySubmission; error?: string }>(
+            '/api/mystery/submit',
+            { method: 'POST', body: { word } }
+        ),
+    pending: () =>
+        apiRequest<{ submission: MysterySubmission | null }>(
+            '/api/mystery/pending'
+        ),
+    withdraw: () =>
+        apiRequest<{ ok: boolean }>('/api/mystery/withdraw', {
+            method: 'POST',
+            body: {},
+        }),
+};
+
+export interface FriendInfo {
+    userId: string;
+    username: string;
+    rankPoints: number;
+    rankTier: string;
+    isOnline: boolean;
+}
+
+export const friendsApi = {
+    list: () => apiRequest<{ friends: FriendInfo[] }>('/api/friends'),
+    createCode: () =>
+        apiRequest<{ code: string }>('/api/friends/code', {
+            method: 'POST',
+            body: {},
+        }),
+    redeem: (code: string) =>
+        apiRequest<{
+            ok: boolean;
+            friendUserId?: string;
+            friendUsername?: string;
+            error?: string;
+        }>('/api/friends/redeem', { method: 'POST', body: { code } }),
+    remove: (friendId: string) =>
+        apiRequest<{ ok: boolean }>(`/api/friends/${friendId}`, {
+            method: 'DELETE',
+        }),
+    createPrivateMatch: (wordLength: number | null) =>
+        apiRequest<{ code: string }>('/api/private-match/code', {
+            method: 'POST',
+            body: { wordLength },
+        }),
+};
+
+export interface ReplayMeta {
+    matchId: string;
+    mode: string;
+    word: string;
+    wordLength: number;
+    opponentUsername: string;
+    youWon: boolean;
+    outcome: string;
+    durationMs: number;
+    createdAt: string;
+}
+
+export const replaysApi = {
+    list: () => apiRequest<{ replays: ReplayMeta[] }>('/api/replays'),
+    get: (matchId: string) =>
+        apiRequest<
+            ReplayMeta & {
+                yourGuesses: { guess: string; tiles: string[] }[];
+                opponentGuesses: { guess: string; tiles: string[] }[];
+            }
+        >(`/api/replays/${matchId}`),
 };

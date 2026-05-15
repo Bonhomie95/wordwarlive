@@ -3,7 +3,7 @@
 // (their rank, their streak, what they're playing for).
 
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useGameStore } from '../../src/store/gameStore';
 import { adsAvailable, showRewarded } from '../../src/ads';
 import { adsApi } from '../../src/api/resources';
+import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
@@ -71,7 +72,8 @@ export default function Home() {
 
     function onPlay() {
         if (!token) return;
-        connectAndQueue(token);
+        // matchmaking.tsx kicks off the queue itself based on the mode
+        // param (default: classic). Keeps the queueing logic in one place.
         router.push('/(app)/matchmaking');
     }
 
@@ -141,6 +143,7 @@ export default function Home() {
 
     return (
         <SafeAreaView style={styles.safe}>
+            <AdLoadingOverlay visible={adBusy} label="Loading your reward…" />
             <ScrollView contentContainerStyle={styles.scroll}>
                 <View style={styles.header}>
                     <Text style={styles.greeting} allowFontScaling={false}>
@@ -222,6 +225,37 @@ export default function Home() {
                     )}
                 </View>
 
+                {/* Quick navigation grid for the new game modes + utility
+                    screens. Each card is a small tile that routes to a
+                    full-screen flow. */}
+                <View style={styles.quickGrid}>
+                    <QuickCard
+                        icon="calendar"
+                        label="Daily"
+                        onPress={() => router.push('/(app)/daily')}
+                    />
+                    <QuickCard
+                        icon="eye"
+                        label="Mystery"
+                        onPress={() => router.push('/(app)/mystery')}
+                    />
+                    <QuickCard
+                        icon="people"
+                        label="Friends"
+                        onPress={() => router.push('/(app)/friends')}
+                    />
+                    <QuickCard
+                        icon="film"
+                        label="Replays"
+                        onPress={() => router.push('/(app)/replays')}
+                    />
+                    <QuickCard
+                        icon="settings"
+                        label="Settings"
+                        onPress={() => router.push('/(app)/settings')}
+                    />
+                </View>
+
                 {showDailyBonus ? (
                     <View style={styles.dailyCard}>
                         <View style={styles.dailyHeader}>
@@ -264,6 +298,31 @@ function Stat({ label, value }: { label: string; value: string }) {
             <Text style={styles.statValue} allowFontScaling={false}>{value}</Text>
             <Text style={styles.statLabel} allowFontScaling={false}>{label}</Text>
         </View>
+    );
+}
+
+function QuickCard({
+    icon,
+    label,
+    onPress,
+}: {
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    onPress: () => void;
+}) {
+    return (
+        <Pressable
+            onPress={onPress}
+            style={({ pressed }) => [
+                styles.quickCard,
+                pressed ? { opacity: 0.85, transform: [{ scale: 0.97 }] } : null,
+            ]}
+        >
+            <Ionicons name={icon} size={22} color={colors.primary} />
+            <Text style={styles.quickLabel} allowFontScaling={false}>
+                {label}
+            </Text>
+        </Pressable>
     );
 }
 
@@ -371,6 +430,28 @@ const styles = StyleSheet.create({
         fontSize: typography.sizes.xs,
         color: colors.textDim,
         marginTop: spacing.xs,
+    },
+    quickGrid: {
+        flexDirection: 'row',
+        gap: spacing.xs,
+        flexWrap: 'wrap',
+    },
+    quickCard: {
+        flex: 1,
+        minWidth: 60,
+        backgroundColor: colors.surface,
+        borderRadius: radius.sm,
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.xs,
+        alignItems: 'center',
+        gap: 4,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    quickLabel: {
+        color: colors.text,
+        fontSize: typography.sizes.xs,
+        fontWeight: typography.weights.semibold,
     },
     playWrap: { gap: spacing.sm },
     playHint: {

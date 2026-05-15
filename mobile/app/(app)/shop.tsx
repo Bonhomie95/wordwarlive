@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
     FlatList,
     Pressable,
@@ -94,7 +95,20 @@ export default function Shop() {
         setBusyId(c.id);
         try {
             await cosmeticsApi.purchase(c.id);
-            await load();
+            // Auto-equip the just-purchased cosmetic. UX: you bought it,
+            // you almost certainly want to use it right away. Players were
+            // confused that "Buy" didn't visually do anything.
+            try {
+                await usersApi.equip(c.category, c.id);
+            } catch (equipErr) {
+                // Non-fatal — the cosmetic is still purchased, user can
+                // tap Equip manually.
+                // eslint-disable-next-line no-console
+                console.warn('auto-equip after purchase failed', equipErr);
+            }
+            // Refresh both the shop catalog (now owned=true) and /me (now
+            // equipped). Without both, the UI doesn't reflect the change.
+            await Promise.all([load(), refreshMe()]);
         } catch (err) {
             Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
@@ -107,6 +121,8 @@ export default function Shop() {
         try {
             await usersApi.equip(c.category, c.id);
             await refreshMe();
+            // Also reload shop so equipped state on cards updates immediately.
+            await load();
         } catch (err) {
             Alert.alert('Equip failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
@@ -349,18 +365,25 @@ function ShopItem({
                             !equipped && cosmetic.owned ? styles.actionEquip : null,
                             !cosmetic.owned ? styles.actionBuy : null,
                             pressed ? { opacity: 0.85 } : null,
-                            busy ? { opacity: 0.5 } : null,
+                            busy ? { opacity: 0.7 } : null,
                         ]}
                     >
-                        <Text
-                            style={[
-                                styles.actionLabel,
-                                equipped ? { color: colors.primary } : null,
-                            ]}
-                            allowFontScaling={false}
-                        >
-                            {action}
-                        </Text>
+                        {busy ? (
+                            <ActivityIndicator
+                                size="small"
+                                color={equipped ? colors.primary : colors.text}
+                            />
+                        ) : (
+                            <Text
+                                style={[
+                                    styles.actionLabel,
+                                    equipped ? { color: colors.primary } : null,
+                                ]}
+                                allowFontScaling={false}
+                            >
+                                {action}
+                            </Text>
+                        )}
                     </Pressable>
                 </View>
             </View>

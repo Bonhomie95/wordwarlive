@@ -8,9 +8,12 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../src/store/authStore';
 import { initAds } from '../src/ads';
-import { colors } from '../src/theme/colors';
+import { colors, useThemeStore, type ThemeId } from '../src/theme/colors';
+
+const THEME_STORAGE_KEY = 'wordwar.theme';
 
 function useAuthGate() {
     const router = useRouter();
@@ -32,12 +35,23 @@ function useAuthGate() {
 export default function RootLayout() {
     const hydrate = useAuthStore((s) => s.hydrate);
     const hydrated = useAuthStore((s) => s.hydrated);
+    // Subscribe to theme bump so root + children re-render when the theme
+    // changes. We never read the bump value — we just want the re-render.
+    useThemeStore((s) => s.bump);
+    const applyTheme = useThemeStore((s) => s.applyTheme);
 
     useEffect(() => {
         hydrate();
-        // Kick off ads SDK initialization in parallel — safe no-op in Expo Go.
+        // Restore saved theme — persisted across app launches via SecureStore.
+        // We use SecureStore (already a dep for auth tokens) instead of pulling
+        // in AsyncStorage just for this one preference.
+        SecureStore.getItemAsync(THEME_STORAGE_KEY)
+            .then((stored) => {
+                if (stored) applyTheme(stored as ThemeId);
+            })
+            .catch(() => {});
         initAds().catch(() => {});
-    }, [hydrate]);
+    }, [hydrate, applyTheme]);
 
     useAuthGate();
 

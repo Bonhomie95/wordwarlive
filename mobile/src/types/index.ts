@@ -64,6 +64,10 @@ export interface MeResponse {
         nameplate: string | null;
         profileBorder: string | null;
     };
+    /** Per-cosmetic render_data for everything currently equipped. Keyed
+     *  by cosmetic id. Lets the client apply tile colors / animation type
+     *  without a separate fetch. Map is empty if nothing equipped. */
+    equippedRenderData: Record<string, Record<string, unknown>>;
     battlePass: {
         xp: number;
         premium: boolean;
@@ -215,14 +219,28 @@ export interface ClientToServerEvents {
         payload: Record<string, never>,
         ack: (resp: { ok: boolean; reason?: string }) => void
     ) => void;
+    emoji_send: (payload: { emoji: string }) => void;
+    mystery_queue: (
+        payload: Record<string, never>,
+        ack: (resp: { ok: boolean; error?: string }) => void
+    ) => void;
+    mystery_leave: (payload: Record<string, never>) => void;
+    private_join: (
+        payload: { code: string },
+        ack: (resp: { ok: boolean; error?: string }) => void
+    ) => void;
 }
 
 export interface ServerToClientEvents {
     queue_status: (payload: QueueStatus) => void;
+    mystery_queue_status: (payload: MysteryQueueStatus) => void;
     match_found: (payload: MatchFound) => void;
     match_start: (payload: MatchStart) => void;
     guess_result: (payload: GuessBroadcast) => void;
     opponent_scramble: () => void;
+    powerup_reveal_letter: (payload: { position: number; letter: string }) => void;
+    powerup_locked: (payload: { durationMs: number }) => void;
+    opponent_emoji: (payload: { emoji: string }) => void;
     match_tick: (payload: { msRemaining: number }) => void;
     match_over: (payload: MatchOver) => void;
     error: (payload: { message: string; code?: string }) => void;
@@ -231,6 +249,14 @@ export interface ServerToClientEvents {
 export interface QueueStatus {
     state: 'searching' | 'expanded_search' | 'matching_with_bot';
     waitedMs: number;
+}
+
+export interface MysteryQueueStatus {
+    state: 'searching' | 'matching_with_bot';
+    waitedMs: number;
+    /** When waitedMs crosses this, a bot is spawned. UI uses it for the
+     *  "Searching… 12 / 18s" display. */
+    botAfterMs: number;
 }
 
 export interface MatchFound {

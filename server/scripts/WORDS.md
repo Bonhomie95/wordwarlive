@@ -37,7 +37,6 @@ REQUIREMENTS:
 - NO past-tense verbs where the present is more common (use "walk" not "walked"; both ok if both natural)
 - Variety: span common topics — food, nature, body, emotions, actions, household, animals, weather, time
 
-
 OUTPUT FORMAT:
 - Pure JSON array. No markdown, no preamble, no commentary.
 - Single line or pretty-printed, both fine.

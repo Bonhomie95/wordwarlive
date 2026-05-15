@@ -13,6 +13,15 @@ import type {
 } from '../types/index.js';
 import { matchmakingHub } from './matchmaking.js';
 import { matchRegistry } from './matchHandler.js';
+import { mysteryHub } from './mysteryMatchmaking.js';
+import { getMyPendingSubmission } from '../services/mysteryService.js';
+import { markOffline, markOnline, socketIdFor } from './presence.js';
+import {
+    consumePrivateMatchCode,
+    resolvePrivateMatchCode,
+} from '../services/friendsService.js';
+import { pickRankAwareWord, pickRandomWord } from '../game/words.js';
+import { findUserById } from '../services/userService.js';
 
 interface SocketData {
     session: SessionToken;
@@ -69,6 +78,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
 
     io.on('connection', (socket) => {
         logger.info({ userId: socket.data.session.userId }, 'Socket connected');
+        markOnline(socket.data.session.userId, socket.id);
 
         socket.on('queue_join', () => {
             matchmakingHub.enqueue(io, socket).catch((err) => {
@@ -135,9 +145,98 @@ export function createSocketServer(http: HttpServer): AppIOServer {
                 });
         });
 
+        socket.on('emoji_send', (payload) => {
+            // No ack — fire and forget. Errors logged only.
+            matchRegistry
+                .handleEmoji(io, socket, payload.emoji)
+                .catch((err) => logger.error({ err }, 'emoji_send failed'));
+        });
+
+        socket.on('mystery_queue', async (_payload, ack) => {
+            try {
+                // Require a pending submission first.
+                const userId = socket.data.session.userId;
+                const sub = await getMyPendingSubmission(userId);
+                if (!sub) {
+                    ack({
+                        ok: false,
+                        error: 'Submit a mystery word first.',
+                    });
+                    return;
+                }
+                mysteryHub.setIo(io);
+                mysteryHub.enqueue(socket);
+                ack({ ok: true });
+                // Run an immediate tick so a same-length opponent waiting
+                // gets matched without a 3s delay.
+                mysteryHub.tick(io).catch(() => {});
+            } catch (err) {
+                logger.error({ err }, 'mystery_queue failed');
+                ack({ ok: false, error: 'Internal error' });
+            }
+        });
+
+        socket.on('mystery_leave', () => {
+            mysteryHub.leave(socket.data.session.userId);
+        });
+
+        socket.on('private_join', async (payload, ack) => {
+            try {
+                const code = String(payload?.code ?? '').toUpperCase();
+                if (!code) return ack({ ok: false, error: 'Missing code' });
+
+                const resolved = await resolvePrivateMatchCode(code);
+                if (!resolved) {
+                    return ack({ ok: false, error: 'Invalid or expired code.' });
+                }
+                if (resolved.hostId === socket.data.session.userId) {
+                    return ack({ ok: false, error: "That's your own code." });
+                }
+
+                const hostSocketId = socketIdFor(resolved.hostId);
+                if (!hostSocketId) {
+                    return ack({ ok: false, error: 'Host is offline.' });
+                }
+
+                const [host, joiner] = await Promise.all([
+                    findUserById(resolved.hostId),
+                    findUserById(socket.data.session.userId),
+                ]);
+                if (!host || !joiner) {
+                    return ack({ ok: false, error: 'User not found.' });
+                }
+
+                // Word: explicit length if specified, else rank-aware.
+                const word =
+                    resolved.wordLength != null
+                        ? pickRandomWord(resolved.wordLength)
+                        : pickRankAwareWord(
+                              Math.max(host.rank_points, joiner.rank_points)
+                          );
+
+                await consumePrivateMatchCode(code);
+                await matchRegistry.startMatch(io, {
+                    p1SocketId: hostSocketId,
+                    p2SocketId: socket.id,
+                    p1UserId: host.id,
+                    p2UserId: joiner.id,
+                    p1IsBot: false,
+                    p2IsBot: false,
+                    explicitWord: word,
+                    mode: 'classic',
+                });
+                ack({ ok: true });
+            } catch (err) {
+                logger.error({ err }, 'private_join failed');
+                ack({ ok: false, error: 'Internal error' });
+            }
+        });
+
         socket.on('disconnect', (reason) => {
             logger.info({ userId: socket.data.session.userId, reason }, 'Socket disconnected');
+            markOffline(socket.id);
             matchmakingHub.leave(socket.data.session.userId);
+            mysteryHub.leave(socket.data.session.userId);
             matchRegistry.handleDisconnect(io, socket).catch((err) => {
                 logger.error({ err }, 'disconnect cleanup failed');
             });

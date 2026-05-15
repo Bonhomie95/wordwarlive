@@ -18,6 +18,8 @@ const VALID_PERIODS: readonly LeaderboardPeriod[] = [
     'monthly',
     'all_time',
 ] as const;
+const VALID_MODES = ['classic', 'mystery', 'overall'] as const;
+type LeaderboardMode = (typeof VALID_MODES)[number];
 
 leaderboardRouter.get('/leaderboard', requireAuth, async (req, res) => {
     const periodParam = String(req.query.period ?? 'all_time') as LeaderboardPeriod;
@@ -26,11 +28,18 @@ leaderboardRouter.get('/leaderboard', requireAuth, async (req, res) => {
             error: `Invalid period. Use one of: ${VALID_PERIODS.join(', ')}`,
         });
     }
+    const modeParam = String(req.query.mode ?? 'overall') as LeaderboardMode;
+    if (!VALID_MODES.includes(modeParam)) {
+        return res.status(400).json({
+            error: `Invalid mode. Use one of: ${VALID_MODES.join(', ')}`,
+        });
+    }
     const limitParam = Number(req.query.limit ?? 50);
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
 
     const data = await getLeaderboard({
         period: periodParam,
+        mode: modeParam,
         limit,
         requesterId: req.session!.userId,
     });
