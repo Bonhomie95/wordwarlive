@@ -14,7 +14,7 @@ import { useGameStore } from '../../src/store/gameStore';
 import { adsAvailable, showRewarded } from '../../src/ads';
 import { adsApi } from '../../src/api/resources';
 import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
-import { colors, type RankTier } from '../../src/theme/colors';
+import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 const TIER_THRESHOLDS: { tier: RankTier; min: number }[] = [
@@ -375,7 +375,7 @@ function CoinStreakCard({
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     scroll: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.xl },
     header: { marginTop: spacing.lg },
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
         color: colors.warning,
         fontSize: typography.sizes.xs,
     },
-});
+}));
 
 /**
  * Same calendar day in the player's LOCAL timezone? Mirrors server-side

@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import { settingsApi, type UserSettings } from '../../src/api/resources';
-import {
+import { makeThemedStyles,
     colors,
     THEME_CATALOG,
     useThemeStore,
@@ -257,7 +257,7 @@ const ToggleRow: React.FC<{
     </View>
 );
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
     header: {
@@ -377,4 +377,4 @@ const styles = StyleSheet.create({
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.semibold,
     },
-});
+}));

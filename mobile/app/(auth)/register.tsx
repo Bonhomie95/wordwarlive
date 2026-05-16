@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
-import { colors } from '../../src/theme/colors';
+import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 export default function Register() {
@@ -118,7 +118,7 @@ function Field(p: {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
     flex: { flex: 1 },
     title: {
@@ -148,4 +148,4 @@ const styles = StyleSheet.create({
         fontSize: typography.sizes.md,
     },
     actions: { gap: spacing.sm, marginBottom: spacing.lg },
-});
+}));

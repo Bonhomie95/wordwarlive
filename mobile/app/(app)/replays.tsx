@@ -14,7 +14,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { replaysApi, type ReplayMeta } from '../../src/api/resources';
-import { colors } from '../../src/theme/colors';
+import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 
 export default function ReplaysScreen() {
@@ -105,7 +105,7 @@ const ReplayRow: React.FC<{ replay: ReplayMeta }> = ({ replay }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     header: {
         flexDirection: 'row',
@@ -182,4 +182,4 @@ const styles = StyleSheet.create({
         fontWeight: typography.weights.semibold,
         letterSpacing: 1,
     },
-});
+}));

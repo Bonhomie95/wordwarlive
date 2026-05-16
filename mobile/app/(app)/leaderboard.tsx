@@ -30,7 +30,7 @@ import type {
     LeaderboardPeriod,
     LeaderboardResponse,
 } from '../../src/types/index';
-import { colors, type RankTier } from '../../src/theme/colors';
+import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 const PERIODS: ReadonlyArray<{ key: LeaderboardPeriod; label: string }> = [
@@ -401,7 +401,7 @@ function Row({
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     header: {
         paddingHorizontal: spacing.lg,
@@ -648,4 +648,4 @@ const styles = StyleSheet.create({
         opacity: 0.7,
         fontSize: typography.sizes.xs,
     },
-});
+}));

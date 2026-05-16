@@ -138,6 +138,23 @@ export interface ClientToServerEvents {
         payload: { code: string },
         ack: (resp: { ok: boolean; error?: string }) => void
     ) => void;
+    /** Live-challenge a friend. Sends them an instant prompt; if they're
+     *  offline / busy the ack fails. On accept the server starts a match. */
+    friend_challenge: (
+        payload: { friendId: string },
+        ack: (
+            resp:
+                | { ok: true; challengeId: string }
+                | { ok: false; error: string }
+        ) => void
+    ) => void;
+    /** Respond to an incoming friend challenge (accept starts the match). */
+    friend_challenge_respond: (
+        payload: { challengeId: string; accept: boolean },
+        ack: (resp: { ok: boolean; error?: string }) => void
+    ) => void;
+    /** Cancel your own outstanding outgoing challenge. */
+    friend_challenge_cancel: (payload: Record<string, never>) => void;
 }
 
 export interface ServerToClientEvents {
@@ -162,6 +179,19 @@ export interface ServerToClientEvents {
     match_tick: (payload: { msRemaining: number }) => void;
     match_over: (payload: MatchOver) => void;
     error: (payload: { message: string; code?: string }) => void;
+    /** A friend wants to play — pushed to the challenged user. */
+    friend_challenge_incoming: (payload: {
+        challengeId: string;
+        fromUserId: string;
+        fromUsername: string;
+    }) => void;
+    /** Your outgoing challenge was declined by the friend. */
+    friend_challenge_declined: (payload: { byUserId: string }) => void;
+    /** A challenge you're part of was withdrawn (cancelled / expired /
+     *  the other person went offline / either side became busy). */
+    friend_challenge_cancelled: (payload: {
+        reason: 'cancelled' | 'expired' | 'offline' | 'busy';
+    }) => void;
 }
 
 export interface QueueStatus {
@@ -187,6 +217,9 @@ export interface MatchFound {
     /** Which slot you are in the match (1 or 2). Affects how rank deltas
      *  are reported back. */
     slot: 1 | 2;
+    /** 'classic' or 'mystery'. The client uses this to decide post-game
+     *  behaviour — mystery has no "play again" (you'd need a new word). */
+    mode: 'classic' | 'mystery';
 }
 
 export interface MatchStart {

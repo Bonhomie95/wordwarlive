@@ -22,7 +22,7 @@ import {
     Text,
     View,
 } from 'react-native';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, spacing } from '../../theme/typography';
 
 interface Props {
@@ -82,7 +82,7 @@ export const AdLoadingOverlay: React.FC<Props> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     backdrop: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.85)',
@@ -111,4 +111,4 @@ const styles = StyleSheet.create({
         color: colors.textDim,
         fontSize: typography.sizes.sm,
     },
-});
+}));

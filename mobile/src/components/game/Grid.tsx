@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Tile } from './Tile';
 import { spacing } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
+import { makeThemedStyles } from '../../theme/colors';
 
 interface RowData {
     letters: (string | null)[];
@@ -141,7 +142,7 @@ export const Grid: React.FC<Props> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     grid: {
         gap: spacing.xs,
         alignItems: 'center',
@@ -150,4 +151,4 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: spacing.xs,
     },
-});
+}));

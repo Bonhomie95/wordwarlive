@@ -16,7 +16,7 @@ import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { showInterstitial } from '../../src/ads';
 import type { MatchOver } from '../../src/types/index';
-import { colors, type RankTier } from '../../src/theme/colors';
+import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 const RESULT_TITLE = {
@@ -34,6 +34,7 @@ const RESULT_COLOR = {
 export default function PostGame() {
     const router = useRouter();
     const matchOver = useGameStore((s) => s.matchOver);
+    const matchFound = useGameStore((s) => s.matchFound);
     const reset = useGameStore((s) => s.reset);
     const shouldShowInterstitial = useGameStore((s) => s.shouldShowInterstitial);
     const markInterstitialShown = useGameStore((s) => s.markInterstitialShown);
@@ -79,17 +80,19 @@ export default function PostGame() {
         );
     }
 
+    // Mystery matches have no "play again" — you'd need to submit a fresh
+    // word, so the only action is going home (Mystery tab → new word).
+    const isMystery = matchFound?.mode === 'mystery';
+
     function onPlayAgain() {
+        // Don't reset/queue here — matchmaking.tsx does both on mount.
         reset();
-        if (token) {
-            connectAndQueue(token);
-            router.replace('/(app)/matchmaking');
-        }
+        router.navigate('/(app)/matchmaking');
     }
 
     function onHome() {
         reset();
-        router.replace('/(app)');
+        router.navigate('/(app)');
     }
 
     const tier = matchOver.newRankTier as RankTier;
@@ -171,8 +174,14 @@ export default function PostGame() {
                 </View>
 
                 <View style={styles.actions}>
-                    <Button label="Play again" onPress={onPlayAgain} />
-                    <Button label="Home" onPress={onHome} variant="ghost" />
+                    {isMystery ? (
+                        <Button label="Back to Home" onPress={onHome} />
+                    ) : (
+                        <>
+                            <Button label="Play again" onPress={onPlayAgain} />
+                            <Button label="Home" onPress={onHome} variant="ghost" />
+                        </>
+                    )}
                 </View>
             </ScrollView>
         </SafeAreaView>
@@ -317,7 +326,7 @@ function outcomeBlurb(outcome: string): string {
     }
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxl },
     empty: {
@@ -467,4 +476,4 @@ const styles = StyleSheet.create({
         textAlign: 'right',
         marginTop: spacing.xs,
     },
-});
+}));

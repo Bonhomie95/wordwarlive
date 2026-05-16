@@ -12,44 +12,39 @@ let socket: AppSocket | null = null;
 let appStateSub: { remove: () => void } | null = null;
 
 /**
- * Connect (or reuse) the singleton Socket.io client. Built for mobile networks
- * which are often slow, switch between Wi-Fi/cellular, and drop briefly when
- * the app is backgrounded.
+ * The socket is now a PERSISTENT, session-long singleton, not a per-match
+ * throwaway.
  *
- * Resilience knobs:
- *   - `transports: ['websocket', 'polling']` — websocket is preferred but we
- *     fall back to long-polling automatically on networks that block WS
- *     upgrades (some corporate proxies, some cellular carriers in Lagos).
- *   - `reconnectionAttempts: Infinity` — never give up. Mobile networks come
- *     and go; making the user manually re-tap a button is the wrong UX.
- *   - Exponential backoff capped at 10 s so we don't thrash the server but
- *     also don't make the user wait forever once their connection is back.
- *   - 30 s connection timeout — generous enough for slow 3G handshakes.
- *   - When the app comes back to the foreground, we force a reconnect
- *     attempt so the user doesn't have to wait for the socket's internal
- *     heartbeat to notice the network changed.
+ * Why this changed:
+ *   1. The old code tore the socket down and built a brand-new one on
+ *      every queue. Combined with expo-router keeping the matchmaking
+ *      screen mounted, that's what caused "the 2nd game never connects /
+ *      Play Again bounces home" - see matchmaking.tsx.
+ *   2. Friend challenges need the socket alive whenever the app is open,
+ *      so a friend's invite can actually reach you. A socket that only
+ *      exists mid-queue can't receive anything.
+ *
+ * The server already cleans up all per-match state when a match ends
+ * (matchHandler.endMatch deletes the byUserId/byMatchId entries), so
+ * re-using one connected socket for many matches is safe - a fresh
+ * `queue_join` is never swallowed.
  */
-export function connectSocket(token: string): AppSocket {
-    if (socket && socket.connected) return socket;
-    socket?.disconnect();
+export function ensureSocket(token: string): AppSocket {
+    // Re-use the live socket if we already have one. socket.io handles its
+    // own reconnection internally, so we never recreate it.
+    if (socket) return socket;
+
     socket = io(apiUrl, {
         auth: { token },
-        // Polling fallback for environments that block websocket upgrades.
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 10_000,
         randomizationFactor: 0.5,
-        // Slow network tolerance — Lagos cellular handshakes can run long.
         timeout: 30_000,
-        // Don't multiplex — fresh connection for each new auth token.
-        forceNew: true,
-        // Send a ping every 25s; if 60s pass without a pong, drop and reconnect.
-        // (These mirror the server's defaults — overriding would mismatch.)
     });
 
-    // Surface meaningful events for debugging.
     socket.on('connect', () => {
         // eslint-disable-next-line no-console
         console.log('[socket] connected', socket?.id);
@@ -67,10 +62,8 @@ export function connectSocket(token: string): AppSocket {
         console.log('[socket] disconnect', reason);
     });
 
-    // Force a reconnect attempt when the app returns to the foreground.
-    // RN's networking layer doesn't always notice network handoffs (Wi-Fi
-    // → cellular when leaving a building) until something forces it to.
-    if (appStateSub) appStateSub.remove();
+    // Nudge a reconnect when the app returns to the foreground so the user
+    // doesn't wait for the heartbeat to notice a network change.
     appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
         if (state === 'active' && socket && !socket.connected) {
             socket.connect();
@@ -80,15 +73,30 @@ export function connectSocket(token: string): AppSocket {
     return socket;
 }
 
+/**
+ * Back-compat alias. Older call-sites said `connectSocket`; the behaviour
+ * is now "ensure the persistent socket exists", which is what they all
+ * actually wanted.
+ */
+export const connectSocket = ensureSocket;
+
 export function getSocket(): AppSocket | null {
     return socket;
 }
 
+/**
+ * Fully dispose the socket. Only call this on SIGN OUT - not between
+ * matches. Killing it between matches is exactly the bug we're fixing.
+ */
 export function disconnectSocket(): void {
     if (appStateSub) {
         appStateSub.remove();
         appStateSub = null;
     }
-    socket?.disconnect();
-    socket = null;
+    if (socket) {
+        socket.removeAllListeners();
+        socket.io.removeAllListeners();
+        socket.disconnect();
+        socket = null;
+    }
 }

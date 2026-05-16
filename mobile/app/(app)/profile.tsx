@@ -17,7 +17,7 @@ import { RankBadge } from '../../src/components/ui/RankBadge';
 import { useAuthStore } from '../../src/store/authStore';
 import { matchesApi } from '../../src/api/resources';
 import type { RecentMatch } from '../../src/types/index';
-import { colors, type RankTier } from '../../src/theme/colors';
+import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 export default function Profile() {
@@ -150,7 +150,7 @@ function Stat({ label, value }: { label: string; value: string }) {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     listContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
     header: { gap: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.lg },
@@ -231,4 +231,4 @@ const styles = StyleSheet.create({
         marginTop: spacing.xl,
     },
     footer: { marginTop: spacing.xl, gap: spacing.sm },
-});
+}));

@@ -25,7 +25,7 @@ import {
 } from '../../src/api/resources';
 import { Grid } from '../../src/components/game/Grid';
 import { Keyboard, deriveLetterStates } from '../../src/components/game/Keyboard';
-import { colors } from '../../src/theme/colors';
+import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 
 type Cell = string | null;
@@ -260,7 +260,7 @@ export default function DailyChallengeScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     scroll: { padding: spacing.md, paddingBottom: spacing.xxl },
     header: {
@@ -352,4 +352,4 @@ const styles = StyleSheet.create({
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
-});
+}));

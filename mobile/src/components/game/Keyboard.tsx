@@ -1,7 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
 
@@ -136,7 +136,7 @@ export function deriveLetterStates(
     return out;
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     kb: {
         gap: spacing.xs,
         paddingHorizontal: spacing.sm,
@@ -157,4 +157,4 @@ const styles = StyleSheet.create({
         fontSize: typography.sizes.sm,
         letterSpacing: 0.5,
     },
-});
+}));

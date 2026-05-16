@@ -10,6 +10,7 @@
 
 import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
+import { isOnline } from '../socket/presence.js';
 import {
     createFriendInviteCode,
     createPrivateMatchCode,
@@ -35,7 +36,11 @@ friendsRouter.post('/friends/redeem', requireAuth, async (req, res) => {
 
 friendsRouter.get('/friends', requireAuth, async (req, res) => {
     const friends = await listFriends(req.session!.userId);
-    res.json({ friends });
+    // listFriends returns isOnline:false as a placeholder — fill it in
+    // here from the live socket presence map.
+    res.json({
+        friends: friends.map((f) => ({ ...f, isOnline: isOnline(f.userId) })),
+    });
 });
 
 friendsRouter.delete('/friends/:friendId', requireAuth, async (req, res) => {

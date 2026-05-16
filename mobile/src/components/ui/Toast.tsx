@@ -16,7 +16,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 
 interface Props {
@@ -127,7 +127,7 @@ export const Toast: React.FC<Props> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     container: {
         position: 'absolute',
         // top is set dynamically from the safe-area inset.
@@ -172,4 +172,4 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
         fontWeight: typography.weights.bold,
     },
-});
+}));

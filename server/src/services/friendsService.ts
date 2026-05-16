@@ -124,6 +124,21 @@ export async function removeFriend(userId: string, friendId: string): Promise<vo
     );
 }
 
+/** True if `friendId` is an accepted friend of `userId`. Used by the
+ *  friend-challenge socket flow to make sure you can only challenge
+ *  people who are actually on your list. */
+export async function areFriends(
+    userId: string,
+    friendId: string
+): Promise<boolean> {
+    const rows = await query(
+        `SELECT 1 FROM friendships
+         WHERE user_id = $1 AND friend_id = $2 AND status = 'accepted'`,
+        [userId, friendId]
+    );
+    return rows.length > 0;
+}
+
 // ─── Private match invites ──────────────────────────────────────────────────
 
 export async function createPrivateMatchCode(

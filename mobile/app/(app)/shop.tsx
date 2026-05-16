@@ -22,7 +22,7 @@ import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { adsApi, coinsApi, cosmeticsApi, usersApi } from '../../src/api/resources';
 import type { CoinPack, Cosmetic, CosmeticCategory } from '../../src/types/index';
-import { colors } from '../../src/theme/colors';
+import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 const CATEGORY_ORDER: CosmeticCategory[] = [
@@ -486,7 +486,7 @@ function swatchStyle(c: Cosmetic): { backgroundColor: string } {
     return { backgroundColor: colors.surfaceElevated };
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     listContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
     header: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.md },
@@ -717,4 +717,4 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
         fontWeight: typography.weights.bold,
     },
-});
+}));

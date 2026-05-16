@@ -1,15 +1,28 @@
-// Matchmaking screen. Shared by classic AND mystery — the difference is
-// just a `?mode=classic|mystery` query param. The screen takes care of
-// connecting + queueing on mount, so callers just route here.
+// Matchmaking screen. Shared by classic AND mystery - the difference is
+// just a `?mode=classic|mystery` query param.
+//
+// IMPORTANT FIX: this screen used to kick off the queue from a
+// `useEffect(() => {...}, [])` (run-once-on-mount). But expo-router keeps
+// screens mounted once visited - so on the 2nd, 3rd... visit the effect
+// never ran again. Result: "Play Again" / re-entering matchmaking did
+// nothing, the phase stayed 'idle', and the idle-bounce shoved the player
+// back home.
+//
+// The fix is `useFocusEffect`: it fires every time the screen GAINS
+// FOCUS, so every visit re-queues with the (persistent) socket.
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+    useFocusEffect,
+    useLocalSearchParams,
+    useRouter,
+} from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../src/components/ui/Button';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
-import { colors } from '../../src/theme/colors';
+import { colors, makeThemedStyles } from '../../src/theme/colors';
 import { typography, spacing } from '../../src/theme/typography';
 
 export default function Matchmaking() {
@@ -20,45 +33,61 @@ export default function Matchmaking() {
 
     const phase = useGameStore((s) => s.phase);
     const queueStatus = useGameStore((s) => s.queueStatus);
-    const matchFound = useGameStore((s) => s.matchFound);
     const leaveQueue = useGameStore((s) => s.leaveQueue);
     const connectAndQueue = useGameStore((s) => s.connectAndQueue);
     const token = useAuthStore((s) => s.token);
 
-    // Start queueing on mount. We only do this once per visit — the
-    // dependency list intentionally excludes connectAndQueue/token so a
-    // store identity change doesn't double-queue us. If the user is
-    // already mid-queue (phase !== 'idle'), we let the existing socket
-    // ride and just watch for match_found.
-    useEffect(() => {
-        if (!token) return;
-        if (phase !== 'idle') return;
-        connectAndQueue(token, mode);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    // True only while this screen is the focused one. The idle-bounce
+    // gates on it so a blurred-but-still-mounted matchmaking screen can't
+    // hijack navigation (e.g. when post-game resets the phase to idle).
+    const focusedRef = useRef(false);
+    // Set once the queue has actually started, so the idle-bounce only
+    // fires on a real queue -> idle transition (cancel / rejection), not
+    // on the brief idle moment before connectAndQueue runs.
+    const queueStartedRef = useRef(false);
 
-    // When we get matched, jump to the match screen.
-    useEffect(() => {
-        if ((phase === 'matched' || phase === 'playing') && matchFound) {
-            router.replace('/(app)/match');
-        }
-    }, [phase, matchFound, router]);
+    // Re-queue every time the screen gains focus. This is the crux of the
+    // "play again does nothing / bounces home" fix.
+    useFocusEffect(
+        useCallback(() => {
+            focusedRef.current = true;
+            queueStartedRef.current = false;
+            if (!token) {
+                router.navigate('/(app)');
+                return () => {
+                    focusedRef.current = false;
+                };
+            }
+            // connectAndQueue resets match state, reuses the persistent
+            // socket, and queues - safe to call on every focus.
+            connectAndQueue(token, mode);
+            return () => {
+                focusedRef.current = false;
+            };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [token, mode])
+    );
 
-    // If the user cancelled before queueing started OR if the server
-    // rejected the queue join (e.g. no pending mystery submission), send
-    // them back to the previous screen.
     useEffect(() => {
-        if (phase === 'idle' && queueStatus === null && matchFound === null) {
-            // Initial mount — do nothing, the queue is starting.
-            return;
+        if (phase === 'queueing' || phase === 'matched' || phase === 'playing') {
+            queueStartedRef.current = true;
         }
-        if (phase === 'idle') router.back();
-    }, [phase, queueStatus, matchFound, router]);
+    }, [phase]);
+
+    // Queue cancelled / rejected -> go home. Gated on focus.
+    // (Matched -> match-screen navigation is handled globally by
+    // MatchAutoRouter in app/(app)/_layout.tsx so it works for friend
+    // challenges too.)
+    useEffect(() => {
+        if (focusedRef.current && phase === 'idle' && queueStartedRef.current) {
+            router.navigate('/(app)');
+        }
+    }, [phase, router]);
 
     const waited = Math.floor((queueStatus?.waitedMs ?? 0) / 1000);
     const headline =
         queueStatus?.state === 'matching_with_bot'
-            ? 'Matching with a bot opponent…'
+            ? 'Opponent found!'
             : queueStatus?.state === 'expanded_search'
             ? 'Looking further afield…'
             : mode === 'mystery'
@@ -66,14 +95,14 @@ export default function Matchmaking() {
             : 'Searching for an opponent…';
     const sub =
         queueStatus?.state === 'matching_with_bot'
-            ? "No human matched within 20 seconds. We'll mark them clearly."
+            ? 'Get ready — your match is starting.'
             : mode === 'mystery'
             ? 'Finding someone with a same-length word.'
             : "We're finding someone close to your rank.";
 
     function onCancel() {
         leaveQueue();
-        router.back();
+        router.navigate('/(app)');
     }
 
     return (
@@ -95,7 +124,7 @@ export default function Matchmaking() {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.xl },
     body: {
         flex: 1,
@@ -124,4 +153,4 @@ const styles = StyleSheet.create({
     footer: {
         marginBottom: spacing.lg,
     },
-});
+}));

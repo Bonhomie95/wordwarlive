@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Tile } from './Tile';
 import { spacing } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
+import { makeThemedStyles } from '../../theme/colors';
 
 interface Props {
     wordLength: number;
@@ -44,7 +45,7 @@ export const OpponentGrid: React.FC<Props> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     grid: {
         gap: 2,
         alignItems: 'center',
@@ -53,4 +54,4 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: 2,
     },
-});
+}));

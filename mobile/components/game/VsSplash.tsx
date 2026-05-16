@@ -16,7 +16,7 @@ import {
     View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { makeThemedStyles, colors } from '../../theme/colors';
+import { colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import { RankBadge } from '../ui/RankBadge';
 import type { PublicUser, RankTier } from '../../types/index';
@@ -135,7 +135,7 @@ function winPct(wins: number, losses: number): number {
     return Math.round((wins / total) * 100);
 }
 
-const styles = makeThemedStyles(() => StyleSheet.create({
+const styles = StyleSheet.create({
     root: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: colors.bg,
@@ -200,4 +200,4 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         textShadowColor: colors.warning,
         textShadowRadius: 12,
     },
-}));
+});

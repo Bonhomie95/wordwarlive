@@ -8,7 +8,7 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import { RankBadge } from '../ui/RankBadge';
 import type { PublicUser, RankTier } from '../../types/index';
@@ -91,7 +91,7 @@ function winRate(wins: number, losses: number): number {
     return Math.round((wins / total) * 100);
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     backdrop: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.7)',
@@ -175,4 +175,4 @@ const styles = StyleSheet.create({
         marginTop: 2,
         letterSpacing: 0.5,
     },
-});
+}));

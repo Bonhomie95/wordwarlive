@@ -7,7 +7,7 @@ import Animated, {
     useSharedValue,
     withTiming,
 } from 'react-native-reanimated';
-import { makeThemedStyles, colors } from '../../theme/colors';
+import { colors } from '../../theme/colors';
 import { typography, radius } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
 
@@ -135,7 +135,7 @@ const TileRaw: React.FC<Props> = ({
 
 export const Tile = memo(TileRaw);
 
-const styles = makeThemedStyles(() => StyleSheet.create({
+const styles = StyleSheet.create({
     tile: {
         alignItems: 'center',
         justifyContent: 'center',
@@ -171,4 +171,4 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         opacity: 0.7,
         fontStyle: 'italic',
     },
-}));
+});

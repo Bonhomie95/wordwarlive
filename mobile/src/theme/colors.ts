@@ -209,3 +209,53 @@ export const useThemeStore = create<ThemeState>((set) => ({
         set((s) => ({ currentTheme: id, bump: s.bump + 1 }));
     },
 }));
+
+/**
+ * Wraps a StyleSheet factory so the styles are RE-THEMED whenever the
+ * active theme changes.
+ *
+ * The bug this fixes: `StyleSheet.create({...})` runs once at module load
+ * and BAKES IN whatever `colors.*` values existed at that moment. Later
+ * mutating the shared `colors` object (which is how `applyTheme` works)
+ * can never reach those already-snapshotted strings — which is exactly
+ * why themes were "equipped but never displayed".
+ *
+ * Usage — change:
+ *     const styles = StyleSheet.create({ ... });
+ * into:
+ *     const styles = makeThemedStyles(() => StyleSheet.create({ ... }));
+ *
+ * The returned value is a Proxy. Each property read re-runs the factory
+ * (reading the CURRENT colors) whenever the theme bump changed since the
+ * last read, and caches the result until the next theme change. No
+ * component-body edits are needed: components already re-render on a
+ * theme change (the root subscribes to `bump` and the re-render
+ * cascades), and on that re-render `styles.x` is read fresh through the
+ * Proxy and comes back themed.
+ */
+export function makeThemedStyles<T>(factory: () => T): T {
+    let cache: T | null = null;
+    let cacheBump = -1;
+    const current = (): T => {
+        const bump = useThemeStore.getState().bump;
+        if (cache === null || bump !== cacheBump) {
+            cache = factory();
+            cacheBump = bump;
+        }
+        return cache;
+    };
+    return new Proxy({} as object, {
+        get: (_t, prop) =>
+            (current() as Record<string | symbol, unknown>)[prop as string],
+        has: (_t, prop) => (prop as string) in (current() as object),
+        ownKeys: () => Reflect.ownKeys(current() as object),
+        getOwnPropertyDescriptor: (_t, prop) => {
+            const d = Reflect.getOwnPropertyDescriptor(
+                current() as object,
+                prop
+            );
+            if (d) d.configurable = true;
+            return d;
+        },
+    }) as T;
+}

@@ -7,7 +7,7 @@ import {
     type StyleProp,
     type ViewStyle,
 } from 'react-native';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -53,7 +53,7 @@ export const Button: React.FC<Props> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     base: {
         height: 52,
         paddingHorizontal: spacing.lg,
@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
         fontSize: typography.sizes.md,
         letterSpacing: 0.5,
     },
-});
+}));
 
 const variantStyles: Record<Variant, ViewStyle> = {
     primary: { backgroundColor: colors.primary },

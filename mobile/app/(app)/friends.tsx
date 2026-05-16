@@ -1,16 +1,19 @@
 // Friends screen.
 // - Shows your friend list
-// - Generate an invite code to share
-// - Redeem a code someone else gave you
-// - Generate a private-match code (then your friend joins it)
+// - Tap an online friend to CHALLENGE them to a live match
+// - Generate an invite code to share / redeem someone else's code
+// - Generate a private-match code
 //
-// Private-match joining (entering a code from someone else) is on the
-// Play screen's flow, not here, so friends can challenge each other via
-// the home Resume Match card area or a future "Join Private Match" UI.
+// Live challenge flow: tapping an online friend fires a real-time invite.
+// They get a prompt instantly; if they accept, both players drop straight
+// into the VS splash + match screen - identical to ranked matchmaking.
+// While we wait, a "Waiting for ..." overlay shows, with a Cancel button.
 
 import { useCallback, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
+    Modal,
     Pressable,
     ScrollView,
     Share,
@@ -25,7 +28,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { friendsApi, type FriendInfo } from '../../src/api/resources';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
-import { colors, type RankTier } from '../../src/theme/colors';
+import { useGameStore } from '../../src/store/gameStore';
+import { colors, makeThemedStyles, type RankTier } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 
 export default function FriendsScreen() {
@@ -34,6 +38,11 @@ export default function FriendsScreen() {
     const [redeemCode, setRedeemCode] = useState('');
     const [myCode, setMyCode] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [challenging, setChallenging] = useState(false);
+
+    const challengeFriend = useGameStore((s) => s.challengeFriend);
+    const cancelChallenge = useGameStore((s) => s.cancelChallenge);
+    const pendingChallenge = useGameStore((s) => s.pendingChallenge);
 
     const load = useCallback(async () => {
         try {
@@ -62,7 +71,7 @@ export default function FriendsScreen() {
         if (!myCode) return;
         try {
             await Share.share({
-                message: `Add me on WordWar! My friend code is ${myCode}. Open WordWar → Friends → Redeem.`,
+                message: `Add me on WordWar! My friend code is ${myCode}. Open WordWar -> Friends -> Redeem.`,
             });
         } catch {
             // user cancelled — no-op
@@ -92,7 +101,6 @@ export default function FriendsScreen() {
     async function onPrivateMatch() {
         try {
             const r = await friendsApi.createPrivateMatch(null);
-            // Show the code with native Share so the user can send it directly.
             Alert.alert(
                 'Private Match Code',
                 `Share this code with your friend. It expires in 15 minutes.\n\n${r.code}`,
@@ -109,6 +117,30 @@ export default function FriendsScreen() {
             );
         } catch (err) {
             Alert.alert('Error', err instanceof Error ? err.message : 'Try again.');
+        }
+    }
+
+    /** Tap an online friend -> send them a live challenge. */
+    async function onChallengeFriend(f: FriendInfo) {
+        if (challenging || pendingChallenge) return;
+        if (!f.isOnline) {
+            Alert.alert(
+                `${f.username} is offline`,
+                'They need the WordWar app open to receive your challenge. Try again when they are online.'
+            );
+            return;
+        }
+        setChallenging(true);
+        try {
+            const ack = await challengeFriend(f.userId, f.username);
+            if (!ack.ok) {
+                Alert.alert('Could not challenge', ack.error);
+            }
+            // On success, pendingChallenge is set in the store and the
+            // waiting overlay below appears automatically. When the friend
+            // accepts, MatchAutoRouter drops us into the match screen.
+        } finally {
+            setChallenging(false);
         }
     }
 
@@ -228,47 +260,123 @@ export default function FriendsScreen() {
                             No friends yet. Generate a code above and share it.
                         </Text>
                     ) : (
-                        friends.map((f) => (
-                            <View key={f.userId} style={styles.friendRow}>
-                                <RankBadge
-                                    tier={f.rankTier as RankTier}
-                                    size="sm"
-                                />
-                                <View style={{ flex: 1 }}>
-                                    <Text
-                                        style={styles.friendName}
-                                        allowFontScaling={false}
-                                    >
-                                        {f.username}
-                                    </Text>
-                                    <Text
-                                        style={styles.friendMeta}
-                                        allowFontScaling={false}
-                                    >
-                                        {f.rankPoints} RP
-                                        {f.isOnline ? ' · online' : ''}
-                                    </Text>
-                                </View>
+                        <>
+                            <Text style={styles.listHint} allowFontScaling={false}>
+                                Tap an online friend to challenge them to a match.
+                            </Text>
+                            {friends.map((f) => (
                                 <Pressable
-                                    onPress={() => onRemoveFriend(f)}
-                                    hitSlop={12}
+                                    key={f.userId}
+                                    onPress={() => onChallengeFriend(f)}
+                                    disabled={challenging || !!pendingChallenge}
+                                    style={({ pressed }) => [
+                                        styles.friendRow,
+                                        pressed && f.isOnline
+                                            ? styles.friendRowPressed
+                                            : null,
+                                    ]}
                                 >
-                                    <Ionicons
-                                        name="close-circle"
-                                        size={20}
-                                        color={colors.textMuted}
+                                    <RankBadge
+                                        tier={f.rankTier as RankTier}
+                                        size="sm"
                                     />
+                                    <View style={{ flex: 1 }}>
+                                        <Text
+                                            style={styles.friendName}
+                                            allowFontScaling={false}
+                                        >
+                                            {f.username}
+                                        </Text>
+                                        <Text
+                                            style={styles.friendMeta}
+                                            allowFontScaling={false}
+                                        >
+                                            {f.rankPoints} RP
+                                            {f.isOnline ? ' · online' : ' · offline'}
+                                        </Text>
+                                    </View>
+                                    {/* Challenge affordance */}
+                                    <View
+                                        style={[
+                                            styles.challengePill,
+                                            f.isOnline
+                                                ? null
+                                                : styles.challengePillOff,
+                                        ]}
+                                    >
+                                        <Ionicons
+                                            name="flash"
+                                            size={12}
+                                            color={
+                                                f.isOnline
+                                                    ? colors.bg
+                                                    : colors.textMuted
+                                            }
+                                        />
+                                        <Text
+                                            style={[
+                                                styles.challengePillText,
+                                                {
+                                                    color: f.isOnline
+                                                        ? colors.bg
+                                                        : colors.textMuted,
+                                                },
+                                            ]}
+                                            allowFontScaling={false}
+                                        >
+                                            VS
+                                        </Text>
+                                    </View>
+                                    <Pressable
+                                        onPress={() => onRemoveFriend(f)}
+                                        hitSlop={12}
+                                    >
+                                        <Ionicons
+                                            name="close-circle"
+                                            size={20}
+                                            color={colors.textMuted}
+                                        />
+                                    </Pressable>
                                 </Pressable>
-                            </View>
-                        ))
+                            ))}
+                        </>
                     )}
                 </View>
             </ScrollView>
+
+            {/* Waiting-for-friend overlay. Same spinner-style wait as
+                matchmaking; closes itself when the friend accepts (the
+                match starts and MatchAutoRouter takes over) or when the
+                challenge is declined / cancelled / times out. */}
+            <Modal
+                visible={!!pendingChallenge}
+                transparent
+                animationType="fade"
+                onRequestClose={() => cancelChallenge()}
+            >
+                <View style={styles.overlay}>
+                    <View style={styles.overlayCard}>
+                        <ActivityIndicator color={colors.primary} size="large" />
+                        <Text style={styles.overlayTitle} allowFontScaling={false}>
+                            Waiting for {pendingChallenge?.friendName ?? 'your friend'}…
+                        </Text>
+                        <Text style={styles.overlaySub} allowFontScaling={false}>
+                            They&apos;ve been sent a challenge. The match starts
+                            the moment they accept.
+                        </Text>
+                        <Button
+                            label="Cancel"
+                            variant="ghost"
+                            onPress={() => cancelChallenge()}
+                        />
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     scroll: { padding: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
     header: {
@@ -337,6 +445,11 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
         marginBottom: spacing.sm,
     },
+    listHint: {
+        color: colors.textMuted,
+        fontSize: typography.sizes.xs,
+        marginBottom: spacing.xs,
+    },
     empty: {
         color: colors.textMuted,
         fontSize: typography.sizes.sm,
@@ -353,6 +466,11 @@ const styles = StyleSheet.create({
         borderRadius: radius.sm,
         borderWidth: 1,
         borderColor: colors.border,
+        marginBottom: spacing.xs,
+    },
+    friendRowPressed: {
+        borderColor: colors.primary,
+        backgroundColor: colors.surfaceElevated,
     },
     friendName: {
         color: colors.text,
@@ -363,4 +481,52 @@ const styles = StyleSheet.create({
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
-});
+    challengePill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: colors.primary,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: radius.pill,
+    },
+    challengePillOff: {
+        backgroundColor: colors.surfaceElevated,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    challengePillText: {
+        fontSize: 11,
+        fontWeight: typography.weights.black,
+        letterSpacing: 0.5,
+    },
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: spacing.xl,
+    },
+    overlayCard: {
+        backgroundColor: colors.surface,
+        borderRadius: radius.lg,
+        padding: spacing.xl,
+        alignItems: 'center',
+        gap: spacing.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        width: '100%',
+    },
+    overlayTitle: {
+        color: colors.text,
+        fontSize: typography.sizes.lg,
+        fontWeight: typography.weights.bold,
+        textAlign: 'center',
+    },
+    overlaySub: {
+        color: colors.textDim,
+        fontSize: typography.sizes.sm,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+}));

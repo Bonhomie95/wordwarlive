@@ -10,8 +10,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../src/store/authStore';
+import { useGameStore } from '../src/store/gameStore';
 import { initAds } from '../src/ads';
-import { colors, useThemeStore, type ThemeId } from '../src/theme/colors';
+import { makeThemedStyles, colors, useThemeStore, type ThemeId } from '../src/theme/colors';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
 
@@ -35,6 +36,8 @@ function useAuthGate() {
 export default function RootLayout() {
     const hydrate = useAuthStore((s) => s.hydrate);
     const hydrated = useAuthStore((s) => s.hydrated);
+    const token = useAuthStore((s) => s.token);
+    const connectPersistent = useGameStore((s) => s.connectPersistent);
     // Subscribe to theme bump so root + children re-render when the theme
     // changes. We never read the bump value — we just want the re-render.
     useThemeStore((s) => s.bump);
@@ -43,8 +46,6 @@ export default function RootLayout() {
     useEffect(() => {
         hydrate();
         // Restore saved theme — persisted across app launches via SecureStore.
-        // We use SecureStore (already a dep for auth tokens) instead of pulling
-        // in AsyncStorage just for this one preference.
         SecureStore.getItemAsync(THEME_STORAGE_KEY)
             .then((stored) => {
                 if (stored) applyTheme(stored as ThemeId);
@@ -52,6 +53,13 @@ export default function RootLayout() {
             .catch(() => {});
         initAds().catch(() => {});
     }, [hydrate, applyTheme]);
+
+    // Open the persistent socket as soon as we have a token. This keeps a
+    // live connection for the whole session so friend challenges can reach
+    // the player even when they're idle on the home screen.
+    useEffect(() => {
+        if (token) connectPersistent(token);
+    }, [token, connectPersistent]);
 
     useAuthGate();
 
@@ -82,11 +90,11 @@ export default function RootLayout() {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     loadingScreen: {
         flex: 1,
         backgroundColor: colors.bg,
         alignItems: 'center',
         justifyContent: 'center',
     },
-});
+}));

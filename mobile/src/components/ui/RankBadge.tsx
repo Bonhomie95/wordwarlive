@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, rankColors, type RankTier } from '../../theme/colors';
+import { makeThemedStyles, colors, rankColors, type RankTier } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 
 interface Props {
@@ -45,7 +45,7 @@ export const RankBadge: React.FC<Props> = ({ tier, points, size = 'md' }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     row: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -64,4 +64,4 @@ const styles = StyleSheet.create({
         color: colors.textDim,
         fontFamily: typography.familyMono,
     },
-});
+}));

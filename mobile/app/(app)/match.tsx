@@ -7,7 +7,7 @@
 // All state flows through useGameStore; the socket layer pushes updates.
 // When match_over fires, we navigate to /post-game.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     Pressable,
@@ -15,7 +15,7 @@ import {
     Text,
     View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,7 +36,7 @@ import { RankBadge } from '../../src/components/ui/RankBadge';
 import { Toast } from '../../src/components/ui/Toast';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
-import { colors, type RankTier } from '../../src/theme/colors';
+import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 const HINT_COIN_COST = 50;
@@ -70,16 +70,34 @@ export default function Match() {
     const user = useAuthStore((s) => s.user);
     const refreshMe = useAuthStore((s) => s.refreshMe);
 
-    // Bounce to post-game on match_over.
+    // Track whether THIS screen is focused. The bounces below are gated
+    // on it so a blurred-but-still-mounted match screen (expo-router keeps
+    // screens mounted) can't hijack navigation - e.g. when post-game's
+    // "Play again" resets the phase to 'idle', a non-gated bounce here
+    // would yank the user Home instead of letting matchmaking re-queue.
+    const focusedRef = useRef(false);
+    useFocusEffect(
+        useCallback(() => {
+            focusedRef.current = true;
+            return () => {
+                focusedRef.current = false;
+            };
+        }, [])
+    );
+
+    // Bounce to post-game on match_over (only while focused).
     useEffect(() => {
-        if (phase === 'finished') {
-            router.replace('/(app)/post-game');
+        if (focusedRef.current && phase === 'finished') {
+            router.navigate('/(app)/post-game');
         }
     }, [phase, router]);
 
-    // Bounce home if we somehow landed here without a match.
+    // Bounce home if we somehow landed here without a match (only while
+    // focused) - prevents the blurred screen from stealing navigation.
     useEffect(() => {
-        if (phase === 'idle') router.replace('/(app)');
+        if (focusedRef.current && phase === 'idle') {
+            router.navigate('/(app)');
+        }
     }, [phase, router]);
 
     // Shake animation for invalid input.
@@ -115,6 +133,24 @@ export default function Match() {
     // the call sites below.
     type StatsPlayer = { player: NonNullable<typeof matchFound>['you']; title: string } | null;
     const [statsPlayer, setStatsPlayer] = useState<StatsPlayer>(null);
+
+    // VS splash — shown for a fixed 2.5s when the match screen first
+    // mounts with a match. We DON'T gate it on `phase === 'matched'`
+    // because the server flips matched→playing within ~half a second,
+    // which made the splash invisible. A timer keeps it on long enough
+    // to actually read both players' names + stats.
+    const [showSplash, setShowSplash] = useState(true);
+    // Re-trigger the VS splash for EVERY match. match.tsx stays mounted
+    // across games (expo-router keeps screens), so a mount-only effect
+    // would skip the splash on the 2nd+ match and on friend challenges.
+    // Keying on matchId restarts the splash whenever a new match begins.
+    useEffect(() => {
+        if (!matchFound) return;
+        setShowSplash(true);
+        const t = setTimeout(() => setShowSplash(false), 2500);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [matchFound?.matchId]);
 
     if (!matchFound) return null;
 
@@ -203,7 +239,7 @@ export default function Match() {
             {/* VS splash before the game starts. Auto-dismisses when phase
                 flips to 'playing' (server sends match_start ~1s after
                 match_found). */}
-            {phase === 'matched' ? (
+            {showSplash ? (
                 <VsSplash me={matchFound.you} opponent={matchFound.opponent} />
             ) : null}
             {/* Header: opponent and timer. Back arrow floats top-left and
@@ -336,7 +372,7 @@ export default function Match() {
 // Used for fail-safe alert during dev — kept around.
 void Alert;
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg, paddingTop: 4 },
     backBtn: {
         position: 'absolute',
@@ -444,4 +480,4 @@ const styles = StyleSheet.create({
         // banner + tab bar are visible on this screen now.
         paddingBottom: spacing.lg,
     },
-});
+}));

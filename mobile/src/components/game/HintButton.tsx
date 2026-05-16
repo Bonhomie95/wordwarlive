@@ -11,7 +11,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 
 interface Props {
@@ -95,7 +95,7 @@ export const HintButton: React.FC<Props> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     btn: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -127,4 +127,4 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
         fontWeight: typography.weights.semibold,
     },
-});
+}));

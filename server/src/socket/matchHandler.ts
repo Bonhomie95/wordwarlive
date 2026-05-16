@@ -150,6 +150,7 @@ class MatchRegistry {
                 you: p1Public,
                 opponent: p2Public,
                 slot: 1,
+                mode: match.mode,
             });
             io.to(match.p1SocketId).emit('match_start', {
                 matchId: match.id,
@@ -164,6 +165,7 @@ class MatchRegistry {
                 you: p2Public,
                 opponent: p1Public,
                 slot: 2,
+                mode: match.mode,
             });
             io.to(match.p2SocketId).emit('match_start', {
                 matchId: match.id,
@@ -207,6 +209,15 @@ class MatchRegistry {
         if (remaining === 0 && !match.ended) {
             this.endMatch(io, match, { reason: 'time_up' }).catch(() => {});
         }
+    }
+
+    /** True if the user is currently assigned to a live (not-ended) match.
+     *  Used by friend-challenge to refuse pulling someone into a 2nd game. */
+    isInMatch(userId: string): boolean {
+        const matchId = this.byUserId.get(userId);
+        if (!matchId) return false;
+        const match = this.byMatchId.get(matchId);
+        return !!match && !match.ended;
     }
 
     async handleGuess(
@@ -618,6 +629,7 @@ class MatchRegistry {
             slot: isP1 ? 1 : 2,
             you: me,
             opponent,
+            mode: match.mode,
         });
         socket.emit('match_start', {
             matchId: match.id,

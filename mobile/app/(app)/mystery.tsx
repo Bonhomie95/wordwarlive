@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { mysteryApi, type MysterySubmission } from '../../src/api/resources';
 import { Button } from '../../src/components/ui/Button';
-import { colors } from '../../src/theme/colors';
+import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 
 export default function MysteryScreen() {
@@ -29,12 +29,23 @@ export default function MysteryScreen() {
     const [pending, setPending] = useState<MysterySubmission | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
+    // On entering the Mystery screen we always start fresh: discard any
+    // stale pending submission from a previous visit. A pending word is
+    // NOT a resumable thing — a resumable match is handled by the normal
+    // match-resume flow. So every time the screen is focused, we withdraw
+    // whatever was pending and show the empty submit form.
     const refresh = useCallback(async () => {
         try {
             const r = await mysteryApi.pending();
-            setPending(r.submission);
+            if (r.submission) {
+                // There's a leftover word — withdraw it so the user gets a
+                // clean slate and is asked for a new word.
+                await mysteryApi.withdraw();
+            }
+            setPending(null);
+            setWord('');
         } catch {
-            // soft fail
+            // soft fail — worst case the old word shows; not fatal.
         }
     }, []);
 
@@ -190,7 +201,7 @@ export default function MysteryScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     scroll: { padding: spacing.md, paddingBottom: spacing.xxl },
     header: {
@@ -313,4 +324,4 @@ const styles = StyleSheet.create({
         fontSize: typography.sizes.sm,
         lineHeight: 22,
     },
-});
+}));

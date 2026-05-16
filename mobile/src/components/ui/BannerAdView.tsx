@@ -10,7 +10,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuthStore } from '../../store/authStore';
 import { adsAvailable } from '../../ads';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 
 interface AdsModule {
     BannerAd: React.ComponentType<{
@@ -74,7 +74,7 @@ export const BannerAdView: React.FC = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     container: {
         backgroundColor: colors.bg,
         alignItems: 'center',
@@ -82,4 +82,4 @@ const styles = StyleSheet.create({
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: colors.border,
     },
-});
+}));

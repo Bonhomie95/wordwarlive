@@ -229,19 +229,6 @@ export interface ClientToServerEvents {
         payload: { code: string },
         ack: (resp: { ok: boolean; error?: string }) => void
     ) => void;
-    friend_challenge: (
-        payload: { friendId: string },
-        ack: (
-            resp:
-                | { ok: true; challengeId: string }
-                | { ok: false; error: string }
-        ) => void
-    ) => void;
-    friend_challenge_respond: (
-        payload: { challengeId: string; accept: boolean },
-        ack: (resp: { ok: boolean; error?: string }) => void
-    ) => void;
-    friend_challenge_cancel: (payload: Record<string, never>) => void;
 }
 
 export interface ServerToClientEvents {
@@ -257,15 +244,6 @@ export interface ServerToClientEvents {
     match_tick: (payload: { msRemaining: number }) => void;
     match_over: (payload: MatchOver) => void;
     error: (payload: { message: string; code?: string }) => void;
-    friend_challenge_incoming: (payload: {
-        challengeId: string;
-        fromUserId: string;
-        fromUsername: string;
-    }) => void;
-    friend_challenge_declined: (payload: { byUserId: string }) => void;
-    friend_challenge_cancelled: (payload: {
-        reason: 'cancelled' | 'expired' | 'offline' | 'busy';
-    }) => void;
 }
 
 export interface QueueStatus {

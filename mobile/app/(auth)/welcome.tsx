@@ -14,7 +14,7 @@ import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { appleSignIn, isAppleAvailable } from '../../src/auth/appleSignIn';
-import { colors } from '../../src/theme/colors';
+import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing } from '../../src/theme/typography';
 
 export default function Welcome() {
@@ -124,7 +124,7 @@ export default function Welcome() {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: {
         flex: 1,
         paddingHorizontal: spacing.xl,
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
         fontSize: typography.sizes.xs,
         marginBottom: spacing.lg,
     },
-});
+}));
 
 // Use Link to silence unused warning; not necessary if removed.
 void Link;

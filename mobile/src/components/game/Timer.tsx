@@ -7,7 +7,7 @@ import Animated, {
     withTiming,
     cancelAnimation,
 } from 'react-native-reanimated';
-import { colors } from '../../theme/colors';
+import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import { useGameStore } from '../../store/gameStore';
 
@@ -59,7 +59,7 @@ const TimerRaw: React.FC<Props> = ({ msRemaining: msProp }) => {
 
 export const Timer = memo(TimerRaw);
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     pill: {
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.sm,
@@ -73,4 +73,4 @@ const styles = StyleSheet.create({
         fontWeight: typography.weights.bold,
         letterSpacing: 1,
     },
-});
+}));

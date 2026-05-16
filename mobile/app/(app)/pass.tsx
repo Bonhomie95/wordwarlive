@@ -21,7 +21,7 @@ import { adsApi, battlePassApi } from '../../src/api/resources';
 import { adsAvailable, showRewarded } from '../../src/ads';
 import { useAuthStore } from '../../src/store/authStore';
 import type { BattlePassResponse, BattlePassRewardView } from '../../src/types/index';
-import { colors } from '../../src/theme/colors';
+import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 export default function Pass() {
@@ -329,7 +329,7 @@ function RewardCell({
     );
 }
 
-const styles = StyleSheet.create({
+const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     listContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
     empty: {
@@ -456,4 +456,4 @@ const styles = StyleSheet.create({
         color: colors.textDim,
         marginTop: spacing.xs,
     },
-});
+}));

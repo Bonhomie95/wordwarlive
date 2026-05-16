@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import { connectSocket, disconnectSocket, getSocket } from '../socket/client';
+import {
+    ensureSocket,
+    disconnectSocket,
+    getSocket,
+    type AppSocket,
+} from '../socket/client';
 import type {
     GuessAck,
     GuessBroadcast,
@@ -23,10 +28,22 @@ export interface MyGuess {
     solved: boolean;
 }
 export interface OpponentGuess {
-    /** Always null — server never reveals the opponent's letters mid-match. */
+    /** Always null - server never reveals the opponent's letters mid-match. */
     guess: null;
     tiles: Tile[];
     solved: boolean;
+}
+
+/** A friend's live challenge prompt aimed at us. */
+export interface IncomingChallenge {
+    challengeId: string;
+    fromUserId: string;
+    fromUsername: string;
+}
+/** Our own outgoing challenge that's waiting on a friend to respond. */
+export interface PendingChallenge {
+    friendId: string;
+    friendName: string;
 }
 
 interface GameState {
@@ -39,48 +56,20 @@ interface GameState {
     matchOver: MatchOver | null;
     /** Last submission error from the server (rate limit, bad word, etc). */
     lastError: string | null;
-    /** Per-position input buffer for the active row. Each cell is either
-     *  the letter typed there or null (empty). Letters are placed at
-     *  inputCursor; tapping a tile moves the cursor without losing the
-     *  letters at other positions. */
     inputCells: (string | null)[];
-    /** 0-indexed cursor position within the active row. Letter input lands
-     *  here, then auto-advances to the next null cell (wrapping forward). */
     inputCursor: number;
-    /** True when a guess submission is in flight. */
     submitting: boolean;
-    /** "scrambled" visual flag — opponent power-up trigger. */
     scrambled: boolean;
-    /** Set by opponent's Lock powerup. Our powerup buttons disable while
-     *  Date.now() < lockedUntilMs. */
     lockedUntilMs: number | null;
-    /** Brief opponent emoji reaction. UI shows ~2.5s. */
     opponentEmoji: { emoji: string; at: number } | null;
-    /** Match counter for interstitial frequency capping. */
     matchesPlayedSession: number;
-    /** Matches completed since the last interstitial. We compare this against
-     *  nextInterstitialThreshold to decide whether to fire. */
     matchesSinceLastInterstitial: number;
-    /** Re-randomized after each interstitial: when this many matches pass
-     *  AND cooldown has elapsed AND the last match was long enough, we
-     *  show another. Picked uniformly from [3, 4]. */
     nextInterstitialThreshold: number;
-    /** ms-epoch of the last interstitial we showed. */
     lastInterstitialAt: number;
-    /** Duration of the most-recently completed match, seconds. Used by
-     *  shouldShowInterstitial — short matches signal "player wants to keep
-     *  playing", so we skip the ad. */
     lastMatchDurationSec: number;
-    /** Hint-revealed positions for THIS match — { position: letter }. */
     hintsRevealed: Record<number, string>;
-    /** Whether the per-match free hint has been used yet. Updated from
-     *  the hint_request ack so the UI knows whether to show "Free" or
-     *  "50 coins". */
     freeHintAvailable: boolean;
-    /** True while a hint request is in flight. */
     hintRequesting: boolean;
-    /** Most recently revealed hint, displayed briefly as a celebratory
-     *  toast. Cleared after the toast auto-dismisses or the user skips. */
     hintToast: {
         position: number;
         letter: string;
@@ -88,7 +77,21 @@ interface GameState {
         coinsSpent: number;
     } | null;
 
-    // ─── Actions ─────────────────────────────────────────────────────────────
+    // ─── Friend-challenge state ──────────────────────────────────────────
+    /** A friend just challenged us - drives the accept/decline prompt. */
+    incomingChallenge: IncomingChallenge | null;
+    /** We challenged a friend and are waiting on them - drives the
+     *  "Waiting for X..." overlay on the Friends screen. */
+    pendingChallenge: PendingChallenge | null;
+    /** Transient message about a challenge result (declined / expired /
+     *  cancelled). Shown once, then cleared. */
+    challengeNotice: string | null;
+
+    // ─── Actions ─────────────────────────────────────────────────────────
+    /** Open (or reuse) the persistent socket and wire every listener.
+     *  Called once after auth so friend challenges can reach us even when
+     *  we're not queueing. Safe to call repeatedly. */
+    connectPersistent: (token: string) => void;
     connectAndQueue: (token: string, mode?: 'classic' | 'mystery') => void;
     leaveQueue: () => void;
     /** Forfeit the active match. Opponent wins immediately. */
@@ -98,26 +101,28 @@ interface GameState {
     appendLetter: (l: string) => void;
     backspace: () => void;
     clearInput: () => void;
-    /** Move the cursor to a specific position in the active row. Used when
-     *  the user taps a tile directly. Out-of-range values are clamped. */
     seekCursor: (position: number) => void;
     submitGuess: () => Promise<GuessAck | null>;
     requestHint: () => Promise<HintAck | null>;
-    /** Clear the transient error toast. */
     clearError: () => void;
-    /** Clear the transient hint-reveal toast. The persistent ghost letter
-     *  in the active row stays. */
     clearHintToast: () => void;
-    /**
-     * Decide whether a post-match interstitial should fire RIGHT NOW. Pure
-     * decision; the screen calls showInterstitial() if true.
-     * Returns true if (every Nth match) AND (cooldown elapsed) AND
-     * (not after a loss).
-     */
     shouldShowInterstitial: () => boolean;
-    /** Record that we showed an interstitial; resets counters. */
     markInterstitialShown: () => void;
     reset: () => void;
+
+    /** Challenge a friend to a live match. Resolves with the server ack. */
+    challengeFriend: (
+        friendId: string,
+        friendName: string
+    ) => Promise<
+        { ok: true; challengeId: string } | { ok: false; error: string }
+    >;
+    /** Accept / decline the current incoming challenge. */
+    respondToChallenge: (accept: boolean) => void;
+    /** Withdraw our own outgoing challenge. */
+    cancelChallenge: () => void;
+    /** Dismiss the transient challenge-result message. */
+    clearChallengeNotice: () => void;
 }
 
 const initial = {
@@ -133,10 +138,7 @@ const initial = {
     inputCursor: 0,
     submitting: false,
     scrambled: false,
-    /** When non-null and > Date.now(), our powerups are locked by the
-     *  opponent's Lock powerup. */
     lockedUntilMs: null as number | null,
-    /** Last emoji the opponent fired, plus when. UI shows it for ~2.5s. */
     opponentEmoji: null as { emoji: string; at: number } | null,
     hintsRevealed: {} as Record<number, string>,
     freeHintAvailable: true,
@@ -147,16 +149,190 @@ const initial = {
         paidWith: 'free' | 'credit' | 'coins';
         coinsSpent: number;
     },
+    incomingChallenge: null as IncomingChallenge | null,
+    pendingChallenge: null as PendingChallenge | null,
+    challengeNotice: null as string | null,
 };
 
-// Frequency-capping config for post-match interstitials. Tuned so a player
-// who plays N matches in a row sees ~N/3.5 ads, never two in a row, and
-// never an ad after a quick (<60s) match — short games signal the player
-// wants to keep playing, so let them right back in.
 const INTERSTITIAL_EVERY_N_MIN = 3;
 const INTERSTITIAL_EVERY_N_MAX = 4;
 const INTERSTITIAL_COOLDOWN_MS = 5 * 60 * 1000;
 const INTERSTITIAL_MIN_MATCH_SEC = 60;
+
+type SetFn = (
+    partial: Partial<GameState> | ((s: GameState) => Partial<GameState>)
+) => void;
+type GetFn = () => GameState;
+
+/**
+ * Tracks which socket instance we've already attached listeners to.
+ * Listeners are wired exactly ONCE per socket - the socket is now
+ * persistent, so re-wiring on every queue would stack duplicate handlers.
+ * After sign-out a fresh socket is created and re-wired.
+ */
+let wiredSocket: AppSocket | null = null;
+
+/** Attach every server -> store listener. Idempotent per socket. */
+function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
+    if (wiredSocket === sock) return;
+    wiredSocket = sock;
+
+    sock.on('queue_status', (s) => {
+        set({ queueStatus: s });
+    });
+
+    // Mystery mode uses its own status event with the same shape.
+    sock.on('mystery_queue_status', (s: { state: string; waitedMs: number }) => {
+        set({
+            queueStatus: {
+                state:
+                    s.state === 'matching_with_bot'
+                        ? 'matching_with_bot'
+                        : 'searching',
+                waitedMs: s.waitedMs,
+            },
+        });
+    });
+
+    sock.on('match_found', (m: MatchFound) => {
+        set({
+            phase: 'matched',
+            matchFound: m,
+            msRemaining: m.durationSeconds * 1000,
+            inputCells: new Array(m.wordLength).fill(null),
+            inputCursor: 0,
+            // A challenge that produced this match is now resolved.
+            incomingChallenge: null,
+            pendingChallenge: null,
+        });
+    });
+
+    sock.on('match_start', () => {
+        set({ phase: 'playing' });
+    });
+
+    sock.on('match_tick', ({ msRemaining }) => {
+        set({ msRemaining });
+    });
+
+    sock.on('guess_result', (g: GuessBroadcast) => {
+        if (g.side === 'me') {
+            set((s) => ({
+                myGuesses: [
+                    ...s.myGuesses,
+                    { guess: g.guess ?? '', tiles: g.tiles, solved: g.solved },
+                ],
+                inputCells: s.matchFound
+                    ? new Array(s.matchFound.wordLength).fill(null)
+                    : [],
+                inputCursor: 0,
+                submitting: false,
+            }));
+        } else {
+            set((s) => ({
+                oppGuesses: [
+                    ...s.oppGuesses,
+                    { guess: null, tiles: g.tiles, solved: g.solved },
+                ],
+            }));
+        }
+    });
+
+    sock.on('match_over', (mo: MatchOver) => {
+        set((s) => ({
+            phase: 'finished',
+            matchOver: mo,
+            matchesPlayedSession: s.matchesPlayedSession + 1,
+            matchesSinceLastInterstitial: s.matchesSinceLastInterstitial + 1,
+            lastMatchDurationSec: mo.matchDurationSec ?? 0,
+        }));
+    });
+
+    // Auto-resume on reconnect. `connect` fires on the first connect AND
+    // every successful reconnection - we only resume if we're actually in
+    // an active match.
+    sock.on('connect', () => {
+        const phase = get().phase;
+        if (phase !== 'playing' && phase !== 'matched') return;
+        sock.timeout(8000).emit(
+            'match_resume',
+            {},
+            (
+                err: Error | null,
+                ack: { ok: boolean; reason?: string } = { ok: false }
+            ) => {
+                if (err || !ack.ok) {
+                    set({
+                        phase: 'idle',
+                        lastError:
+                            ack.reason === 'Match already ended'
+                                ? 'Match ended while you were away.'
+                                : 'Could not resume match.',
+                    });
+                }
+            }
+        );
+    });
+
+    sock.on('opponent_scramble', () => {
+        set({ scrambled: true });
+        setTimeout(() => set({ scrambled: false }), 1500);
+    });
+
+    sock.on(
+        'powerup_reveal_letter',
+        (payload: { position: number; letter: string }) => {
+            set((s) => ({
+                hintsRevealed: {
+                    ...s.hintsRevealed,
+                    [payload.position]: payload.letter,
+                },
+            }));
+        }
+    );
+
+    sock.on('powerup_locked', (payload) => {
+        set({ lockedUntilMs: Date.now() + payload.durationMs });
+    });
+
+    sock.on('opponent_emoji', (payload: { emoji: string }) => {
+        set({ opponentEmoji: { emoji: payload.emoji, at: Date.now() } });
+        setTimeout(() => set({ opponentEmoji: null }), 2500);
+    });
+
+    sock.on('error', (e) => {
+        set({ lastError: e.message });
+    });
+
+    // ─── Friend challenges ───────────────────────────────────────────────
+    sock.on('friend_challenge_incoming', (payload) => {
+        // Can't accept while mid-match - ignore the prompt entirely.
+        const phase = get().phase;
+        if (phase === 'playing' || phase === 'matched') return;
+        set({ incomingChallenge: payload });
+    });
+
+    sock.on('friend_challenge_declined', () => {
+        set({
+            pendingChallenge: null,
+            challengeNotice: 'Your friend declined the challenge.',
+        });
+    });
+
+    sock.on('friend_challenge_cancelled', (payload) => {
+        const reasonText: Record<string, string> = {
+            cancelled: 'The challenge was cancelled.',
+            expired: 'The challenge timed out - no response.',
+            offline: 'Your friend went offline.',
+            busy: 'A player is already in a match.',
+        };
+        set({
+            pendingChallenge: null,
+            incomingChallenge: null,
+            challengeNotice: reasonText[payload.reason] ?? 'Challenge cancelled.',
+        });
+    });
+}
 
 export const useGameStore = create<GameState>((set, get) => ({
     ...initial,
@@ -168,143 +344,50 @@ export const useGameStore = create<GameState>((set, get) => ({
     lastInterstitialAt: 0,
     lastMatchDurationSec: 0,
 
+    connectPersistent: (token) => {
+        // Open the session-long socket (if not already open) and make sure
+        // every listener is attached. Called right after auth.
+        wireSocket(ensureSocket(token), set, get);
+    },
+
     connectAndQueue: (token, mode = 'classic') => {
-        // Reset transient state for a fresh match.
+        // Reset transient match state for a fresh game. Counters and
+        // challenge state are intentionally left alone here.
         set({
-            ...initial,
             phase: 'queueing',
+            queueStatus: null,
+            matchFound: null,
+            msRemaining: 0,
+            myGuesses: [],
+            oppGuesses: [],
+            matchOver: null,
+            lastError: null,
+            inputCells: [],
+            inputCursor: 0,
+            submitting: false,
+            scrambled: false,
+            lockedUntilMs: null,
+            opponentEmoji: null,
+            hintsRevealed: {},
+            freeHintAvailable: true,
+            hintRequesting: false,
+            hintToast: null,
         });
-        const sock = connectSocket(token);
 
-        const wireUp = () => {
-            sock.off('queue_status').on('queue_status', (s) => {
-                set({ queueStatus: s });
-            });
-            sock.off('match_found').on('match_found', (m: MatchFound) => {
-                set({
-                    phase: 'matched',
-                    matchFound: m,
-                    msRemaining: m.durationSeconds * 1000,
-                    inputCells: new Array(m.wordLength).fill(null),
-                    inputCursor: 0,
-                });
-            });
-            sock.off('match_start').on('match_start', () => {
-                set({ phase: 'playing' });
-            });
-            sock.off('match_tick').on('match_tick', ({ msRemaining }) => {
-                set({ msRemaining });
-            });
-            sock.off('guess_result').on('guess_result', (g: GuessBroadcast) => {
-                if (g.side === 'me') {
-                    set((s) => ({
-                        myGuesses: [
-                            ...s.myGuesses,
-                            { guess: g.guess ?? '', tiles: g.tiles, solved: g.solved },
-                        ],
-                        inputCells: s.matchFound
-                            ? new Array(s.matchFound.wordLength).fill(null)
-                            : [],
-                        inputCursor: 0,
-                        submitting: false,
-                    }));
-                } else {
-                    set((s) => ({
-                        oppGuesses: [
-                            ...s.oppGuesses,
-                            { guess: null, tiles: g.tiles, solved: g.solved },
-                        ],
-                    }));
-                }
-            });
-            sock.off('match_over').on('match_over', (mo: MatchOver) => {
-                set((s) => ({
-                    phase: 'finished',
-                    matchOver: mo,
-                    matchesPlayedSession: s.matchesPlayedSession + 1,
-                    matchesSinceLastInterstitial:
-                        s.matchesSinceLastInterstitial + 1,
-                    lastMatchDurationSec: mo.matchDurationSec ?? 0,
-                }));
-            });
+        // Reuse the persistent socket - never tear it down + rebuild. The
+        // server cleans up finished-match state, so a fresh queue_join on
+        // the same socket works every time.
+        const sock = ensureSocket(token);
+        wireSocket(sock, set, get);
 
-            // Auto-resume on reconnect. The connect event fires on initial
-            // connect AND every successful reconnection. We only resume if
-            // the user is already in an active match — otherwise this is
-            // just a fresh queue join.
-            sock.off('connect').on('connect', () => {
-                const phase = get().phase;
-                if (phase !== 'playing' && phase !== 'matched') return;
-                sock.timeout(8000).emit(
-                    'match_resume',
-                    {},
-                    (
-                        err: Error | null,
-                        ack: { ok: boolean; reason?: string } = { ok: false }
-                    ) => {
-                        if (err || !ack.ok) {
-                            // Match couldn't be resumed (most likely it ended
-                            // while we were away). Push back to home; /me
-                            // will reflect the result.
-                            set({
-                                phase: 'idle',
-                                lastError:
-                                    ack.reason === 'Match already ended'
-                                        ? 'Match ended while you were away.'
-                                        : 'Could not resume match.',
-                            });
-                        }
-                    }
-                );
-            });
-            sock.off('opponent_scramble').on('opponent_scramble', () => {
-                set({ scrambled: true });
-                setTimeout(() => set({ scrambled: false }), 1500);
-            });
-            sock.off('powerup_reveal_letter').on(
-                'powerup_reveal_letter',
-                (payload: { position: number; letter: string }) => {
-                    // Reveal lands in hintsRevealed so the same ghost-letter
-                    // UI surfaces it on the active row.
-                    set((s) => ({
-                        hintsRevealed: {
-                            ...s.hintsRevealed,
-                            [payload.position]: payload.letter,
-                        },
-                    }));
-                }
-            );
-            sock.off('powerup_locked').on('powerup_locked', (payload) => {
-                set({
-                    lockedUntilMs: Date.now() + payload.durationMs,
-                });
-                // Lock expires automatically; UI checks Date.now().
-            });
-            sock.off('opponent_emoji').on(
-                'opponent_emoji',
-                (payload: { emoji: string }) => {
-                    set({ opponentEmoji: { emoji: payload.emoji, at: Date.now() } });
-                    setTimeout(() => set({ opponentEmoji: null }), 2500);
-                }
-            );
-            sock.off('error').on('error', (e) => {
-                set({ lastError: e.message });
-            });
-        };
-
-        if (sock.connected) wireUp();
-        else sock.once('connect', wireUp);
-
-        // Fire the right queue event once the socket is connected. Mystery
-        // mode goes through mystery_queue (handled by mysteryHub on the
-        // server). Classic uses queue_join. Both end up firing match_found
-        // when matched, so the rest of the flow is identical from here.
         const fireQueue = () => {
+            // The socket may connect AFTER the user already backed out
+            // (cancelled the queue). Only actually queue if we're still in
+            // the queueing phase.
+            if (get().phase !== 'queueing') return;
             if (mode === 'mystery') {
                 sock.emit('mystery_queue', {}, (resp) => {
                     if (!resp.ok) {
-                        // Surface the error via the same lastError channel
-                        // the rest of the app uses.
                         set({
                             lastError: resp.error ?? 'Could not queue',
                             phase: 'idle',
@@ -315,31 +398,26 @@ export const useGameStore = create<GameState>((set, get) => ({
                 sock.emit('queue_join');
             }
         };
+
+        // Queue once the socket is actually connected. `.once` auto-removes
+        // so repeated connectAndQueue calls can't stack queue handlers.
         if (sock.connected) fireQueue();
         else sock.once('connect', fireQueue);
     },
 
     leaveQueue: () => {
         const sock = getSocket();
-        // Emit both — the server ignores the irrelevant one. Cheap and
-        // means we don't have to track which mode the user queued for.
+        // Emit both - the server ignores the irrelevant one.
         sock?.emit('queue_leave');
         sock?.emit('mystery_leave', {});
         set({ phase: 'idle', queueStatus: null });
     },
 
-    /**
-     * Explicit forfeit. Emits match_quit; the server ends the match with
-     * the local player as the loser and broadcasts match_over to both
-     * sides. Our match_over handler will navigate to post-game.
-     */
     quitMatch: () => {
         const sock = getSocket();
         if (!sock) return;
         sock.emit('match_quit', {}, () => {
-            // We don't really care about the ack — match_over handles the
-            // UI transition. If quit failed for some reason (match already
-            // ended), match_over already fired and we're fine.
+            // match_over handles the UI transition.
         });
     },
 
@@ -358,15 +436,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         const next = [...inputCells];
         next[inputCursor] = ch;
 
-        // Auto-advance to the next null cell. Wraps forward only — we don't
-        // wrap back around to the beginning, since the user explicitly chose
-        // their seek position.
         let nextCursor = inputCursor + 1;
         while (nextCursor < matchFound.wordLength && next[nextCursor] !== null) {
             nextCursor += 1;
         }
-        // If everything to the right is filled, park at wordLength so the
-        // user can submit. backspace/seek can move back into the row.
         set({ inputCells: next, inputCursor: nextCursor });
     },
 
@@ -375,16 +448,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!matchFound) return;
         const cells = [...inputCells];
 
-        // If the cursor is past the end (row was filled), back up first.
         let pos = inputCursor;
         if (pos >= matchFound.wordLength) pos = matchFound.wordLength - 1;
 
         if (cells[pos] !== null) {
-            // Cursor sits on a letter — clear it, stay put.
             cells[pos] = null;
             set({ inputCells: cells, inputCursor: pos });
         } else if (pos > 0) {
-            // Empty cell — clear the previous letter and move there.
             cells[pos - 1] = null;
             set({ inputCells: cells, inputCursor: pos - 1 });
         }
@@ -407,7 +477,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         const { inputCells, matchFound, phase, submitting } = get();
         if (phase !== 'playing' || !matchFound) return null;
         if (submitting) return null;
-        // All cells must be filled.
         if (inputCells.some((c) => c === null) || inputCells.length !== matchFound.wordLength) {
             set({ lastError: `Need ${matchFound.wordLength} letters` });
             return null;
@@ -435,8 +504,6 @@ export const useGameStore = create<GameState>((set, get) => ({
                         resolve(ack);
                         return;
                     }
-                    // On success the server will fire guess_result, which
-                    // resets inputCells and clears submitting.
                     resolve(ack);
                 }
             );
@@ -494,10 +561,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     reset: () => {
-        disconnectSocket();
-        // Preserve session counters across reset so the interstitial cap
-        // survives "Play Again". Without this every reset would reset the
-        // counter and we'd show an ad on every match.
+        // NOTE: we no longer disconnect the socket here. The socket is a
+        // session-long singleton (needed for friend challenges + so the
+        // next match can queue instantly). Only sign-out tears it down.
         const {
             matchesPlayedSession,
             matchesSinceLastInterstitial,
@@ -523,23 +589,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastMatchDurationSec,
             matchOver,
         } = get();
-        // Don't show after a loss — it adds insult to injury.
         if (matchOver?.result === 'loss') return false;
-        // Don't show if the match was very short — the player wants to keep
-        // playing right now; an ad would feel punitive.
         if (lastMatchDurationSec > 0 && lastMatchDurationSec < INTERSTITIAL_MIN_MATCH_SEC) {
             return false;
         }
-        // Frequency cap.
         if (matchesSinceLastInterstitial < nextInterstitialThreshold) return false;
-        // Cooldown.
         if (Date.now() - lastInterstitialAt < INTERSTITIAL_COOLDOWN_MS) return false;
         return true;
     },
 
     markInterstitialShown: () => {
-        // Re-randomize the threshold for the next ad so cadence varies
-        // between 3 and 4 matches.
         const next =
             INTERSTITIAL_EVERY_N_MIN +
             Math.floor(
@@ -555,4 +614,73 @@ export const useGameStore = create<GameState>((set, get) => ({
     clearError: () => set({ lastError: null }),
 
     clearHintToast: () => set({ hintToast: null }),
+
+    // ─── Friend-challenge actions ────────────────────────────────────────
+    challengeFriend: (friendId, friendName) => {
+        const sock = getSocket();
+        if (!sock) {
+            return Promise.resolve({
+                ok: false as const,
+                error: 'Not connected. Try again in a moment.',
+            });
+        }
+        return new Promise((resolve) => {
+            sock.timeout(10_000).emit(
+                'friend_challenge',
+                { friendId },
+                (
+                    err: Error | null,
+                    resp:
+                        | { ok: true; challengeId: string }
+                        | { ok: false; error: string } = {
+                        ok: false,
+                        error: 'Timed out',
+                    }
+                ) => {
+                    if (err) {
+                        resolve({ ok: false, error: 'Network timeout.' });
+                        return;
+                    }
+                    if (resp.ok) {
+                        set({
+                            pendingChallenge: { friendId, friendName },
+                            challengeNotice: null,
+                        });
+                    }
+                    resolve(resp);
+                }
+            );
+        });
+    },
+
+    respondToChallenge: (accept) => {
+        const sock = getSocket();
+        const challenge = get().incomingChallenge;
+        // Clear the prompt immediately so it can't be answered twice.
+        set({ incomingChallenge: null });
+        if (!sock || !challenge) return;
+        sock.timeout(10_000).emit(
+            'friend_challenge_respond',
+            { challengeId: challenge.challengeId, accept },
+            (
+                err: Error | null,
+                resp: { ok: boolean; error?: string } = { ok: true }
+            ) => {
+                if (!err && resp && !resp.ok && resp.error) {
+                    set({ challengeNotice: resp.error });
+                }
+            }
+        );
+    },
+
+    cancelChallenge: () => {
+        const sock = getSocket();
+        sock?.emit('friend_challenge_cancel', {});
+        set({ pendingChallenge: null });
+    },
+
+    clearChallengeNotice: () => set({ challengeNotice: null }),
 }));
+
+// Re-exported for callers that still import it (e.g. sign-out cleanup).
+export { disconnectSocket };

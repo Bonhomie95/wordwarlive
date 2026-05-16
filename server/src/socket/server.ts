@@ -14,6 +14,7 @@ import type {
 import { matchmakingHub } from './matchmaking.js';
 import { matchRegistry } from './matchHandler.js';
 import { mysteryHub } from './mysteryMatchmaking.js';
+import { friendChallengeHub } from './friendChallenge.js';
 import { getMyPendingSubmission } from '../services/mysteryService.js';
 import { markOffline, markOnline, socketIdFor } from './presence.js';
 import {
@@ -180,6 +181,41 @@ export function createSocketServer(http: HttpServer): AppIOServer {
             mysteryHub.leave(socket.data.session.userId);
         });
 
+        // ─── Friend challenges (live "play with friends") ────────────────
+        socket.on('friend_challenge', async (payload, ack) => {
+            try {
+                const friendId = String(payload?.friendId ?? '');
+                const resp = await friendChallengeHub.challenge(
+                    io,
+                    socket,
+                    friendId
+                );
+                ack(resp);
+            } catch (err) {
+                logger.error({ err }, 'friend_challenge failed');
+                ack({ ok: false, error: 'Internal error' });
+            }
+        });
+
+        socket.on('friend_challenge_respond', async (payload, ack) => {
+            try {
+                const resp = await friendChallengeHub.respond(
+                    io,
+                    socket,
+                    String(payload?.challengeId ?? ''),
+                    !!payload?.accept
+                );
+                ack(resp);
+            } catch (err) {
+                logger.error({ err }, 'friend_challenge_respond failed');
+                ack({ ok: false, error: 'Internal error' });
+            }
+        });
+
+        socket.on('friend_challenge_cancel', () => {
+            friendChallengeHub.cancel(io, socket);
+        });
+
         socket.on('private_join', async (payload, ack) => {
             try {
                 const code = String(payload?.code ?? '').toUpperCase();
@@ -237,6 +273,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
             markOffline(socket.id);
             matchmakingHub.leave(socket.data.session.userId);
             mysteryHub.leave(socket.data.session.userId);
+            friendChallengeHub.handleDisconnect(io, socket.data.session.userId);
             matchRegistry.handleDisconnect(io, socket).catch((err) => {
                 logger.error({ err }, 'disconnect cleanup failed');
             });
