@@ -2,13 +2,20 @@
 // Two purposes:
 //   - Tells the user what's happening (otherwise the brief delay before an
 //     ad pops looks like a frozen app).
-//   - Blocks all input behind it. AdMob takes the foreground itself when
+//   - Blocks input behind it. AdMob takes the foreground itself when
 //     the ad actually starts; this covers the gap BEFORE that happens.
 //
 // Used by:
 //   - Daily Bonus button (rewarded ad)
 //   - Battle Pass XP Boost (rewarded ad)
 //   - Post-match interstitial trigger
+//
+// DELIBERATELY NOT a react-native <Modal>. A native modal fights with the
+// AdMob ad activity/view-controller: on iOS the ad can fail to present
+// ("already presenting"), and a modal dismissed while the ad VC is on top
+// can silently stay attached — invisible but swallowing every touch, which
+// froze the whole screen whenever an ad failed to show. A plain absolute
+// View unmounts synchronously with `visible=false`, so it can never wedge.
 //
 // Don't pass `visible` permanently — the showRewarded / showInterstitial
 // helpers should set it true, await ad close, set it false.
@@ -17,7 +24,6 @@ import React, { useEffect, useRef } from 'react';
 import {
     Animated,
     Easing,
-    Modal,
     StyleSheet,
     Text,
     View,
@@ -56,38 +62,34 @@ export const AdLoadingOverlay: React.FC<Props> = ({
         outputRange: ['0deg', '360deg'],
     });
 
+    if (!visible) return null;
+
     return (
-        <Modal
-            visible={visible}
-            transparent
-            animationType="fade"
-            onRequestClose={() => {
-                // Prevent Android back from dismissing while ad loads.
-            }}
-        >
-            <View style={styles.backdrop}>
-                <View style={styles.card}>
-                    <Animated.View
-                        style={[styles.spinner, { transform: [{ rotate }] }]}
-                    />
-                    <Text style={styles.label} allowFontScaling={false}>
-                        {label}
-                    </Text>
-                    <Text style={styles.hint} allowFontScaling={false}>
-                        Please wait a moment…
-                    </Text>
-                </View>
+        <View style={styles.backdrop} pointerEvents="auto">
+            <View style={styles.card}>
+                <Animated.View
+                    style={[styles.spinner, { transform: [{ rotate }] }]}
+                />
+                <Text style={styles.label} allowFontScaling={false}>
+                    {label}
+                </Text>
+                <Text style={styles.hint} allowFontScaling={false}>
+                    Please wait a moment…
+                </Text>
             </View>
-        </Modal>
+        </View>
     );
 };
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     backdrop: {
-        flex: 1,
+        ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(0,0,0,0.85)',
         alignItems: 'center',
         justifyContent: 'center',
+        // Sit above sibling content regardless of mount order.
+        zIndex: 9999,
+        elevation: 9999,
     },
     card: {
         alignItems: 'center',

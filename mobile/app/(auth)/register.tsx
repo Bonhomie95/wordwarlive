@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
+import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
@@ -21,7 +22,10 @@ export default function Register() {
     const [password, setPassword] = useState('');
     const [username, setUsername] = useState('');
     const registerEmail = useAuthStore((s) => s.registerEmail);
+    const signInGoogle = useAuthStore((s) => s.signInGoogle);
     const busy = useAuthStore((s) => s.busy);
+    const google = useGoogleSignIn();
+    const [oauthBusy, setOauthBusy] = useState(false);
 
     async function onSubmit() {
         if (!email || !password || !username) {
@@ -43,6 +47,22 @@ export default function Register() {
             await registerEmail(email, password, username);
         } catch (err) {
             Alert.alert('Registration failed', err instanceof Error ? err.message : 'Try again.');
+        }
+    }
+
+    async function onGoogle() {
+        if (!google.available) {
+            Alert.alert('Not configured', 'Google Sign-In env vars are missing.');
+            return;
+        }
+        setOauthBusy(true);
+        try {
+            const idToken = await google.signIn();
+            if (idToken) await signInGoogle(idToken);
+        } catch (err) {
+            Alert.alert('Google sign-in failed', err instanceof Error ? err.message : 'Try again.');
+        } finally {
+            setOauthBusy(false);
         }
     }
 
@@ -85,6 +105,23 @@ export default function Register() {
 
                 <View style={styles.actions}>
                     <Button label="Create account" onPress={onSubmit} busy={busy} />
+
+                    {google.available ? (
+                        <>
+                            <View style={styles.divider}>
+                                <View style={styles.dividerLine} />
+                                <Text style={styles.dividerText} allowFontScaling={false}>or</Text>
+                                <View style={styles.dividerLine} />
+                            </View>
+                            <Button
+                                label="Continue with Google"
+                                onPress={onGoogle}
+                                variant="secondary"
+                                busy={oauthBusy || google.inProgress}
+                            />
+                        </>
+                    ) : null}
+
                     <Button label="Back" onPress={() => router.back()} variant="ghost" />
                 </View>
             </KeyboardAvoidingView>
@@ -148,4 +185,21 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontSize: typography.sizes.md,
     },
     actions: { gap: spacing.sm, marginBottom: spacing.lg },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        marginVertical: spacing.xs,
+    },
+    dividerLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: colors.border,
+    },
+    dividerText: {
+        color: colors.textMuted,
+        fontSize: typography.sizes.xs,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
 }));

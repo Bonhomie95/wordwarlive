@@ -17,7 +17,7 @@
 // a slur or profanity. We rely on the existing word_bank for (a) and a
 // small blocklist for (b).
 
-import { query } from '../db/pool.js';
+import { pool, query } from '../db/pool.js';
 import { isValidWord } from '../game/words.js';
 import { logger } from '../utils/logger.js';
 
@@ -128,60 +128,86 @@ export async function withdrawSubmission(userId: string): Promise<void> {
 /**
  * Find an opponent for the given user: another player with a pending
  * submission of the same length, not the same user. Marks both as
- * consumed and returns the pair + chosen word.
+ * consumed and returns the pair + both words.
  *
- * The chosen word is randomly one of the two submissions — both players
- * play against the SAME word. This keeps the comparison fair (same word,
- * different solver speeds).
+ * Each player races the OPPONENT's word. Nobody ever plays a word they
+ * submitted themselves — that would be a guaranteed first-guess win for
+ * the submitter. Lengths always match, so the race stays fair.
+ *
+ * The SELECT ... FOR UPDATE SKIP LOCKED and the consuming UPDATE run in a
+ * single transaction — outside one, the row lock releases the moment the
+ * SELECT returns and two concurrent ticks can claim the same opponent.
  */
 export async function tryMatch(userId: string): Promise<{
     matched: true;
     opponentUserId: string;
-    word: string;
+    /** The requesting user's target = the opponent's submission. */
+    myWord: string;
+    /** The opponent's target = the requesting user's submission. */
+    opponentWord: string;
     wordLength: number;
 } | { matched: false }> {
-    // Find my submission.
-    const mine = await getMyPendingSubmission(userId);
-    if (!mine) return { matched: false };
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
 
-    // Find someone else's same-length submission.
-    const candidates = await query<{
-        id: string;
-        user_id: string;
-        word: string;
-    }>(
-        `SELECT id, user_id, word
-         FROM mystery_submissions
-         WHERE available = TRUE AND user_id <> $1 AND word_length = $2
-         ORDER BY created_at ASC
-         LIMIT 1
-         FOR UPDATE SKIP LOCKED`,
-        [userId, mine.wordLength]
-    );
-    const opponent = candidates[0];
-    if (!opponent) return { matched: false };
+        // Lock MY submission first so a concurrent matcher can't consume it
+        // out from under us mid-pairing.
+        const mineRes = await client.query<{ id: string; word: string; word_length: number }>(
+            `SELECT id, word, word_length
+             FROM mystery_submissions
+             WHERE user_id = $1 AND available = TRUE
+             ORDER BY created_at DESC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED`,
+            [userId]
+        );
+        const mine = mineRes.rows[0];
+        if (!mine) {
+            await client.query('ROLLBACK');
+            return { matched: false };
+        }
 
-    // Pick which word is the answer — random.
-    const chosenWord = Math.random() < 0.5 ? mine.word : opponent.word;
+        // Find + lock someone else's same-length submission.
+        const oppRes = await client.query<{ id: string; user_id: string; word: string }>(
+            `SELECT id, user_id, word
+             FROM mystery_submissions
+             WHERE available = TRUE AND user_id <> $1 AND word_length = $2
+             ORDER BY created_at ASC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED`,
+            [userId, mine.word_length]
+        );
+        const opponent = oppRes.rows[0];
+        if (!opponent) {
+            await client.query('ROLLBACK');
+            return { matched: false };
+        }
 
-    // Mark both consumed in one statement so a concurrent matcher can't
-    // grab the same opponent.
-    await query(
-        `UPDATE mystery_submissions
-         SET available = FALSE, consumed_at = now()
-         WHERE id IN ($1::uuid, $2::uuid)`,
-        [mine.id, opponent.id]
-    );
+        await client.query(
+            `UPDATE mystery_submissions
+             SET available = FALSE, consumed_at = now()
+             WHERE id IN ($1::uuid, $2::uuid)`,
+            [mine.id, opponent.id]
+        );
+        await client.query('COMMIT');
 
-    logger.info(
-        { userId, opponentUserId: opponent.user_id, wordLength: mine.wordLength },
-        'mystery match made'
-    );
+        logger.info(
+            { userId, opponentUserId: opponent.user_id, wordLength: mine.word_length },
+            'mystery match made'
+        );
 
-    return {
-        matched: true,
-        opponentUserId: opponent.user_id,
-        word: chosenWord,
-        wordLength: mine.wordLength,
-    };
+        return {
+            matched: true,
+            opponentUserId: opponent.user_id,
+            myWord: opponent.word,
+            opponentWord: mine.word,
+            wordLength: mine.word_length,
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 }

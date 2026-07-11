@@ -96,7 +96,7 @@ class MysteryHub {
             io.to(entry.socketId).emit('mystery_queue_status', {
                 state:
                     waitedMs >= entry.botAfterMs
-                        ? 'matching_with_bot'
+                        ? 'finalizing'
                         : 'searching',
                 waitedMs,
                 botAfterMs: entry.botAfterMs,
@@ -130,10 +130,12 @@ class MysteryHub {
                 if (!u1 || !u2) continue;
 
                 logger.info(
-                    { p1: entry.userId, p2: oppEntry.userId, word: result.word },
+                    { p1: entry.userId, p2: oppEntry.userId, wordLength: result.wordLength },
                     'starting mystery match (human vs human)'
                 );
 
+                // Each player races the OPPONENT's submission — see
+                // mysteryService.tryMatch for why nobody plays their own.
                 await matchRegistry.startMatch(io, {
                     p1SocketId: entry.socketId,
                     p2SocketId: oppEntry.socketId,
@@ -141,7 +143,8 @@ class MysteryHub {
                     p2UserId: oppEntry.userId,
                     p1IsBot: false,
                     p2IsBot: false,
-                    explicitWord: result.word,
+                    p1Word: result.myWord,
+                    p2Word: result.opponentWord,
                     mode: 'mystery',
                 });
                 continue;
@@ -178,11 +181,13 @@ class MysteryHub {
             const human = await findUserById(entry.userId);
             if (!human) return;
 
-            // Pick a DIFFERENT random word of the same length. The player
-            // is supposed to be solving a mystery — solving their OWN
-            // submission would be trivial. We retry a few times to avoid
-            // landing on the human's exact word, since pickRandomWord can
-            // randomly return anything in the bank.
+            // The human races a DIFFERENT random word of the same length —
+            // solving their OWN submission would be trivial. We retry a few
+            // times to avoid landing on the human's exact word, since
+            // pickRandomWord can randomly return anything in the bank.
+            // The bot, meanwhile, races the human's submission — so the
+            // player's word really does get played against, same as a
+            // human-vs-human mystery match.
             let word = pickRandomWord(sub.wordLength);
             for (let i = 0; i < 5 && word === sub.word; i++) {
                 word = pickRandomWord(sub.wordLength);
@@ -223,7 +228,8 @@ class MysteryHub {
                 p1IsBot: false,
                 p2IsBot: true,
                 botDifficulty: difficulty,
-                explicitWord: word,
+                p1Word: word,
+                p2Word: sub.word,
                 mode: 'mystery',
             });
         } finally {

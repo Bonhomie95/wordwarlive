@@ -16,6 +16,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BannerAdView } from '../../src/components/ui/BannerAdView';
 import { useGameStore } from '../../src/store/gameStore';
+import { useAuthStore } from '../../src/store/authStore';
 import { colors, makeThemedStyles, useThemeStore } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 
@@ -85,11 +86,20 @@ function ChallengeListener() {
 }
 
 export default function AppTabsLayout() {
+    // ALL hooks must run unconditionally before any early return.
     // Subscribe to the theme bump so this navigator re-renders when the
     // theme changes - that updates the tab-bar colours (read directly off
     // `colors` in screenOptions below) AND cascades a re-render into every
     // tab screen, which is what makes makeThemedStyles pick up new colours.
     useThemeStore((s) => s.bump);
+    const token = useAuthStore((s) => s.token);
+
+    // Guard: don't render the Tabs tree without an authenticated session.
+    // Without this, React sees a hook-count mismatch when the navigator
+    // unmounts mid-render as the root layout redirects to /(auth) on
+    // logout. The root layout's useAuthGate handles the actual redirect.
+    if (!token) return null;
+
     return (
         <View style={styles.root}>
             <MatchAutoRouter />
@@ -162,6 +172,7 @@ export default function AppTabsLayout() {
                     <Tabs.Screen name="match" options={{ href: null }} />
                     <Tabs.Screen name="post-game" options={{ href: null }} />
                     <Tabs.Screen name="settings" options={{ href: null }} />
+                    <Tabs.Screen name="link-account" options={{ href: null }} />
                     <Tabs.Screen name="daily" options={{ href: null }} />
                     <Tabs.Screen name="mystery" options={{ href: null }} />
                     <Tabs.Screen name="friends" options={{ href: null }} />

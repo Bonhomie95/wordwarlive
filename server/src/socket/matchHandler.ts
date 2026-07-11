@@ -14,7 +14,7 @@ import {
     shouldEnd,
     type GuessResult,
 } from '../game/engine.js';
-import { isValidWord, pickRankAwareWord } from '../game/words.js';
+import { isValidWord, pickRankAwareWord, wordsOfLength } from '../game/words.js';
 import {
     findUserById,
     applyMatchResult,
@@ -39,7 +39,13 @@ const COINS_PER_WIN = 5;
 
 interface ActiveMatch {
     id: string;
-    word: string; // server-only — never sent until match_over
+    /** Per-player target words, server-only — never sent until match_over.
+     *  Classic matches use the same word for both. Mystery matches give each
+     *  player the OPPONENT's submission, so nobody ever races a word they
+     *  submitted themselves (instant-win exploit otherwise). Lengths always
+     *  match — matchmaking pairs same-length submissions only. */
+    p1Word: string;
+    p2Word: string;
     p1UserId: string;
     p2UserId: string;
     p1SocketId: string | null;
@@ -60,6 +66,8 @@ interface ActiveMatch {
     /** Set when match has ended so duplicate end-calls become no-ops. */
     ended: boolean;
     timerHandle: NodeJS.Timeout | null;
+    /** Hard-stop timeout at durationMs; cleared on early end. */
+    endTimerHandle: NodeJS.Timeout | null;
     botTimerHandle: NodeJS.Timeout | null;
     /** Reconnect grace timers. When a player drops, we set this; if they
      *  reconnect before it fires we cancel; otherwise we forfeit them. */
@@ -87,10 +95,14 @@ interface StartArgs {
     p1IsBot: boolean;
     p2IsBot: boolean;
     botDifficulty?: BotDifficulty;
-    /** Optional. If provided, this exact word is used instead of the
-     *  rank-aware pick. Mystery mode passes one of the player-submitted
-     *  words here. */
+    /** Optional. If provided, this exact word is used for BOTH players
+     *  instead of the rank-aware pick (private matches, mystery-vs-bot). */
     explicitWord?: string;
+    /** Optional per-player words (mystery human-vs-human: each player gets
+     *  the opponent's submission). Takes precedence over explicitWord.
+     *  Both must be the same length. */
+    p1Word?: string;
+    p2Word?: string;
     mode?: 'classic' | 'mystery';
 }
 
@@ -106,13 +118,19 @@ class MatchRegistry {
         ]);
         if (!p1 || !p2) throw new Error('Player(s) not found for match');
 
-        const word =
+        const sharedWord =
             args.explicitWord ??
             pickRankAwareWord(Math.max(p1.rank_points, p2.rank_points));
+        const p1Word = args.p1Word ?? sharedWord;
+        const p2Word = args.p2Word ?? sharedWord;
+        if (p1Word.length !== p2Word.length) {
+            throw new Error('Per-player words must be the same length');
+        }
 
         const match: ActiveMatch = {
             id: randomUUID(),
-            word,
+            p1Word,
+            p2Word,
             mode: args.mode ?? 'classic',
             p1UserId: p1.id,
             p2UserId: p2.id,
@@ -129,6 +147,7 @@ class MatchRegistry {
             botDifficulty: args.botDifficulty,
             ended: false,
             timerHandle: null,
+            endTimerHandle: null,
             botTimerHandle: null,
             p1GraceTimer: null,
             p2GraceTimer: null,
@@ -145,7 +164,7 @@ class MatchRegistry {
         if (match.p1SocketId) {
             io.to(match.p1SocketId).emit('match_found', {
                 matchId: match.id,
-                wordLength: word.length,
+                wordLength: p1Word.length,
                 durationSeconds: env.MATCH_DURATION_SECONDS,
                 you: p1Public,
                 opponent: p2Public,
@@ -160,7 +179,7 @@ class MatchRegistry {
         if (match.p2SocketId) {
             io.to(match.p2SocketId).emit('match_found', {
                 matchId: match.id,
-                wordLength: word.length,
+                wordLength: p2Word.length,
                 durationSeconds: env.MATCH_DURATION_SECONDS,
                 you: p2Public,
                 opponent: p1Public,
@@ -175,7 +194,7 @@ class MatchRegistry {
 
         // Tick + auto-end timers.
         match.timerHandle = setInterval(() => this.tick(io, match), 1000);
-        setTimeout(
+        match.endTimerHandle = setTimeout(
             () => this.endMatch(io, match, { reason: 'time_up' }).catch(() => {}),
             match.durationMs
         );
@@ -190,7 +209,7 @@ class MatchRegistry {
                 matchId: match.id,
                 p1: p1.username,
                 p2: p2.username,
-                wordLength: word.length,
+                wordLength: p1Word.length,
                 botGame: args.p1IsBot || args.p2IsBot,
             },
             'Match started'
@@ -232,18 +251,21 @@ class MatchRegistry {
         if (!match || match.ended) return { ok: false, error: 'Game not active', errorCode: 'GAME_NOT_ACTIVE' };
 
         const isP1 = match.p1UserId === userId;
+        const target = isP1 ? match.p1Word : match.p2Word;
 
-        // Rate limit via Redis. SET NX EX with the duration we want between
+        // Validate BEFORE the rate limit so a typo ("not in word list")
+        // doesn't burn the cooldown and lock the player out for 2s.
+        const guess = rawGuess.trim().toUpperCase();
+        const valError = validateGuess(guess, target.length, isValidWord);
+        if (valError) return { ok: false, error: valError.message, errorCode: valError.code };
+
+        // Rate limit via Redis. SET NX PX with the duration we want between
         // guesses for this user. If the key exists, it's too soon.
         const rlKey = `rl:guess:${userId}`;
         const ok = await redis.set(rlKey, '1', 'PX', env.GUESS_RATE_LIMIT_MS, 'NX');
         if (ok !== 'OK') return { ok: false, error: 'Slow down', errorCode: 'RATE_LIMITED' };
 
-        const guess = rawGuess.trim().toUpperCase();
-        const valError = validateGuess(guess, match.word.length, isValidWord);
-        if (valError) return { ok: false, error: valError.message, errorCode: valError.code };
-
-        const result = scoreGuess(guess, match.word);
+        const result = scoreGuess(guess, target);
         const list = isP1 ? match.p1Guesses : match.p2Guesses;
         list.push(result);
         const guessIndex = list.length - 1;
@@ -333,6 +355,7 @@ class MatchRegistry {
         if (kind === 'reveal') {
             // Pick one position the requester hasn't already greened.
             const history = isP1 ? match.p1Guesses : match.p2Guesses;
+            const target = isP1 ? match.p1Word : match.p2Word;
             const greened = new Set<number>();
             for (const g of history) {
                 for (let i = 0; i < g.tiles.length; i++) {
@@ -340,9 +363,9 @@ class MatchRegistry {
                 }
             }
             const candidates: { pos: number; letter: string }[] = [];
-            for (let i = 0; i < match.word.length; i++) {
+            for (let i = 0; i < target.length; i++) {
                 if (!greened.has(i)) {
-                    candidates.push({ pos: i, letter: match.word[i]! });
+                    candidates.push({ pos: i, letter: target[i]! });
                 }
             }
             if (candidates.length === 0) {
@@ -430,11 +453,12 @@ class MatchRegistry {
         const isP1 = match.p1UserId === userId;
         const history = isP1 ? match.p1Guesses : match.p2Guesses;
         const usedSoFar = isP1 ? match.p1HintsUsed : match.p2HintsUsed;
+        const target = isP1 ? match.p1Word : match.p2Word;
 
         // Hint cap is word-length-aware: short words (4-7) get 1 hint,
         // long words (8-10) get 2 since they're meaningfully harder to
         // crack and a single positional reveal is less impactful.
-        const hintCap = match.word.length >= 8 ? 2 : 1;
+        const hintCap = target.length >= 8 ? 2 : 1;
         if (usedSoFar >= hintCap) {
             return {
                 ok: false,
@@ -449,7 +473,7 @@ class MatchRegistry {
         const result = await redeemHint({
             userId,
             matchId: match.id,
-            target: match.word,
+            target,
             history,
         });
         if (!result.ok) {
@@ -624,7 +648,7 @@ class MatchRegistry {
 
         socket.emit('match_found', {
             matchId: match.id,
-            wordLength: match.word.length,
+            wordLength: (isP1 ? match.p1Word : match.p2Word).length,
             durationSeconds: Math.ceil(match.durationMs / 1000),
             slot: isP1 ? 1 : 2,
             you: me,
@@ -697,22 +721,19 @@ class MatchRegistry {
         try {
             const isP1Bot = match.p1IsBot;
             const history = isP1Bot ? match.p1Guesses : match.p2Guesses;
-            // Build candidate pool of all words of the right length.
-            const { query } = await import('../db/pool.js');
-            const rows = await query<{ word: string }>(
-                'SELECT word FROM word_bank WHERE length = $1',
-                [match.word.length]
-            );
-            const candidates = rows.map((r) => r.word);
+            const target = isP1Bot ? match.p1Word : match.p2Word;
+            // Candidate pool comes from the in-memory word bank — no reason
+            // to hit Postgres for every bot guess.
+            const candidates = [...wordsOfLength(target.length)];
 
             const guess = await chooseBotGuess({
-                wordLength: match.word.length,
+                wordLength: target.length,
                 history,
                 difficulty: match.botDifficulty ?? 'medium',
                 candidates,
             });
 
-            const result = scoreGuess(guess, match.word);
+            const result = scoreGuess(guess, target);
             history.push(result);
             const guessIndex = history.length - 1;
 
@@ -753,6 +774,7 @@ class MatchRegistry {
         if (match.ended) return;
         match.ended = true;
         if (match.timerHandle) clearInterval(match.timerHandle);
+        if (match.endTimerHandle) clearTimeout(match.endTimerHandle);
         if (match.botTimerHandle) clearTimeout(match.botTimerHandle);
         if (match.p1GraceTimer) clearTimeout(match.p1GraceTimer);
         if (match.p2GraceTimer) clearTimeout(match.p2GraceTimer);
@@ -819,7 +841,8 @@ class MatchRegistry {
                 matchId: match.id,
                 player1Id: p1.id,
                 player2Id: p2.id,
-                word: match.word,
+                word: match.p1Word,
+                p2Word: match.p2Word === match.p1Word ? null : match.p2Word,
                 durationSeconds: durationSec,
                 outcome,
                 winnerId,
@@ -837,7 +860,8 @@ class MatchRegistry {
                 await saveReplay({
                     matchId: match.id,
                     mode: match.mode,
-                    word: match.word,
+                    word: match.p1Word,
+                    p2Word: match.p2Word === match.p1Word ? null : match.p2Word,
                     p1UserId: p1.id,
                     p2UserId: p2.id,
                     p1Username: p1.username,
@@ -933,7 +957,7 @@ class MatchRegistry {
             matchId: match.id,
             result: p1Result,
             outcome,
-            word: match.word,
+            word: match.p1Word,
             rankDelta: p1Delta,
             newRankPoints: updatedP1.rank_points,
             newRankTier: updatedP1.rank_tier as MatchOver['newRankTier'],
@@ -962,7 +986,7 @@ class MatchRegistry {
             matchId: match.id,
             result: p2Result,
             outcome,
-            word: match.word,
+            word: match.p2Word,
             rankDelta: p2Delta,
             newRankPoints: updatedP2.rank_points,
             newRankTier: updatedP2.rank_tier as MatchOver['newRankTier'],

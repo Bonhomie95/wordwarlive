@@ -55,6 +55,12 @@ export default function Home() {
     const gamePhase = useGameStore((s) => s.phase);
     const hasActiveMatch = gamePhase === 'playing' || gamePhase === 'matched';
     const [adBusy, setAdBusy] = useState(false);
+    // Optimistic local lock — flips to true the instant the user taps the
+    // daily-bonus button, before the server round-trip completes. Prevents
+    // double-claims. MUST live above the early return below: hooks after a
+    // conditional return crash with "Rendered more hooks than during the
+    // previous render" the moment `user` flips from null to loaded.
+    const [dailyLocallyClaimed, setDailyLocallyClaimed] = useState(false);
 
     useEffect(() => {
         // Refresh /me when the home screen mounts so rank/win counts are
@@ -86,9 +92,6 @@ export default function Home() {
             : null;
     const dailyAlreadyClaimed =
         !!lastDaily && sameLocalDay(lastDaily, new Date());
-    // Optimistic local lock — flips to true the instant the user taps the
-    // button, before the server round-trip completes. Prevents double-claims.
-    const [dailyLocallyClaimed, setDailyLocallyClaimed] = useState(false);
     const showDailyBonus =
         !adsRemoved &&
         adsAvailable() &&

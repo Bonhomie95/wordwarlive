@@ -22,18 +22,38 @@ import {
     dailyApi,
     type DailyAttempt,
     type DailyChallengeMeta,
+    type DailyHintState,
 } from '../../src/api/resources';
+import { ApiError } from '../../src/api/client';
+import { useAuthStore } from '../../src/store/authStore';
 import { Grid } from '../../src/components/game/Grid';
+import { HintButton } from '../../src/components/game/HintButton';
 import { Keyboard, deriveLetterStates } from '../../src/components/game/Keyboard';
-import { makeThemedStyles, colors } from '../../src/theme/colors';
+import { buildDailyShareMessage, shareText } from '../../src/share/shareResult';
+import { makeThemedStyles, colors, useThemeStore } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 
 type Cell = string | null;
 
+const HINT_COIN_COST = 50;
+
+/** Human messages for the /daily/hint error codes. */
+const HINT_ERRORS: Record<string, string> = {
+    PER_MATCH_LIMIT: "You've used all of today's hints.",
+    NOT_AFFORDABLE: `Not enough coins (hints cost ${HINT_COIN_COST}).`,
+    ALREADY_SOLVED: "You've already solved today's challenge.",
+    NO_POSITIONS_LEFT: 'Every remaining letter is already revealed.',
+};
+
 export default function DailyChallengeScreen() {
     const router = useRouter();
+    const user = useAuthStore((s) => s.user);
+    const refreshMe = useAuthStore((s) => s.refreshMe);
     const [meta, setMeta] = useState<DailyChallengeMeta | null>(null);
     const [attempt, setAttempt] = useState<DailyAttempt | null>(null);
+    const [hintState, setHintState] = useState<DailyHintState | null>(null);
+    const [hintBusy, setHintBusy] = useState(false);
+    const [hintNotice, setHintNotice] = useState<string | null>(null);
     const [board, setBoard] = useState<Cell[]>([]);
     const [cursor, setCursor] = useState(0);
     const [submitting, setSubmitting] = useState(false);
@@ -47,6 +67,9 @@ export default function DailyChallengeScreen() {
             const r = await dailyApi.today();
             setMeta(r.challenge);
             setAttempt(r.attempt);
+            // Hints survive app restarts — the server replays revealed
+            // positions (may be absent on older servers).
+            setHintState(r.hints ?? null);
             // Initialize empty input row of the right length.
             setBoard(new Array(r.challenge.wordLength).fill(null));
             setCursor(0);
@@ -138,6 +161,41 @@ export default function DailyChallengeScreen() {
         }
     }
 
+    async function requestHint() {
+        if (hintBusy || attempt?.solved) return;
+        setHintBusy(true);
+        setLastError(null);
+        try {
+            const r = await dailyApi.hint();
+            setHintState((prev) => ({
+                hintsUsed: (prev?.hintsUsed ?? 0) + 1,
+                hintCap: prev?.hintCap ?? 1,
+                hints: [
+                    ...(prev?.hints ?? []),
+                    { position: r.position, letter: r.letter },
+                ],
+            }));
+            setHintNotice(
+                r.paidWith === 'free'
+                    ? `Position ${r.position + 1} is "${r.letter}" (free)`
+                    : r.paidWith === 'credit'
+                    ? `Position ${r.position + 1} is "${r.letter}" (1 credit used)`
+                    : `Position ${r.position + 1} is "${r.letter}" (-${r.coinsSpent} coins)`
+            );
+            // Coins / credits changed — sync the profile.
+            refreshMe().catch(() => {});
+        } catch (err) {
+            const code =
+                err instanceof ApiError ? String(err.message) : '';
+            setLastError(
+                HINT_ERRORS[code] ??
+                    (err instanceof Error ? err.message : 'Hint failed')
+            );
+        } finally {
+            setHintBusy(false);
+        }
+    }
+
     if (!meta) {
         return (
             <SafeAreaView style={styles.safe}>
@@ -152,6 +210,20 @@ export default function DailyChallengeScreen() {
     const letterStates = deriveLetterStates(
         guesses.map((g) => ({ guess: g.guess, tiles: g.tiles }))
     );
+
+    // Revealed hint letters, keyed by position, for the grid's input row.
+    const hintsRevealed: Record<number, string> = {};
+    for (const h of hintState?.hints ?? []) {
+        hintsRevealed[h.position] = h.letter;
+    }
+
+    const coinBalance = user && 'coins' in user ? user.coins : 0;
+    const hintCredits = user && 'hintCredits' in user ? user.hintCredits : 0;
+    const lifetimeHintsUsed =
+        user && 'lifetimeHintsUsed' in user ? user.lifetimeHintsUsed : 0;
+    const hintsUsed = hintState?.hintsUsed ?? 0;
+    // 1 hint for short words, 2 for very long ones (8+) — server-enforced.
+    const hintsCap = hintState?.hintCap ?? (meta.wordLength >= 8 ? 2 : 1);
 
     return (
         <SafeAreaView style={styles.safe}>
@@ -183,8 +255,31 @@ export default function DailyChallengeScreen() {
                     inputCells={board}
                     inputCursor={cursor}
                     onTilePress={(pos) => setCursor(pos)}
+                    hintsRevealed={hintsRevealed}
                     maxRows={Math.max(6, guesses.length + 1)}
                 />
+
+                {!attempt?.solved ? (
+                    <View style={styles.hintRow}>
+                        <HintButton
+                            freeAvailable={lifetimeHintsUsed === 0}
+                            hintCredits={hintCredits}
+                            coins={coinBalance}
+                            hintCost={HINT_COIN_COST}
+                            hintsUsed={hintsUsed}
+                            hintsCap={hintsCap}
+                            onPress={requestHint}
+                            busy={hintBusy}
+                            hidden={hintsUsed >= hintsCap}
+                        />
+                    </View>
+                ) : null}
+
+                {hintNotice ? (
+                    <Text style={styles.hintNotice} allowFontScaling={false}>
+                        {hintNotice}
+                    </Text>
+                ) : null}
 
                 {lastError ? (
                     <Text style={styles.error} allowFontScaling={false}>
@@ -207,6 +302,35 @@ export default function DailyChallengeScreen() {
                             {attempt.guessCount === 1 ? '' : 'es'} ·{' '}
                             {Math.round((attempt.durationMs ?? 0) / 1000)}s
                         </Text>
+
+                        <Pressable
+                            style={styles.shareBtn}
+                            onPress={() => {
+                                if (!meta) return;
+                                shareText(
+                                    buildDailyShareMessage({
+                                        date: meta.challengeDate,
+                                        guesses: attempt.guesses,
+                                        solved: attempt.solved,
+                                        durationMs: attempt.durationMs,
+                                        highContrast:
+                                            useThemeStore.getState().colorBlind,
+                                    })
+                                );
+                            }}
+                        >
+                            <Ionicons
+                                name="share-social"
+                                size={16}
+                                color={colors.primary}
+                            />
+                            <Text
+                                style={styles.shareBtnText}
+                                allowFontScaling={false}
+                            >
+                                Share
+                            </Text>
+                        </Pressable>
 
                         {leaderboard.length > 0 ? (
                             <View style={styles.lbWrap}>
@@ -294,6 +418,16 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         textAlign: 'center',
         marginTop: spacing.sm,
     },
+    hintRow: {
+        alignItems: 'center',
+        marginTop: spacing.sm,
+    },
+    hintNotice: {
+        color: colors.warning,
+        textAlign: 'center',
+        marginTop: spacing.sm,
+        fontSize: typography.sizes.sm,
+    },
     keyboardWrap: {
         padding: spacing.sm,
     },
@@ -315,6 +449,22 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     solvedStats: {
         color: colors.textDim,
         fontSize: typography.sizes.sm,
+    },
+    shareBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.xs,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: colors.primary,
+        marginTop: spacing.xs,
+    },
+    shareBtnText: {
+        color: colors.primary,
+        fontSize: typography.sizes.sm,
+        fontWeight: typography.weights.semibold,
     },
     lbWrap: {
         width: '100%',

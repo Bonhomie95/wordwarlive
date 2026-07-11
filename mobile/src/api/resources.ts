@@ -133,12 +133,32 @@ export interface DailyAttempt {
     durationMs: number;
     startedAt: number;
 }
+/** Server-tracked hint state for today's challenge. Cap is word-length
+ *  aware: 1 hint for 4–7 letter words, 2 for 8+ (very long words). */
+export interface DailyHintState {
+    hintsUsed: number;
+    hintCap: number;
+    hints: { position: number; letter: string }[];
+}
 
 export const dailyApi = {
     today: () =>
-        apiRequest<{ challenge: DailyChallengeMeta; attempt: DailyAttempt | null }>(
-            '/api/daily'
-        ),
+        apiRequest<{
+            challenge: DailyChallengeMeta;
+            attempt: DailyAttempt | null;
+            hints: DailyHintState;
+        }>('/api/daily'),
+    hint: () =>
+        apiRequest<{
+            ok: true;
+            position: number;
+            letter: string;
+            paidWith: 'free' | 'credit' | 'coins';
+            coinsSpent: number;
+            coinsRemaining: number;
+            hintCreditsRemaining: number;
+            lifetimeHintsUsed: number;
+        }>('/api/daily/hint', { method: 'POST', body: {} }),
     guess: (guess: string) =>
         apiRequest<{
             ok: boolean;

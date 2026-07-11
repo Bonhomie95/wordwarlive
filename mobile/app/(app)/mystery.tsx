@@ -114,8 +114,8 @@ export default function MysteryScreen() {
                             </Text>
                             <Text style={styles.subtitle} allowFontScaling={false}>
                                 Submit a word. Match someone else who submitted
-                                the same length. Both of you race to crack one
-                                of your words.
+                                the same length. You race to crack their word
+                                while they race to crack yours.
                             </Text>
                         </View>
                     </View>

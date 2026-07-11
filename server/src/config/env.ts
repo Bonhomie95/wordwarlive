@@ -14,6 +14,11 @@ const schema = z.object({
         .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
         .default('info'),
     CORS_ORIGINS: z.string().default('*'),
+    // How many proxy hops to trust for the client IP (rate limiting). 0 =
+    // direct exposure (use the socket address). Set to 1 behind a single
+    // load balancer / reverse proxy. Trusting more hops than you actually
+    // have lets clients spoof X-Forwarded-For and bypass rate limits.
+    TRUST_PROXY: z.coerce.number().int().nonnegative().default(0),
 
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
@@ -31,6 +36,22 @@ const schema = z.object({
 
     GROQ_API_KEY: z.string().optional().default(''),
     GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
+
+    // ─── In-app purchase verification ───────────────────────────────────────
+    // When false (dev default), purchase endpoints grant items without
+    // contacting the stores so the shop stays interactive locally. Turn ON
+    // in production so receipts are verified before anything is granted.
+    IAP_ENFORCE: z
+        .enum(['true', 'false'])
+        .default('false')
+        .transform((v) => v === 'true'),
+    // App Store shared secret (App Store Connect → App → App-Specific Shared
+    // Secret). Required for iOS receipt verification when IAP_ENFORCE=true.
+    APPLE_IAP_SHARED_SECRET: z.string().optional().default(''),
+    // Play Store package name + a service-account JSON (stringified) with the
+    // androidpublisher scope. Required for Android verification when enforced.
+    GOOGLE_PLAY_PACKAGE_NAME: z.string().optional().default(''),
+    GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: z.string().optional().default(''),
 
     MATCH_DURATION_SECONDS: z.coerce.number().int().positive().default(360),
     MATCHMAKING_BOT_AFTER_SECONDS: z.coerce.number().int().positive().default(20),

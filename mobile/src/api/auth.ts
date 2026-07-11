@@ -47,3 +47,30 @@ export function loginWithApple(idToken: string) {
         auth: false,
     });
 }
+
+// ─── Account linking (guest → permanent) ────────────────────────────────────
+//
+// These run AUTHENTICATED as the current anonymous session. The server
+// upgrades the same users row in place (id, username, rank, coins, match
+// history all preserved) and returns a fresh token for the new provider.
+
+export function linkEmail(args: { email: string; password: string }) {
+    return apiRequest<AuthResponse>('/api/auth/link/email', {
+        method: 'POST',
+        body: args,
+    });
+}
+
+export function linkGoogle(idToken: string) {
+    return apiRequest<AuthResponse>('/api/auth/link/google', {
+        method: 'POST',
+        body: { idToken },
+    });
+}
+
+export function linkApple(idToken: string) {
+    return apiRequest<AuthResponse>('/api/auth/link/apple', {
+        method: 'POST',
+        body: { idToken },
+    });
+}

@@ -13,6 +13,7 @@ import {
 } from '../services/coinsService.js';
 import { findUserById } from '../services/userService.js';
 import { effectiveStreak, MILESTONES, nextMilestone } from '../services/streakService.js';
+import { verifyIapPurchase } from '../iap/verify.js';
 
 export const coinsRouter = Router();
 
@@ -25,12 +26,29 @@ coinsRouter.get('/coins/packs', (_req, res) => {
 
 const purchaseSchema = z.object({
     receipt: z.string().optional(),
+    platform: z.enum(['ios', 'android']).optional(),
+    transactionId: z.string().optional(),
 });
 
 coinsRouter.post('/coins/packs/:id/purchase', requireAuth, async (req, res) => {
-    const id = req.params.id ?? '';
+    const id = String(req.params.id ?? '');
     const parsed = purchaseSchema.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+
+    const pack = COIN_PACKS.find((p) => p.id === id);
+    if (!pack) return res.status(404).json({ error: 'Unknown pack' });
+
+    const verified = await verifyIapPurchase({
+        userId: req.session!.userId,
+        productId: pack.productId,
+        entitlement: `coins:${pack.id}`,
+        platform: parsed.data.platform,
+        receipt: parsed.data.receipt,
+        transactionId: parsed.data.transactionId,
+    });
+    if (!verified.ok) {
+        return res.status(verified.status).json({ error: verified.error });
+    }
 
     const result = await fulfillCoinPackPurchase({
         userId: req.session!.userId,

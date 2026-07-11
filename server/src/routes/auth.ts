@@ -3,10 +3,14 @@ import { z } from 'zod';
 import {
     createUser,
     findUserByEmail,
+    findUserById,
     findUserByProviderSubject,
     getPasswordHash,
     isValidUsername,
+    type UserRow,
 } from '../services/userService.js';
+import { requireAuth } from '../auth/middleware.js';
+import { query } from '../db/pool.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
 import { verifyGoogleIdToken } from '../auth/google.js';
@@ -44,14 +48,11 @@ async function uniqueUsername(base: string): Promise<string> {
     for (let n = 0; n < 50; n++) {
         const candidate = n === 0 ? clean : `${clean}${n}`;
         if (!isValidUsername(candidate)) continue;
-        const taken = await findUserByEmail(candidate); // username is unique, but emails are too
-        // Actually we need a proper username check, not email. Let's use a direct query:
-        const { query } = await import('../db/pool.js');
         const rows = await query<{ id: string }>(
             'SELECT id FROM users WHERE lower(username) = lower($1)',
             [candidate]
         );
-        if (rows.length === 0 && !taken) return candidate;
+        if (rows.length === 0) return candidate;
     }
     // Fallback: random suffix
     return `${clean}${Math.random().toString(36).slice(2, 6)}`;
@@ -113,7 +114,6 @@ authRouter.post('/email/register', async (req, res) => {
     if (await findUserByEmail(email)) {
         return res.status(409).json({ error: 'Email already in use' });
     }
-    const { query } = await import('../db/pool.js');
     const exists = await query('SELECT id FROM users WHERE lower(username) = lower($1)', [username]);
     if (exists.length > 0) {
         return res.status(409).json({ error: 'Username taken' });
@@ -230,4 +230,157 @@ authRouter.post('/apple', async (req, res) => {
         provider: 'apple',
     });
     res.json({ token, user: shapeUserForClient(user) });
+});
+
+// ─── Account linking (anonymous → permanent) ────────────────────────────────
+//
+// A guest can upgrade to email / Google / Apple IN PLACE: the same users row
+// keeps its id, username, rank, coins, cosmetics, and match history — only
+// the auth columns change. After linking, the old device-id login stops
+// resolving to this account (auth_subject changed), which is the point:
+// the account is now protected by real credentials.
+
+/** Load the session user and assert they're still an anonymous account. */
+async function loadAnonymousUser(
+    userId: string
+): Promise<{ ok: true; user: UserRow } | { ok: false; status: number; error: string }> {
+    const user = await findUserById(userId);
+    if (!user) return { ok: false, status: 404, error: 'User not found' };
+    if (user.auth_provider !== 'anonymous') {
+        return {
+            ok: false,
+            status: 409,
+            error: 'This account is already linked to a sign-in method.',
+        };
+    }
+    return { ok: true, user };
+}
+
+const linkEmailSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(8).max(128),
+});
+
+authRouter.post('/link/email', requireAuth, async (req, res) => {
+    const parsed = linkEmailSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid body', details: parsed.error.issues });
+    }
+    const check = await loadAnonymousUser(req.session!.userId);
+    if (!check.ok) return res.status(check.status).json({ error: check.error });
+
+    const { email, password } = parsed.data;
+    if (await findUserByEmail(email)) {
+        return res.status(409).json({ error: 'Email already in use by another account.' });
+    }
+
+    const rows = await query<{ id: string }>(
+        `UPDATE users SET
+            auth_provider = 'email',
+            auth_subject = lower($1),
+            email = $1,
+            password_hash = $2,
+            updated_at = now()
+         WHERE id = $3 AND auth_provider = 'anonymous'
+         RETURNING id`,
+        [email, await hashPassword(password), check.user.id]
+    );
+    if (rows.length === 0) {
+        return res.status(409).json({ error: 'Account was already linked.' });
+    }
+
+    logger.info({ userId: check.user.id }, 'Anonymous account linked to email');
+    const token = signSession({
+        userId: check.user.id,
+        username: check.user.username,
+        provider: 'email',
+    });
+    const fresh = await findUserById(check.user.id);
+    res.json({ token, user: shapeUserForClient(fresh!) });
+});
+
+authRouter.post('/link/google', requireAuth, async (req, res) => {
+    const parsed = googleSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+    const check = await loadAnonymousUser(req.session!.userId);
+    if (!check.ok) return res.status(check.status).json({ error: check.error });
+
+    let identity;
+    try {
+        identity = await verifyGoogleIdToken(parsed.data.idToken);
+    } catch (err) {
+        logger.warn({ err }, 'Google id_token verification failed (link)');
+        return res.status(401).json({ error: 'Could not verify Google identity' });
+    }
+    if (await findUserByProviderSubject('google', identity.sub)) {
+        return res.status(409).json({
+            error: 'That Google account is already linked to another player.',
+        });
+    }
+
+    const rows = await query<{ id: string }>(
+        `UPDATE users SET
+            auth_provider = 'google',
+            auth_subject = $1,
+            email = COALESCE($2, email),
+            updated_at = now()
+         WHERE id = $3 AND auth_provider = 'anonymous'
+         RETURNING id`,
+        [identity.sub, identity.email ?? null, check.user.id]
+    );
+    if (rows.length === 0) {
+        return res.status(409).json({ error: 'Account was already linked.' });
+    }
+
+    logger.info({ userId: check.user.id }, 'Anonymous account linked to Google');
+    const token = signSession({
+        userId: check.user.id,
+        username: check.user.username,
+        provider: 'google',
+    });
+    const fresh = await findUserById(check.user.id);
+    res.json({ token, user: shapeUserForClient(fresh!) });
+});
+
+authRouter.post('/link/apple', requireAuth, async (req, res) => {
+    const parsed = appleSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+    const check = await loadAnonymousUser(req.session!.userId);
+    if (!check.ok) return res.status(check.status).json({ error: check.error });
+
+    let identity;
+    try {
+        identity = await verifyAppleIdToken(parsed.data.idToken);
+    } catch (err) {
+        logger.warn({ err }, 'Apple id_token verification failed (link)');
+        return res.status(401).json({ error: 'Could not verify Apple identity' });
+    }
+    if (await findUserByProviderSubject('apple', identity.sub)) {
+        return res.status(409).json({
+            error: 'That Apple ID is already linked to another player.',
+        });
+    }
+
+    const rows = await query<{ id: string }>(
+        `UPDATE users SET
+            auth_provider = 'apple',
+            auth_subject = $1,
+            email = COALESCE($2, email),
+            updated_at = now()
+         WHERE id = $3 AND auth_provider = 'anonymous'
+         RETURNING id`,
+        [identity.sub, identity.email ?? null, check.user.id]
+    );
+    if (rows.length === 0) {
+        return res.status(409).json({ error: 'Account was already linked.' });
+    }
+
+    logger.info({ userId: check.user.id }, 'Anonymous account linked to Apple');
+    const token = signSession({
+        userId: check.user.id,
+        username: check.user.username,
+        provider: 'apple',
+    });
+    const fresh = await findUserById(check.user.id);
+    res.json({ token, user: shapeUserForClient(fresh!) });
 });

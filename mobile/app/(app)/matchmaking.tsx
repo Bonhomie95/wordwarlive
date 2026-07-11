@@ -86,7 +86,7 @@ export default function Matchmaking() {
 
     const waited = Math.floor((queueStatus?.waitedMs ?? 0) / 1000);
     const headline =
-        queueStatus?.state === 'matching_with_bot'
+        queueStatus?.state === 'finalizing'
             ? 'Opponent found!'
             : queueStatus?.state === 'expanded_search'
             ? 'Looking further afield…'
@@ -94,7 +94,7 @@ export default function Matchmaking() {
             ? 'Searching for a mystery opponent…'
             : 'Searching for an opponent…';
     const sub =
-        queueStatus?.state === 'matching_with_bot'
+        queueStatus?.state === 'finalizing'
             ? 'Get ready — your match is starting.'
             : mode === 'mystery'
             ? 'Finding someone with a same-length word.'

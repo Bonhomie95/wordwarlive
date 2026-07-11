@@ -172,7 +172,7 @@ class MatchmakingHub {
             io.to(meta.socketId).emit('queue_status', {
                 state:
                     waited >= meta.botAfterMs
-                        ? 'matching_with_bot'
+                        ? 'finalizing'
                         : waited >= 10_000
                         ? 'expanded_search'
                         : 'searching',

@@ -4,9 +4,11 @@ import {
     Pressable,
     StyleSheet,
     Text,
+    View,
     type StyleProp,
     type ViewStyle,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 
@@ -19,6 +21,8 @@ interface Props {
     busy?: boolean;
     disabled?: boolean;
     style?: StyleProp<ViewStyle>;
+    /** Optional leading Ionicons glyph, e.g. 'share-social'. */
+    icon?: keyof typeof Ionicons.glyphMap;
 }
 
 export const Button: React.FC<Props> = ({
@@ -28,6 +32,7 @@ export const Button: React.FC<Props> = ({
     busy,
     disabled,
     style,
+    icon,
 }) => {
     const isDisabled = disabled || busy;
     return (
@@ -45,9 +50,18 @@ export const Button: React.FC<Props> = ({
             {busy ? (
                 <ActivityIndicator color={textColor[variant]} />
             ) : (
-                <Text style={[styles.label, { color: textColor[variant] }]} allowFontScaling={false}>
-                    {label}
-                </Text>
+                <View style={styles.content}>
+                    {icon ? (
+                        <Ionicons
+                            name={icon}
+                            size={18}
+                            color={textColor[variant]}
+                        />
+                    ) : null}
+                    <Text style={[styles.label, { color: textColor[variant] }]} allowFontScaling={false}>
+                        {label}
+                    </Text>
+                </View>
             )}
         </Pressable>
     );
@@ -65,6 +79,11 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontWeight: typography.weights.bold,
         fontSize: typography.sizes.md,
         letterSpacing: 0.5,
+    },
+    content: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
     },
 }));
 

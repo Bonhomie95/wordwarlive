@@ -193,7 +193,8 @@ export async function fulfillCoinPackPurchase(args: {
 }): Promise<{ pack: CoinPack; newBalance: number } | null> {
     const pack = COIN_PACKS.find((p) => p.id === args.packId);
     if (!pack) return null;
-    // TODO(prod): verify args.receipt against App Store / Play before granting.
+    // Receipt is verified upstream in the route via verifyIapPurchase() before
+    // this runs (see routes/coins.ts). This function just grants the coins.
     const newBalance = await grantCoins({
         userId: args.userId,
         amount: pack.coins,

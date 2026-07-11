@@ -337,7 +337,8 @@ async function bumpBattlePassXp(userId: string, xp: number): Promise<void> {
 // ─── Remove Ads IAP ─────────────────────────────────────────────────────────
 
 export async function applyRemoveAdsPurchase(userId: string): Promise<void> {
-    // TODO(prod): verify the IAP receipt with App Store / Play Billing first.
+    // The IAP receipt is verified upstream in routes/ads.ts (verifyIapPurchase)
+    // before this runs.
     await query(
         `UPDATE users SET ads_removed = TRUE, updated_at = now() WHERE id = $1`,
         [userId]

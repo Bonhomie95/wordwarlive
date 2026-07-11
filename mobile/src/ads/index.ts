@@ -143,9 +143,23 @@ export interface RewardedShowResult {
     error?: string;
 }
 
+/** How long we wait for a rewarded ad to LOAD before giving up. Without
+ *  this, a network/AdMob outage left the promise pending forever — and the
+ *  blocking AdLoadingOverlay with it, freezing the whole screen. */
+const REWARDED_LOAD_TIMEOUT_MS = 12_000;
+
+/** Last-resort watchdog AFTER show() is called. If AdMob never fires
+ *  CLOSED or ERROR (seen with mid-play SDK errors / activity teardown),
+ *  the promise would hang and the caller's blocking overlay would stay up
+ *  forever. A rewarded ad + end card is well under 3 minutes; if we're
+ *  still pending by then, settle so the UI is guaranteed to unfreeze.
+ *  (If the user did earn, the server-side SSV callback still grants it.) */
+const SHOW_WATCHDOG_MS = 180_000;
+
 /**
- * Show a rewarded ad. Resolves once the user dismisses it (whether they
- * earned the reward or not).
+ * Show a rewarded ad. ALWAYS resolves: when the user dismisses the ad,
+ * when it errors, or when loading times out — so callers can safely keep
+ * a blocking overlay up until this settles.
  *
  * customData = "<userId>|<slot>" lets AdMob's SSV callback route the reward
  * server-side without trusting the client.
@@ -171,9 +185,12 @@ export async function showRewarded(
 
         let earned = false;
         let resolved = false;
+        let showWatchdog: ReturnType<typeof setTimeout> | null = null;
         const finish = (r: RewardedShowResult) => {
             if (resolved) return;
             resolved = true;
+            clearTimeout(loadTimer);
+            if (showWatchdog) clearTimeout(showWatchdog);
             offLoaded?.();
             offReward?.();
             offClosed?.();
@@ -181,7 +198,22 @@ export async function showRewarded(
             resolve(r);
         };
 
+        // Give up if the ad hasn't loaded in time (offline, AdMob down…).
+        // Once it HAS loaded and is showing, the timer no longer applies —
+        // the user can watch at their own pace.
+        const loadTimer = setTimeout(() => {
+            finish({
+                earned: false,
+                unavailable: false,
+                error: 'Ad took too long to load. Check your connection and try again.',
+            });
+        }, REWARDED_LOAD_TIMEOUT_MS);
+
         const offLoaded = ad.addAdEventListener(m.RewardedAdEventType.LOADED, () => {
+            clearTimeout(loadTimer);
+            showWatchdog = setTimeout(() => {
+                finish({ earned, unavailable: false });
+            }, SHOW_WATCHDOG_MS);
             ad.show().catch((err: unknown) => {
                 finish({
                     earned: false,
@@ -234,9 +266,11 @@ export async function showInterstitial(): Promise<void> {
     return new Promise<void>((resolve) => {
         const ad = m.InterstitialAd.createForAdRequest(unitId);
         let resolved = false;
+        let showWatchdog: ReturnType<typeof setTimeout> | null = null;
         const done = () => {
             if (resolved) return;
             resolved = true;
+            if (showWatchdog) clearTimeout(showWatchdog);
             offLoaded?.();
             offError?.();
             offClosed?.();
@@ -246,6 +280,9 @@ export async function showInterstitial(): Promise<void> {
 
         const offLoaded = ad.addAdEventListener(m.AdEventType.LOADED, () => {
             clearTimeout(timer);
+            // Same last-resort settle as showRewarded: if CLOSED/ERROR never
+            // fire after show(), don't leave the caller's overlay up forever.
+            showWatchdog = setTimeout(done, SHOW_WATCHDOG_MS);
             ad.show().catch(done);
         });
         const offError = ad.addAdEventListener(m.AdEventType.ERROR, () => {

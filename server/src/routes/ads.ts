@@ -7,12 +7,14 @@
 //                                       (verification stubbed in dev).
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
 import {
     applyRemoveAdsPurchase,
     processSsvReward,
     verifySsvSignature,
 } from '../services/adsService.js';
+import { REMOVE_ADS_PRODUCT_ID, verifyIapPurchase } from '../iap/verify.js';
 import { logger } from '../utils/logger.js';
 
 export const adsRouter = Router();
@@ -71,9 +73,28 @@ adsRouter.get('/ads/ssv', async (req, res) => {
     }
 });
 
+const removeAdsSchema = z.object({
+    receipt: z.string().optional(),
+    platform: z.enum(['ios', 'android']).optional(),
+    transactionId: z.string().optional(),
+});
+
 adsRouter.post('/ads/remove-ads-purchase', requireAuth, async (req, res) => {
-    // Body shape (in prod): { receipt: string, productId: string }.
-    // For now we just flip the flag. See userService TODO(prod).
+    const parsed = removeAdsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+
+    const verified = await verifyIapPurchase({
+        userId: req.session!.userId,
+        productId: REMOVE_ADS_PRODUCT_ID,
+        entitlement: 'remove_ads',
+        platform: parsed.data.platform,
+        receipt: parsed.data.receipt,
+        transactionId: parsed.data.transactionId,
+    });
+    if (!verified.ok) {
+        return res.status(verified.status).json({ error: verified.error });
+    }
+
     await applyRemoveAdsPurchase(req.session!.userId);
     res.json({ ok: true });
 });

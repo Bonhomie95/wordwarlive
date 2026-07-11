@@ -32,7 +32,8 @@ export interface PublicUser {
     rankTier: RankTier;
     wins: number;
     losses: number;
-    isBot?: boolean;
+    // No isBot on the wire — bots present as regular players (product
+    // decision); bot tracking lives server-side only.
     equipped?: {
         boardTheme: string | null;
         victoryAnim: string | null;
@@ -189,7 +190,6 @@ export interface RecentMatch {
     isWin: boolean;
     rankDelta: number;
     opponentUsername: string;
-    opponentIsBot: boolean;
     durationSeconds: number;
     endedAt: string;
 }
@@ -269,12 +269,12 @@ export interface ServerToClientEvents {
 }
 
 export interface QueueStatus {
-    state: 'searching' | 'expanded_search' | 'matching_with_bot';
+    state: 'searching' | 'expanded_search' | 'finalizing';
     waitedMs: number;
 }
 
 export interface MysteryQueueStatus {
-    state: 'searching' | 'matching_with_bot';
+    state: 'searching' | 'finalizing';
     waitedMs: number;
     /** When waitedMs crosses this, a bot is spawned. UI uses it for the
      *  "Searching… 12 / 18s" display. */

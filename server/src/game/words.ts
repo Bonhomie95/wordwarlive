@@ -59,6 +59,13 @@ export function getDifficulty(word: string): number {
     return difficultyByWord.get(word.toUpperCase()) ?? 3;
 }
 
+/** All words of a given length (empty array if none). Returned array is the
+ *  live cache — callers must not mutate it. */
+export function wordsOfLength(length: number): readonly string[] {
+    ensureLoaded();
+    return byLength.get(length) ?? [];
+}
+
 /** Random word of a given length. Throws if no words of that length exist. */
 export function pickRandomWord(length: number): string {
     ensureLoaded();

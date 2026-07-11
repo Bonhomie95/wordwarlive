@@ -44,7 +44,7 @@ friendsRouter.get('/friends', requireAuth, async (req, res) => {
 });
 
 friendsRouter.delete('/friends/:friendId', requireAuth, async (req, res) => {
-    await removeFriend(req.session!.userId, req.params.friendId!);
+    await removeFriend(req.session!.userId, String(req.params.friendId ?? ''));
     res.json({ ok: true });
 });
 

@@ -7,10 +7,14 @@
 // Key design choices:
 //  • Bots have a difficulty level driven by the human opponent's rank.
 //    Stone/Bronze players face mediocre bots; Diamond+ face sharp ones.
-//  • Bots think for 4–12s between guesses (random) so the cadence feels
+//  • Bots think between guesses (random delay) so the cadence feels
 //    human-ish. Tunable via BOT_THINK_MIN/MAX_MS.
-//  • Bot usernames start with `bot-` and `is_bot` is surfaced to the
-//    client per the brief — no impersonation.
+//  • Product decision: bots present as REGULAR PLAYERS on the wire —
+//    realistic generated usernames, plausible stats, no is_bot flag sent
+//    to clients. Early-stage matchmaking leans on bots, and labeling them
+//    would make the game feel empty. Bot identity lives server-side only
+//    (auth_subject 'bot-…', p1_is_bot/p2_is_bot on matches) and bots are
+//    excluded from all leaderboards.
 
 import { groqJSON, isGroqEnabled } from './groq.js';
 import { isValidWord, pickRandomWord } from '../game/words.js';

@@ -32,7 +32,10 @@ export interface ReplayFull extends ReplayMeta {
 export async function saveReplay(args: {
     matchId: string;
     mode: string;
+    /** Player 1's target word. */
     word: string;
+    /** Player 2's target word when it differs (mystery); null otherwise. */
+    p2Word?: string | null;
     p1UserId: string;
     p2UserId: string;
     p1Username: string;
@@ -46,21 +49,22 @@ export async function saveReplay(args: {
 }): Promise<void> {
     await query(
         `INSERT INTO match_replays(
-            match_id, mode, word, word_length,
+            match_id, mode, word, p2_word, word_length,
             p1_user_id, p2_user_id, p1_username, p2_username,
             p1_guesses, p2_guesses, winner, outcome,
             duration_ms, started_at
          ) VALUES (
-            $1, $2, $3, $4,
-            $5, $6, $7, $8,
-            $9::jsonb, $10::jsonb, $11, $12,
-            $13, to_timestamp($14 / 1000.0)
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9,
+            $10::jsonb, $11::jsonb, $12, $13,
+            $14, to_timestamp($15 / 1000.0)
          )
          ON CONFLICT (match_id) DO NOTHING`,
         [
             args.matchId,
             args.mode,
             args.word,
+            args.p2Word ?? null,
             args.word.length,
             args.p1UserId,
             args.p2UserId,
@@ -89,6 +93,7 @@ export async function listReplaysForUser(
         match_id: string;
         mode: string;
         word: string;
+        p2_word: string | null;
         word_length: number;
         p1_user_id: string;
         p1_username: string;
@@ -98,7 +103,7 @@ export async function listReplaysForUser(
         duration_ms: number;
         created_at: Date;
     }>(
-        `SELECT match_id, mode, word, word_length,
+        `SELECT match_id, mode, word, p2_word, word_length,
                 p1_user_id, p1_username, p2_username,
                 winner, outcome, duration_ms, created_at
          FROM match_replays
@@ -116,7 +121,7 @@ export async function listReplaysForUser(
         return {
             matchId: r.match_id,
             mode: r.mode,
-            word: r.word,
+            word: isP1 ? r.word : r.p2_word ?? r.word,
             wordLength: r.word_length,
             opponentUsername,
             youWon,
@@ -135,6 +140,7 @@ export async function getReplay(
         match_id: string;
         mode: string;
         word: string;
+        p2_word: string | null;
         word_length: number;
         p1_user_id: string;
         p1_username: string;
@@ -146,7 +152,7 @@ export async function getReplay(
         duration_ms: number;
         created_at: Date;
     }>(
-        `SELECT match_id, mode, word, word_length,
+        `SELECT match_id, mode, word, p2_word, word_length,
                 p1_user_id, p1_username, p2_username,
                 p1_guesses, p2_guesses, winner, outcome,
                 duration_ms, created_at
@@ -161,7 +167,7 @@ export async function getReplay(
     return {
         matchId: r.match_id,
         mode: r.mode,
-        word: r.word,
+        word: isP1 ? r.word : r.p2_word ?? r.word,
         wordLength: r.word_length,
         opponentUsername: isP1 ? r.p2_username : r.p1_username,
         youWon: (isP1 && r.winner === 'p1') || (!isP1 && r.winner === 'p2'),

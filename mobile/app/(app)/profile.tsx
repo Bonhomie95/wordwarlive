@@ -43,7 +43,30 @@ export default function Profile() {
     const totalGames = user.wins + user.losses;
     const winRate = totalGames === 0 ? 0 : Math.round((user.wins / totalGames) * 100);
 
+    const isGuest = user.provider === 'anonymous';
+
     function onSignOut() {
+        // Guests have no way to sign back into this account from another
+        // session — warn them and steer towards linking first.
+        if (isGuest) {
+            Alert.alert(
+                'Sign out of guest account?',
+                'This is a guest account. Link an email, Google, or Apple sign-in first — otherwise your rank, coins, and history stay tied to this device only.',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Link account',
+                        onPress: () => router.push('/(app)/link-account'),
+                    },
+                    {
+                        text: 'Sign out anyway',
+                        style: 'destructive',
+                        onPress: () => signOut(),
+                    },
+                ]
+            );
+            return;
+        }
         Alert.alert('Sign out?', 'You can sign back in any time.', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
@@ -66,6 +89,39 @@ export default function Profile() {
                             </View>
                             <RankBadge tier={tier} points={user.rankPoints} />
                         </View>
+
+                        {isGuest ? (
+                            <View style={styles.linkCard}>
+                                <View style={styles.linkCardHeader}>
+                                    <Ionicons
+                                        name="shield-checkmark"
+                                        size={18}
+                                        color={colors.warning}
+                                    />
+                                    <Text
+                                        style={styles.linkCardTitle}
+                                        allowFontScaling={false}
+                                    >
+                                        Guest account
+                                    </Text>
+                                </View>
+                                <Text
+                                    style={styles.linkCardBody}
+                                    allowFontScaling={false}
+                                >
+                                    Link an email, Google, or Apple sign-in to
+                                    keep your rank, coins, and history — and to
+                                    sign in from any device.
+                                </Text>
+                                <Button
+                                    label="Link account"
+                                    onPress={() =>
+                                        router.push('/(app)/link-account')
+                                    }
+                                    style={{ height: 44 }}
+                                />
+                            </View>
+                        ) : null}
 
                         <View style={styles.statsCard}>
                             <Stat label="Wins" value={String(user.wins)} />
@@ -125,7 +181,6 @@ function MatchRow({ match }: { match: RecentMatch }) {
                     </Text>
                     <Text style={styles.matchOpp} allowFontScaling={false}>
                         vs {match.opponentUsername}
-                        {match.opponentIsBot ? ' (bot)' : ''}
                     </Text>
                 </View>
             </View>
@@ -231,4 +286,27 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginTop: spacing.xl,
     },
     footer: { marginTop: spacing.xl, gap: spacing.sm },
+    linkCard: {
+        backgroundColor: colors.surface,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.warning,
+        padding: spacing.md,
+        gap: spacing.sm,
+    },
+    linkCardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    linkCardTitle: {
+        color: colors.warning,
+        fontSize: typography.sizes.md,
+        fontWeight: typography.weights.bold,
+    },
+    linkCardBody: {
+        color: colors.textDim,
+        fontSize: typography.sizes.sm,
+        lineHeight: 19,
+    },
 }));

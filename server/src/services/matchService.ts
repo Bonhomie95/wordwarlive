@@ -13,7 +13,11 @@ export interface PersistMatchArgs {
     matchId: string;
     player1Id: string;
     player2Id: string;
+    /** Player 1's target word. */
     word: string;
+    /** Player 2's target word when it differs (mystery matches); null when
+     *  both players raced the same word. */
+    p2Word?: string | null;
     durationSeconds: number;
     outcome: MatchOutcome;
     winnerId: string | null;
@@ -34,17 +38,18 @@ export async function persistMatch(args: PersistMatchArgs): Promise<string> {
 
         const matchRes = await client.query<{ id: string }>(
             `INSERT INTO matches
-                (id, player1_id, player2_id, word, word_length, winner_id,
+                (id, player1_id, player2_id, word, p2_word, word_length, winner_id,
                  outcome, duration_seconds, p1_rank_delta, p2_rank_delta,
                  p1_is_bot, p2_is_bot, started_at, ended_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                     to_timestamp($13 / 1000.0), now())
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                     to_timestamp($14 / 1000.0), now())
              RETURNING id`,
             [
                 args.matchId,
                 args.player1Id,
                 args.player2Id,
                 args.word.toUpperCase(),
+                args.p2Word ? args.p2Word.toUpperCase() : null,
                 args.word.length,
                 args.winnerId,
                 args.outcome,
@@ -94,7 +99,12 @@ export async function persistMatch(args: PersistMatchArgs): Promise<string> {
     }
 }
 
-/** Recent matches for a user, with opponent info. */
+/** Recent matches for a user, with opponent info.
+ *
+ *  Deliberately NO bot flag here: bots present as regular players on the
+ *  wire (product decision — early-stage matchmaking leans on bots, and
+ *  labeling them would make the game feel empty). p1_is_bot / p2_is_bot
+ *  stay in the DB for analytics only. */
 export interface RecentMatch {
     id: string;
     word: string;
@@ -102,7 +112,6 @@ export interface RecentMatch {
     isWin: boolean;
     rankDelta: number;
     opponentUsername: string;
-    opponentIsBot: boolean;
     durationSeconds: number;
     endedAt: string;
 }
@@ -115,14 +124,13 @@ export async function listRecentMatches(
     return query<RecentMatch>(
         `SELECT
             m.id,
-            m.word,
+            CASE WHEN m.player1_id = $1 THEN m.word ELSE COALESCE(m.p2_word, m.word) END AS word,
             m.outcome,
             m.duration_seconds AS "durationSeconds",
             m.ended_at AS "endedAt",
             CASE WHEN m.player1_id = $1 THEN m.p1_rank_delta ELSE m.p2_rank_delta END AS "rankDelta",
             CASE WHEN m.winner_id = $1 THEN TRUE ELSE FALSE END AS "isWin",
-            CASE WHEN m.player1_id = $1 THEN u2.username ELSE u1.username END AS "opponentUsername",
-            CASE WHEN m.player1_id = $1 THEN m.p2_is_bot ELSE m.p1_is_bot END AS "opponentIsBot"
+            CASE WHEN m.player1_id = $1 THEN u2.username ELSE u1.username END AS "opponentUsername"
          FROM matches m
          JOIN users u1 ON u1.id = m.player1_id
          JOIN users u2 ON u2.id = m.player2_id

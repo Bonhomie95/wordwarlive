@@ -186,8 +186,8 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
         set({
             queueStatus: {
                 state:
-                    s.state === 'matching_with_bot'
-                        ? 'matching_with_bot'
+                    s.state === 'finalizing'
+                        ? 'finalizing'
                         : 'searching',
                 waitedMs: s.waitedMs,
             },

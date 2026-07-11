@@ -7,7 +7,7 @@ import Animated, {
     useSharedValue,
     withTiming,
 } from 'react-native-reanimated';
-import { makeThemedStyles, colors } from '../../theme/colors';
+import { makeThemedStyles, colors, useThemeStore } from '../../theme/colors';
 import { typography, radius } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
 
@@ -33,12 +33,6 @@ interface Props {
     } | null;
 }
 
-const DEFAULT_COLOR_FOR_STATE: Record<TileColor, string> = {
-    correct: colors.tileCorrect,
-    misplaced: colors.tileMisplaced,
-    wrong: colors.tileWrong,
-};
-
 const TileRaw: React.FC<Props> = ({
     letter,
     state,
@@ -62,11 +56,15 @@ const TileRaw: React.FC<Props> = ({
     }, [state, flip]);
 
     // Resolve the color palette: override beats default per-key, so a
-    // theme that defines only `correct` still inherits the rest.
+    // theme that defines only `correct` still inherits the rest. Colors are
+    // read at render time (not module load) so theme swaps propagate.
+    // Exception: color-blind mode wins over cosmetic board themes — an
+    // equipped theme's own green/yellow would defeat the accessible palette.
+    const colorBlind = useThemeStore((s) => s.colorBlind);
     const palette: Record<TileColor, string> = {
-        correct: boardOverride?.correct ?? DEFAULT_COLOR_FOR_STATE.correct,
-        misplaced: boardOverride?.misplaced ?? DEFAULT_COLOR_FOR_STATE.misplaced,
-        wrong: boardOverride?.wrong ?? DEFAULT_COLOR_FOR_STATE.wrong,
+        correct: (colorBlind ? null : boardOverride?.correct) ?? colors.tileCorrect,
+        misplaced: (colorBlind ? null : boardOverride?.misplaced) ?? colors.tileMisplaced,
+        wrong: boardOverride?.wrong ?? colors.tileWrong,
     };
 
     // Pre-resolve every color the worklet needs into plain string locals.

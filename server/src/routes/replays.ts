@@ -15,7 +15,7 @@ replaysRouter.get('/replays', requireAuth, async (req, res) => {
 });
 
 replaysRouter.get('/replays/:matchId', requireAuth, async (req, res) => {
-    const replay = await getReplay(req.session!.userId, req.params.matchId!);
+    const replay = await getReplay(req.session!.userId, String(req.params.matchId ?? ''));
     if (!replay) return res.status(404).json({ error: 'Not found' });
     res.json(replay);
 });

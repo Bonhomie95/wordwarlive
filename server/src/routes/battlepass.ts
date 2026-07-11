@@ -9,6 +9,7 @@ import {
     unlockPremium,
 } from '../services/battlePassService.js';
 import { findUserById } from '../services/userService.js';
+import { BATTLE_PASS_PRODUCT_ID, verifyIapPurchase } from '../iap/verify.js';
 
 export const battlePassRouter = Router();
 
@@ -79,8 +80,28 @@ battlePassRouter.post('/battlepass/claim', requireAuth, async (req, res) => {
     res.json({ ok: true, cosmeticId: result.cosmeticId });
 });
 
+const upgradeSchema = z.object({
+    receipt: z.string().optional(),
+    platform: z.enum(['ios', 'android']).optional(),
+    transactionId: z.string().optional(),
+});
+
 battlePassRouter.post('/battlepass/upgrade-premium', requireAuth, async (req, res) => {
-    // TODO(prod): verify the IAP receipt server-side first.
+    const parsed = upgradeSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+
+    const verified = await verifyIapPurchase({
+        userId: req.session!.userId,
+        productId: BATTLE_PASS_PRODUCT_ID,
+        entitlement: 'battle_pass_premium',
+        platform: parsed.data.platform,
+        receipt: parsed.data.receipt,
+        transactionId: parsed.data.transactionId,
+    });
+    if (!verified.ok) {
+        return res.status(verified.status).json({ error: verified.error });
+    }
+
     await unlockPremium(req.session!.userId);
     res.json({ ok: true });
 });

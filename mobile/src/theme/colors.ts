@@ -12,6 +12,7 @@
 //   - 'neon-strike'   — the green-on-dark "design" theme, paid
 
 import { create } from 'zustand';
+import * as SecureStore from 'expo-secure-store';
 
 export interface ThemeTokens {
     bg: string;
@@ -192,23 +193,70 @@ export const rankColors: Record<RankTier, string> = new Proxy(
     }
 );
 
+/**
+ * High-contrast tile palette for color-blind players (same idea as Wordle's
+ * accessibility mode): orange/blue are distinguishable across the common
+ * forms of color-vision deficiency, unlike green/yellow. Overlaid on top of
+ * whatever theme is active.
+ */
+const COLOR_BLIND_TILES: Pick<ThemeTokens, 'tileCorrect' | 'tileMisplaced'> = {
+    tileCorrect: '#F5793A', // orange
+    tileMisplaced: '#85C0F9', // sky blue
+};
+
 interface ThemeState {
     currentTheme: ThemeId;
+    /** High-contrast tiles for color-blind players. Persisted server-side in
+     *  user settings; applied here so grid + keyboard pick it up together. */
+    colorBlind: boolean;
     /** Bumped on every applyTheme so root subscribers re-render. */
     bump: number;
     applyTheme: (id: ThemeId) => void;
+    setColorBlind: (enabled: boolean) => void;
 }
 
-export const useThemeStore = create<ThemeState>((set) => ({
+export const useThemeStore = create<ThemeState>((set, get) => ({
     currentTheme: 'classic-dark',
+    colorBlind: false,
     bump: 0,
     applyTheme: (id) => {
         const meta = THEME_CATALOG[id];
         if (!meta) return;
         Object.assign(colors, meta.tokens);
+        if (get().colorBlind) Object.assign(colors, COLOR_BLIND_TILES);
         set((s) => ({ currentTheme: id, bump: s.bump + 1 }));
     },
+    setColorBlind: (enabled) => {
+        if (enabled === get().colorBlind) return;
+        const meta = THEME_CATALOG[get().currentTheme];
+        Object.assign(colors, meta.tokens);
+        if (enabled) Object.assign(colors, COLOR_BLIND_TILES);
+        set((s) => ({ colorBlind: enabled, bump: s.bump + 1 }));
+    },
 }));
+
+// ─── Boot restore ────────────────────────────────────────────────────────────
+//
+// The settings screen persists the picked theme + color-blind flag to
+// SecureStore, but nothing was reading them back — every cold launch reset
+// to defaults. Fire-and-forget restore here: this module is imported by
+// every screen, so it runs before anything renders, and the bump-based
+// re-render handles the (rare) case where a frame slips in first.
+void (async () => {
+    try {
+        const [themeId, cb] = await Promise.all([
+            SecureStore.getItemAsync('wordwar.theme'),
+            SecureStore.getItemAsync('wordwar.colorblind'),
+        ]);
+        const state = useThemeStore.getState();
+        if (cb === '1') state.setColorBlind(true);
+        if (themeId && themeId in THEME_CATALOG) {
+            state.applyTheme(themeId as ThemeId);
+        }
+    } catch {
+        // SecureStore unavailable (e.g. web) — defaults are fine.
+    }
+})();
 
 /**
  * Wraps a StyleSheet factory so the styles are RE-THEMED whenever the

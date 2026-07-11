@@ -7,6 +7,7 @@ import {
     listOwnedCosmetics,
     listShopCosmetics,
 } from '../services/cosmeticsService.js';
+import { cosmeticProductId, verifyIapPurchase } from '../iap/verify.js';
 
 export const cosmeticsRouter = Router();
 
@@ -40,12 +41,14 @@ cosmeticsRouter.get('/me/cosmetics', requireAuth, async (req, res) => {
 
 const purchaseSchema = z.object({
     cosmeticId: z.string().min(1),
-    /** Receipt from App Store / Play Store. Required in production. */
+    /** Receipt from App Store / Play Store. Required in production for paid items. */
     receipt: z.string().optional(),
+    platform: z.enum(['ios', 'android']).optional(),
+    transactionId: z.string().optional(),
 });
 
 cosmeticsRouter.post('/cosmetics/:id/purchase', requireAuth, async (req, res) => {
-    const cosmeticId = req.params.id!;
+    const cosmeticId = String(req.params.id ?? '');
     const parsed = purchaseSchema.safeParse({ ...req.body, cosmeticId });
     if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
 
@@ -55,8 +58,22 @@ cosmeticsRouter.post('/cosmetics/:id/purchase', requireAuth, async (req, res) =>
         return res.status(400).json({ error: 'Not available for purchase' });
     }
 
-    // TODO(prod): verify the receipt with Apple / Google here. For now we
-    // just grant — this is a dev-time path so the shop is interactive.
+    // Paid cosmetics require a verified store receipt; free ones (price 0) are
+    // granted directly.
+    if (cos.price_cents > 0) {
+        const verified = await verifyIapPurchase({
+            userId: req.session!.userId,
+            productId: cosmeticProductId(cosmeticId),
+            entitlement: `cosmetic:${cosmeticId}`,
+            platform: parsed.data.platform,
+            receipt: parsed.data.receipt,
+            transactionId: parsed.data.transactionId,
+        });
+        if (!verified.ok) {
+            return res.status(verified.status).json({ error: verified.error });
+        }
+    }
+
     await grantCosmetic(req.session!.userId, cosmeticId, 'purchase');
     res.json({ ok: true, cosmeticId });
 });

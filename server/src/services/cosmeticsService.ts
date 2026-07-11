@@ -55,7 +55,9 @@ export async function grantCosmetic(
     cosmeticId: string,
     acquiredVia: 'purchase' | 'battle_pass' | 'season_reward' | 'grant' = 'purchase'
 ): Promise<void> {
-    // TODO(prod): verify the IAP receipt server-side before granting.
+    // For the 'purchase' path the store receipt is verified upstream in
+    // routes/cosmetics.ts (verifyIapPurchase) before we get here. Other
+    // acquiredVia values are internal grants and don't involve a receipt.
     const client = await pool.connect();
     try {
         await client.query('BEGIN');

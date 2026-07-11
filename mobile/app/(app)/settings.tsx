@@ -30,6 +30,13 @@ import { makeThemedStyles,
 import { typography, radius, spacing } from '../../src/theme/typography';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
+const COLOR_BLIND_STORAGE_KEY = 'wordwar.colorblind';
+
+function persistColorBlind(enabled: boolean) {
+    SecureStore.setItemAsync(COLOR_BLIND_STORAGE_KEY, enabled ? '1' : '0').catch(
+        () => {}
+    );
+}
 
 export default function SettingsScreen() {
     const router = useRouter();
@@ -39,9 +46,19 @@ export default function SettingsScreen() {
     const [settings, setSettings] = useState<UserSettings | null>(null);
     const [saving, setSaving] = useState(false);
 
+    const setColorBlind = useThemeStore((s) => s.setColorBlind);
+
     useEffect(() => {
-        settingsApi.get().then(setSettings).catch(() => {});
-    }, []);
+        settingsApi
+            .get()
+            .then((s) => {
+                setSettings(s);
+                // Sync the tile palette with the server-side preference.
+                setColorBlind(s.colorBlindMode);
+                persistColorBlind(s.colorBlindMode);
+            })
+            .catch(() => {});
+    }, [setColorBlind]);
 
     async function updateSetting<K extends keyof UserSettings>(
         key: K,
@@ -53,11 +70,21 @@ export default function SettingsScreen() {
         const next = { ...prev, [key]: value };
         setSettings(next);
         setSaving(true);
+        if (key === 'colorBlindMode') {
+            // Apply the high-contrast tiles immediately (and remember locally
+            // so the next cold launch doesn't flash the default palette).
+            setColorBlind(value as boolean);
+            persistColorBlind(value as boolean);
+        }
         try {
             const updated = await settingsApi.update({ [key]: value });
             setSettings(updated);
         } catch {
             setSettings(prev);
+            if (key === 'colorBlindMode') {
+                setColorBlind(prev.colorBlindMode);
+                persistColorBlind(prev.colorBlindMode);
+            }
         } finally {
             setSaving(false);
         }

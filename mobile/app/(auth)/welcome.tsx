@@ -15,7 +15,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { appleSignIn, isAppleAvailable } from '../../src/auth/appleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
-import { typography, spacing } from '../../src/theme/typography';
+import { typography, spacing } from '../../src/theme/typography'; 
 
 export default function Welcome() {
     const router = useRouter();

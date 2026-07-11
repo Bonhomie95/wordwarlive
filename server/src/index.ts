@@ -10,11 +10,15 @@
 
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { createServer } from 'node:http';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { loadWordBank } from './game/words.js';
+import { pool } from './db/pool.js';
+import { redis } from './db/redis.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { apiLimiter, authLimiter } from './middleware/rateLimit.js';
 import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
 import { matchesRouter } from './routes/matches.js';
@@ -36,6 +40,12 @@ async function main() {
     await loadWordBank();
 
     const app = express();
+    // Behind a proxy/LB, trust exactly TRUST_PROXY hops so rate limiting keys
+    // on the real client IP rather than the proxy's.
+    app.set('trust proxy', env.TRUST_PROXY);
+    // Security headers. The API is JSON-only (no HTML), so the default CSP
+    // isn't relevant; keep the rest of helmet's protections.
+    app.use(helmet({ contentSecurityPolicy: false }));
     app.use(
         cors({
             origin: env.corsOrigins as string | string[],
@@ -44,11 +54,34 @@ async function main() {
     );
     app.use(express.json({ limit: '64kb' }));
 
+    // Liveness — is the process up? Cheap, no I/O.
     app.get('/healthz', (_req, res) => {
         res.json({ ok: true, env: env.NODE_ENV });
     });
 
-    app.use('/api/auth', authRouter);
+    // Readiness — can we actually serve traffic? Checks Postgres + Redis.
+    // Orchestrators should gate traffic on this, not /healthz.
+    app.get('/readyz', async (_req, res) => {
+        const checks = { db: false, redis: false };
+        try {
+            await pool.query('SELECT 1');
+            checks.db = true;
+        } catch (err) {
+            logger.warn({ err }, 'Readiness: Postgres check failed');
+        }
+        try {
+            await redis.ping();
+            checks.redis = true;
+        } catch (err) {
+            logger.warn({ err }, 'Readiness: Redis check failed');
+        }
+        const ok = checks.db && checks.redis;
+        res.status(ok ? 200 : 503).json({ ok, checks });
+    });
+
+    // Broad limiter across the whole API; strict limiter on auth.
+    app.use('/api', apiLimiter);
+    app.use('/api/auth', authLimiter, authRouter);
     app.use('/api', usersRouter);
     app.use('/api', matchesRouter);
     app.use('/api', cosmeticsRouter);
@@ -75,11 +108,23 @@ async function main() {
         );
     });
 
+    let shuttingDown = false;
     const shutdown = async () => {
+        if (shuttingDown) return; // ignore a second SIGTERM/SIGINT
+        shuttingDown = true;
         logger.info('Shutting down…');
-        httpServer.close(() => process.exit(0));
-        // Force-exit after 10s
-        setTimeout(() => process.exit(1), 10_000).unref();
+        // Force-exit if graceful close hangs.
+        const force = setTimeout(() => process.exit(1), 10_000).unref();
+        // Stop accepting new connections, then drain the pools.
+        httpServer.close(async () => {
+            try {
+                await Promise.allSettled([pool.end(), redis.quit()]);
+            } catch (err) {
+                logger.error({ err }, 'Error draining connections on shutdown');
+            }
+            clearTimeout(force);
+            process.exit(0);
+        });
     };
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);

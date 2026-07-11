@@ -2,9 +2,9 @@
 // both players' guess histories side-by-side so the player can analyze how
 // the match played out.
 
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,8 +15,14 @@ import { Tile } from '../../src/components/game/Tile';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { showInterstitial } from '../../src/ads';
+import { buildMatchShareMessage, shareText } from '../../src/share/shareResult';
 import type { MatchOver } from '../../src/types/index';
-import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
+import {
+    makeThemedStyles,
+    colors,
+    useThemeStore,
+    type RankTier,
+} from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
 const RESULT_TITLE = {
@@ -43,17 +49,40 @@ export default function PostGame() {
     const token = useAuthStore((s) => s.token);
     const connectAndQueue = useGameStore((s) => s.connectAndQueue);
     const [interstitialLoading, setInterstitialLoading] = useState(false);
+    // One-shot guard per match. Without it the refresh/interstitial effect
+    // re-runs every time `user` changes (refreshMe below updates it!) —
+    // which re-triggered side effects in a loop, even after navigating
+    // away, since expo-router keeps this screen mounted in the stack.
+    const handledMatchRef = useRef<string | null>(null);
+
+    // Result haptic — fires only while this screen is actually FOCUSED,
+    // exactly once per match. On blur (Home, back, tab switch — anything
+    // that takes the victory/defeat page off screen) any vibration still
+    // running is cancelled immediately.
+    const hapticMatchRef = useRef<string | null>(null);
+    useFocusEffect(
+        useCallback(() => {
+            if (matchOver && hapticMatchRef.current !== matchOver.matchId) {
+                hapticMatchRef.current = matchOver.matchId;
+                if (matchOver.result === 'win') {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                } else if (matchOver.result === 'loss') {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+                }
+            }
+            return () => {
+                Vibration.cancel();
+            };
+        }, [matchOver])
+    );
 
     useEffect(() => {
+        if (!matchOver) return;
+        if (handledMatchRef.current === matchOver.matchId) return;
+        handledMatchRef.current = matchOver.matchId;
+
         // Pull the latest /me so other tabs see updated rank.
         refreshMe().catch(() => {});
-
-        // Haptic feedback for the win.
-        if (matchOver?.result === 'win') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        } else if (matchOver?.result === 'loss') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-        }
 
         // Frequency-capped post-match interstitial. Skipped for ads-removed
         // users; gameStore handles cap + cooldown + skip-after-loss.
@@ -63,8 +92,9 @@ export default function PostGame() {
             setTimeout(() => {
                 markInterstitialShown();
                 setInterstitialLoading(true);
-                // Block all input until the ad finishes. showInterstitial()
-                // resolves once the user dismisses the ad.
+                // Overlay blocks input while the ad loads/plays; the ads
+                // module guarantees the promise resolves (load timeout), so
+                // the overlay can never get stuck.
                 showInterstitial()
                     .catch(() => {})
                     .finally(() => setInterstitialLoading(false));
@@ -83,6 +113,23 @@ export default function PostGame() {
     // Mystery matches have no "play again" — you'd need to submit a fresh
     // word, so the only action is going home (Mystery tab → new word).
     const isMystery = matchFound?.mode === 'mystery';
+
+    function onShare() {
+        if (!matchOver) return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        const message = buildMatchShareMessage({
+            result: matchOver.result,
+            guesses: matchOver.yourGuesses,
+            solved: matchOver.yourGuesses.some((g) =>
+                g.tiles.every((t) => t === 'correct')
+            ),
+            opponentName: matchFound?.opponent?.username,
+            mode: isMystery ? 'mystery' : 'classic',
+            matchDurationSec: matchOver.matchDurationSec,
+            highContrast: useThemeStore.getState().colorBlind,
+        });
+        shareText(message);
+    }
 
     function onPlayAgain() {
         // Don't reset/queue here — matchmaking.tsx does both on mount.
@@ -174,6 +221,12 @@ export default function PostGame() {
                 </View>
 
                 <View style={styles.actions}>
+                    <Button
+                        label="Share result"
+                        onPress={onShare}
+                        variant="ghost"
+                        icon="share-social"
+                    />
                     {isMystery ? (
                         <Button label="Back to Home" onPress={onHome} />
                     ) : (

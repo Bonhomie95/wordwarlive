@@ -222,7 +222,8 @@ export async function claimTier(args: {
  * receipt before calling this. We accept the call as-is in dev.
  */
 export async function unlockPremium(userId: string): Promise<void> {
-    // TODO(prod): verify the IAP receipt server-side before flipping the bit.
+    // The IAP receipt is verified upstream in routes/battlepass.ts
+    // (verifyIapPurchase) before this runs.
     const season = await getCurrentSeason();
     if (!season) throw new Error('No active season');
     await query(

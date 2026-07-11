@@ -11,7 +11,8 @@
 
 import { query } from '../db/pool.js';
 import { isValidWord, pickRandomWord } from '../game/words.js';
-import { scoreGuess, validateGuess } from '../game/engine.js';
+import { scoreGuess, validateGuess, type GuessResult } from '../game/engine.js';
+import { redeemHint, type HintResult, type HintError } from './hintService.js';
 
 export interface DailyChallenge {
     challengeDate: string; // YYYY-MM-DD
@@ -167,6 +168,84 @@ export async function submitGuess(
     );
 
     return { ok: true, tiles, solved, guessCount: newGuesses.length };
+}
+
+// ─── Hints ──────────────────────────────────────────────────────────────────
+//
+// Same rules as live matches: word-length-aware cap (1 hint for 4-7 letter
+// words, 2 for 8+), paid via the shared waterfall (first-ever free → hint
+// credits → 50 coins). Audited in hint_uses under a synthetic
+// 'daily:YYYY-MM-DD' key so reveals survive app restarts.
+
+function dailyHintKey(date: string): string {
+    return `daily:${date}`;
+}
+
+export function dailyHintCap(wordLength: number): number {
+    return wordLength >= 8 ? 2 : 1;
+}
+
+export interface DailyHintState {
+    hintsUsed: number;
+    hintCap: number;
+    /** Already-revealed positions, so the client can re-render them after
+     *  an app restart. */
+    hints: { position: number; letter: string }[];
+}
+
+export async function getMyDailyHints(userId: string): Promise<DailyHintState> {
+    const date = todayUtc();
+    const challenge = await getOrCreateTodaysChallenge();
+    const rows = await query<{ position: number; letter: string }>(
+        `SELECT position, letter FROM hint_uses
+         WHERE match_id = $1 AND user_id = $2
+         ORDER BY used_at ASC`,
+        [dailyHintKey(date), userId]
+    );
+    return {
+        hintsUsed: rows.length,
+        hintCap: dailyHintCap(challenge.wordLength),
+        hints: rows,
+    };
+}
+
+export async function redeemDailyHint(
+    userId: string
+): Promise<HintResult | HintError | { ok: false; error: 'PER_MATCH_LIMIT' | 'ALREADY_SOLVED' | 'NO_CHALLENGE' }> {
+    const date = todayUtc();
+    const word = await getWord(date);
+    if (!word) return { ok: false, error: 'NO_CHALLENGE' };
+
+    const attempt = await getMyAttempt(userId);
+    if (attempt?.solved) return { ok: false, error: 'ALREADY_SOLVED' };
+
+    const state = await getMyDailyHints(userId);
+    if (state.hintsUsed >= state.hintCap) {
+        return { ok: false, error: 'PER_MATCH_LIMIT' };
+    }
+
+    // Feed the attempt's guesses in as history so we never reveal a
+    // position the player has already greened. Also exclude positions
+    // revealed by a previous daily hint (redeemHint only knows greens).
+    const history: GuessResult[] = (attempt?.guesses ?? []).map((g) => ({
+        guess: g.guess,
+        tiles: g.tiles,
+        solved: g.tiles.every((t) => t === 'correct'),
+    }));
+    for (const h of state.hints) {
+        // Synthesize a "green at revealed position" row so pickHintPosition
+        // skips it. Tiles elsewhere marked wrong — harmless for picking.
+        const tiles = new Array(word.length).fill('wrong') as GuessResult['tiles'];
+        tiles[h.position] = 'correct';
+        history.push({ guess: word, tiles, solved: false });
+    }
+
+    return redeemHint({
+        userId,
+        matchId: dailyHintKey(date),
+        target: word,
+        history,
+    });
 }
 
 /**
