@@ -91,12 +91,20 @@ export interface BattlePassRewardRow {
     tier: number;
     track: 'free' | 'premium';
     cosmetic_id: string | null;
+    cosmetic_name: string | null;
+    cosmetic_category: string | null;
 }
 
 export async function listSeasonRewards(seasonNumber: number): Promise<BattlePassRewardRow[]> {
+    // Join the cosmetics catalog so the client can show a friendly name +
+    // category (and pick a preview) instead of the raw cosmetic id.
     return query<BattlePassRewardRow>(
-        `SELECT tier, track, cosmetic_id FROM battle_pass_rewards
-         WHERE season_number = $1 ORDER BY tier ASC, track ASC`,
+        `SELECT r.tier, r.track, r.cosmetic_id,
+                c.name AS cosmetic_name, c.category AS cosmetic_category
+         FROM battle_pass_rewards r
+         LEFT JOIN cosmetics c ON c.id = r.cosmetic_id
+         WHERE r.season_number = $1
+         ORDER BY r.tier ASC, r.track ASC`,
         [seasonNumber]
     );
 }

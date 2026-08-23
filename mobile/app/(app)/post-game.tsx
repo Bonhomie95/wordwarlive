@@ -13,6 +13,8 @@ import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { Screen } from '../../src/components/ui/Screen';
 import { HeroTitle, MonoLabel, Card } from '../../src/components/ui/primitives';
 import { Tile } from '../../src/components/game/Tile';
+import { VictoryAnim } from '../../src/components/game/VictoryAnim';
+import { victoryKind } from '../../src/lib/cosmetics';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { showInterstitial } from '../../src/ads';
@@ -146,8 +148,13 @@ export default function PostGame() {
     const deltaSign = matchOver.rankDelta > 0 ? '+' : matchOver.rankDelta < 0 ? '' : '±';
     const durationSec = matchOver.matchDurationSec ?? 0;
 
+    const equippedVictory =
+        user && 'equipped' in user ? user.equipped?.victoryAnim : null;
+    const victory = result === 'win' ? victoryKind(equippedVictory) : null;
+
     return (
         <Screen>
+            {victory ? <VictoryAnim kind={victory} /> : null}
             <AdLoadingOverlay visible={interstitialLoading} label="Quick ad break…" />
             <ScrollView
                 contentContainerStyle={styles.content}

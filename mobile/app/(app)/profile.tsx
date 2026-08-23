@@ -15,6 +15,8 @@ import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { Screen } from '../../src/components/ui/Screen';
 import { TopBar } from '../../src/components/ui/TopBar';
+import { Avatar } from '../../src/components/ui/Avatar';
+import { PlayerName } from '../../src/components/ui/PlayerName';
 import { useAuthStore } from '../../src/store/authStore';
 import { matchesApi } from '../../src/api/resources';
 import type { RecentMatch } from '../../src/types/index';
@@ -81,10 +83,18 @@ export default function Profile() {
                 ListHeaderComponent={
                     <View style={styles.header}>
                         <View style={styles.identityRow}>
-                            <View>
-                                <Text style={styles.username} allowFontScaling={false}>
-                                    {user.username}
-                                </Text>
+                            <Avatar
+                                avatarId={'equipped' in user ? user.equipped?.avatar : null}
+                                borderId={'equipped' in user ? user.equipped?.profileBorder : null}
+                                size={64}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <PlayerName
+                                    username={user.username}
+                                    nameplateId={'equipped' in user ? user.equipped?.nameplate : null}
+                                    style={styles.username}
+                                    numberOfLines={1}
+                                />
                                 <Text style={styles.provider} allowFontScaling={false}>
                                     Signed in via {user.provider}
                                 </Text>
@@ -215,6 +225,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        gap: spacing.md,
     },
     username: {
         color: colors.text,

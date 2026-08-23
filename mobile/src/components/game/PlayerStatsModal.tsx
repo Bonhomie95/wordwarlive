@@ -11,6 +11,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import { RankBadge } from '../ui/RankBadge';
+import { Avatar } from '../ui/Avatar';
+import { PlayerName } from '../ui/PlayerName';
 import { reportsApi } from '../../api/resources';
 import type { PublicUser, RankTier } from '../../types/index';
 
@@ -87,13 +89,18 @@ export const PlayerStatsModal: React.FC<Props> = ({
                         </View>
 
                         <View style={styles.avatarRow}>
-                            <View style={styles.avatar}>
-                                <Ionicons name="person" size={42} color={colors.textDim} />
-                            </View>
+                            <Avatar
+                                avatarId={player.equipped?.avatar}
+                                borderId={player.equipped?.profileBorder}
+                                size={64}
+                            />
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.username} allowFontScaling={false}>
-                                    {player.username}
-                                </Text>
+                                <PlayerName
+                                    username={player.username}
+                                    nameplateId={player.equipped?.nameplate}
+                                    style={styles.username}
+                                    numberOfLines={1}
+                                />
                                 <View style={styles.rankRow}>
                                     <RankBadge tier={player.rankTier as RankTier} size="sm" />
                                     <Text style={styles.rankPoints} allowFontScaling={false}>

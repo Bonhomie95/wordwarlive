@@ -15,10 +15,11 @@ import {
     Text,
     View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import { RankBadge } from '../ui/RankBadge';
+import { Avatar } from '../ui/Avatar';
+import { PlayerName } from '../ui/PlayerName';
 import type { PublicUser, RankTier } from '../../types/index';
 
 interface Props {
@@ -86,16 +87,21 @@ const PlayerCard: React.FC<{
 }> = ({ player, label, accent }) => {
     return (
         <View style={[styles.card, { borderColor: accent + '55' }]}>
-            <View style={[styles.avatar, { borderColor: accent }]}>
-                <Ionicons name="person" size={34} color={accent} />
-            </View>
+            <Avatar
+                avatarId={player.equipped?.avatar}
+                borderId={player.equipped?.profileBorder}
+                size={64}
+            />
             <View style={styles.cardInfo}>
                 <Text style={[styles.label, { color: accent }]} allowFontScaling={false}>
                     {label}
                 </Text>
-                <Text style={styles.username} allowFontScaling={false} numberOfLines={1}>
-                    {player.username}
-                </Text>
+                <PlayerName
+                    username={player.username}
+                    nameplateId={player.equipped?.nameplate}
+                    style={styles.username}
+                    numberOfLines={1}
+                />
                 <View style={styles.rankRow}>
                     <RankBadge tier={player.rankTier as RankTier} size="sm" />
                     <Text style={styles.record} allowFontScaling={false}>

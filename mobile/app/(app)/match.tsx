@@ -34,6 +34,7 @@ import { PowerUpBar } from '../../src/components/game/PowerUpBar';
 import { VsSplash } from '../../src/components/game/VsSplash';
 import { PlayerStatsModal } from '../../src/components/game/PlayerStatsModal';
 import { RankBadge } from '../../src/components/ui/RankBadge';
+import { PlayerName } from '../../src/components/ui/PlayerName';
 import { Toast } from '../../src/components/ui/Toast';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
@@ -287,9 +288,12 @@ export default function Match() {
                     <Text style={[styles.playerLabel, { color: colors.primary }]} allowFontScaling={false}>
                         YOU
                     </Text>
-                    <Text style={styles.playerName} allowFontScaling={false} numberOfLines={1}>
-                        {me.username}
-                    </Text>
+                    <PlayerName
+                        username={me.username}
+                        nameplateId={me.equipped?.nameplate}
+                        style={styles.playerName}
+                        numberOfLines={1}
+                    />
                     <RankBadge tier={meTier} size="sm" />
                 </Pressable>
                 <Timer />
@@ -303,9 +307,12 @@ export default function Match() {
                     <Text style={[styles.playerLabel, { color: colors.danger }]} allowFontScaling={false}>
                         NEMESIS
                     </Text>
-                    <Text style={styles.playerName} allowFontScaling={false} numberOfLines={1}>
-                        {opponent.username}
-                    </Text>
+                    <PlayerName
+                        username={opponent.username}
+                        nameplateId={opponent.equipped?.nameplate}
+                        style={styles.playerName}
+                        numberOfLines={1}
+                    />
                     <RankBadge tier={oppTier} size="sm" />
                 </Pressable>
             </View>

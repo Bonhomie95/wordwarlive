@@ -113,6 +113,7 @@ Jump in and race your first opponent!
 | iPhone 6.9" screenshots ×4 | `ios-screenshots-6.9/*-1320x2868.png` | 1320×2868, no alpha | App Store Connect → **iPhone 6.9"** (primary) |
 | iPhone 6.7" screenshots ×4 | `ios-screenshots/*-1290x2796.png` | 1290×2796, no alpha | App Store Connect → iPhone 6.7" (alternate) |
 | iPad 13" screenshots ×4 | `ipad-screenshots/*-2064x2752.png` | 2064×2752, no alpha | App Store Connect → **iPad 13"** |
+| iPad 12.9" screenshots ×4 | `ipad-screenshots-12.9/*-2048x2732.png` | 2048×2732, no alpha | App Store Connect → iPad 12.9" |
 | Android screenshots ×4 | `android-screenshots/*-1080x2160.jpg` | 1080×2160 (2:1), no alpha | Play Console → Phone screenshots |
 
 > Screenshots are high-fidelity design renders that match the shipping UI at the

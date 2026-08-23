@@ -161,6 +161,8 @@ export interface BattlePassRewardView {
     tier: number;
     track: 'free' | 'premium';
     cosmeticId: string | null;
+    cosmeticName: string | null;
+    cosmeticCategory: string | null;
     unlocked: boolean;
     claimed: boolean;
 }

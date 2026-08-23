@@ -53,6 +53,8 @@ battlePassRouter.get('/battlepass/current', requireAuth, async (req, res) => {
             tier: r.tier,
             track: r.track,
             cosmeticId: r.cosmetic_id,
+            cosmeticName: r.cosmetic_name,
+            cosmeticCategory: r.cosmetic_category,
             unlocked: r.tier <= earnedTier,
             claimed: claimSet.has(`${r.tier}:${r.track}`),
         })),

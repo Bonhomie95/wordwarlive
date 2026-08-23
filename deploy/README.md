@@ -50,11 +50,20 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 ```
-Set `NODE_ID` from the pod name via the downward API:
+Set `NODE_ID` from the pod name via the downward API, and give the pod enough
+shutdown grace for the server to drain in-flight matches (SIGTERM stops new
+matchmaking, waits ≤25s for active matches, force-exits at 30s):
 ```yaml
-env:
-  - name: NODE_ID
-    valueFrom: { fieldRef: { fieldPath: metadata.name } }
+spec:
+  terminationGracePeriodSeconds: 35
+  containers:
+    - env:
+        - name: NODE_ID
+          valueFrom: { fieldRef: { fieldPath: metadata.name } }
+      readinessProbe:
+        httpGet: { path: /readyz, port: 4000 }
+      livenessProbe:
+        httpGet: { path: /healthz, port: 4000 }
 ```
 
 ### Fly.io

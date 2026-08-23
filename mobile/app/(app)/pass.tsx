@@ -12,11 +12,13 @@ import {
     Text,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
+import { Screen } from '../../src/components/ui/Screen';
+import { TopBar } from '../../src/components/ui/TopBar';
+import { avatarVisual } from '../../src/lib/cosmetics';
 import { adsApi, battlePassApi } from '../../src/api/resources';
 import { adsAvailable, showRewarded } from '../../src/ads';
 import { useAuthStore } from '../../src/store/authStore';
@@ -49,19 +51,25 @@ export default function Pass() {
 
     if (!data) {
         return (
-            <SafeAreaView style={styles.safe}>
+            <Screen edges={['top']}>
+                <TopBar title="Battle Pass" />
                 <Text style={styles.empty} allowFontScaling={false}>Loading…</Text>
-            </SafeAreaView>
+            </Screen>
         );
     }
 
     if (!data.active || !data.season || !data.you || !data.rewards) {
         return (
-            <SafeAreaView style={styles.safe}>
-                <Text style={styles.empty} allowFontScaling={false}>
-                    No active season. Check back soon.
-                </Text>
-            </SafeAreaView>
+            <Screen edges={['top']}>
+                <TopBar title="Battle Pass" />
+                <View style={styles.emptyWrap}>
+                    <Ionicons name="ribbon-outline" size={48} color={colors.textMuted} />
+                    <Text style={styles.empty} allowFontScaling={false}>
+                        No active season right now. A new season starts soon —
+                        keep playing and your XP carries into it.
+                    </Text>
+                </View>
+            </Screen>
         );
     }
 
@@ -157,19 +165,21 @@ export default function Pass() {
     const showXpBoost = !adsRemoved && adsAvailable() && xpBoostsRemaining > 0;
 
     return (
-        <SafeAreaView style={styles.safe}>
+        <Screen edges={['top']}>
             <AdLoadingOverlay visible={adBusy} label="Loading XP boost ad…" />
+            <TopBar title="Battle Pass" />
             <FlatList
                 data={tierList}
                 keyExtractor={(t) => String(t)}
                 contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
                 ListHeaderComponent={
                     <View style={styles.header}>
                         <Text style={styles.title} allowFontScaling={false}>
                             {season.name}
                         </Text>
                         <Text style={styles.subtitle} allowFontScaling={false}>
-                            Tier {you.currentTier} / {season.maxTier}
+                            Tier {you.currentTier} / {season.maxTier} · {you.xp} XP
                         </Text>
                         <View style={styles.progressTrack}>
                             <View
@@ -258,7 +268,7 @@ export default function Pass() {
                     );
                 }}
             />
-        </SafeAreaView>
+        </Screen>
     );
 }
 
@@ -289,6 +299,7 @@ function RewardCell({
         !reward.claimed &&
         reward.cosmeticId !== null &&
         (track === 'free' || premiumOwned);
+    const preview = rewardPreview(reward);
     return (
         <Pressable
             onPress={() => claimable && onClaim(reward)}
@@ -300,28 +311,40 @@ function RewardCell({
                 !reward.unlocked ? styles.cellLocked : null,
             ]}
         >
-            <Text style={styles.cellTrackLabel} allowFontScaling={false}>
-                {track === 'premium' ? 'PREMIUM' : 'FREE'}
-            </Text>
-            <Text style={styles.cellId} allowFontScaling={false}>
-                {reward.cosmeticId ?? 'XP'}
+            <View style={styles.cellHead}>
+                <View style={styles.cellPreview}>
+                    {preview.emoji ? (
+                        <Text style={{ fontSize: 20 }} allowFontScaling={false}>
+                            {preview.emoji}
+                        </Text>
+                    ) : (
+                        <Ionicons name={preview.icon} size={18} color={preview.color} />
+                    )}
+                </View>
+                <Text style={styles.cellTrackLabel} allowFontScaling={false}>
+                    {track === 'premium' ? 'PREMIUM' : 'FREE'}
+                </Text>
+            </View>
+            <Text style={styles.cellId} allowFontScaling={false} numberOfLines={1}>
+                {reward.cosmeticName ?? 'Bonus XP'}
             </Text>
             <Text
                 style={[
                     styles.cellStatus,
                     reward.claimed ? { color: colors.primary } : null,
+                    claimable ? { color: colors.primary } : null,
                 ]}
                 allowFontScaling={false}
             >
                 {reward.claimed
-                    ? 'OWNED'
+                    ? '✓ OWNED'
                     : claimable
                     ? claiming
                         ? '…'
                         : 'CLAIM'
                     : reward.unlocked
                     ? track === 'premium' && !premiumOwned
-                        ? 'PREMIUM'
+                        ? 'PREMIUM ONLY'
                         : 'LOCKED'
                     : 'LOCKED'}
             </Text>
@@ -329,13 +352,61 @@ function RewardCell({
     );
 }
 
+/** Icon/emoji + accent for a reward cell, by cosmetic category. */
+function rewardPreview(reward: BattlePassRewardView): {
+    emoji?: string;
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    color: string;
+} {
+    switch (reward.cosmeticCategory) {
+        case 'avatar': {
+            const v = avatarVisual(reward.cosmeticId);
+            return { emoji: v.emoji, icon: v.icon ?? 'person', color: v.color };
+        }
+        case 'board_theme':
+            return { icon: 'grid', color: colors.primary };
+        case 'victory_anim':
+            return { icon: 'sparkles', color: colors.warning };
+        case 'nameplate':
+            return { icon: 'pricetag', color: '#C490FF' };
+        case 'profile_border':
+            return { icon: 'ellipse-outline', color: colors.info };
+        default:
+            return { icon: 'flash', color: colors.warning };
+    }
+}
+
 const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     listContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
     empty: {
         textAlign: 'center',
-        color: colors.textDim,
-        marginTop: spacing.xxl,
+        color: colors.textMuted,
+        fontFamily: typography.family,
+        fontSize: typography.sizes.sm,
+        lineHeight: 20,
+        maxWidth: 280,
+    },
+    emptyWrap: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacing.md,
+        padding: spacing.xl,
+    },
+    cellHead: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 2,
+    },
+    cellPreview: {
+        width: 30,
+        height: 30,
+        borderRadius: 8,
+        backgroundColor: colors.surfaceElevated,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     header: { paddingTop: spacing.lg, paddingBottom: spacing.lg, gap: spacing.xs },
     title: {

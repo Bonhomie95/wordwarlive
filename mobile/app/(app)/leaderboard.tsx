@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { leaderboardApi } from '../../src/api/resources';
 import { useAuthStore } from '../../src/store/authStore';
 import { RankBadge } from '../../src/components/ui/RankBadge';
+import { Avatar } from '../../src/components/ui/Avatar';
 import type {
     LeaderboardEntry,
     LeaderboardPeriod,
@@ -382,11 +383,7 @@ function Row({
             <Text style={styles.rowRank} allowFontScaling={false}>
                 #{entry.rankInLeaderboard}
             </Text>
-            <View style={styles.rowAvatar}>
-                <Text style={styles.rowInitial} allowFontScaling={false}>
-                    {entry.username.slice(0, 1).toUpperCase()}
-                </Text>
-            </View>
+            <Avatar avatarId={entry.avatarId} borderId={entry.profileBorderId} size={40} />
             <View style={{ flex: 1 }}>
                 <Text style={styles.rowName} numberOfLines={1} allowFontScaling={false}>
                     {entry.username}
