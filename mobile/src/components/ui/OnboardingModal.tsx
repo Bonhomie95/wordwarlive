@@ -156,12 +156,15 @@ const styles = makeThemedStyles(() =>
         },
         title: {
             color: colors.text,
+            fontFamily: typography.familyDisplay,
             fontSize: typography.sizes.xl,
             fontWeight: typography.weights.black,
             textAlign: 'center',
+            letterSpacing: 0.5,
         },
         body: {
             color: colors.textDim,
+            fontFamily: typography.family,
             fontSize: typography.sizes.md,
             textAlign: 'center',
             lineHeight: 22,
@@ -190,6 +193,7 @@ const styles = makeThemedStyles(() =>
         },
         ctaText: {
             color: colors.bg,
+            fontFamily: typography.familyDisplay,
             fontSize: typography.sizes.md,
             fontWeight: typography.weights.black,
             letterSpacing: 0.5,

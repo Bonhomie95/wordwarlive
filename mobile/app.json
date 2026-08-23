@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "WordWar",
-    "slug": "wordwar-live",
+    "slug": "wordwar",
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "wordwar",
@@ -17,9 +17,9 @@
       "resizeMode": "contain"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
       "bundleIdentifier": "dev.bonhomieinc.wordwar",
-      "usesAppleSignIn": true,
+      "usesAppleSignIn": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

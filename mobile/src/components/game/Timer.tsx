@@ -48,12 +48,20 @@ const TimerRaw: React.FC<Props> = ({ msRemaining: msProp }) => {
     const mm = Math.floor(seconds / 60).toString().padStart(2, '0');
     const ss = (seconds % 60).toString().padStart(2, '0');
 
-    const bg = critical ? colors.danger : danger ? colors.warning : colors.surfaceElevated;
-    const fg = critical || danger ? '#0F1115' : colors.text;
+    const fg = critical ? colors.danger : danger ? colors.warning : colors.text;
 
     return (
-        <Animated.View style={[styles.pill, { backgroundColor: bg }, style]}>
-            <Text style={[styles.label, { color: fg }]} allowFontScaling={false}>
+        <Animated.View style={[styles.wrap, style]}>
+            <Text
+                style={[
+                    styles.label,
+                    { color: fg },
+                    critical
+                        ? { textShadowColor: colors.danger, textShadowRadius: 14 }
+                        : null,
+                ]}
+                allowFontScaling={false}
+            >
                 {mm}:{ss}
             </Text>
         </Animated.View>
@@ -63,17 +71,15 @@ const TimerRaw: React.FC<Props> = ({ msRemaining: msProp }) => {
 export const Timer = memo(TimerRaw);
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    pill: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        borderRadius: radius.pill,
+    wrap: {
         alignItems: 'center',
         justifyContent: 'center',
     },
     label: {
-        fontFamily: typography.familyMono,
-        fontSize: typography.sizes.lg,
-        fontWeight: typography.weights.bold,
-        letterSpacing: 1,
+        fontFamily: typography.familyMonoBold,
+        fontSize: typography.sizes.xl,
+        fontWeight: typography.weights.black,
+        letterSpacing: 2,
+        textShadowOffset: { width: 0, height: 0 },
     },
 }));

@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
+import { glow } from '../../theme/effects';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
@@ -39,26 +40,29 @@ export const Button: React.FC<Props> = ({
         <Pressable
             onPress={onPress}
             disabled={isDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            accessibilityState={{ disabled: !!isDisabled, busy: !!busy }}
             style={({ pressed }) => [
                 styles.base,
                 variantStyles[variant],
-                pressed && !isDisabled ? { opacity: 0.85 } : null,
-                isDisabled ? { opacity: 0.5 } : null,
+                variant === 'primary' && !isDisabled ? glow(colors.primary, 16, 0.5) : null,
+                pressed && !isDisabled ? { opacity: 0.9, transform: [{ scale: 0.98 }] } : null,
+                isDisabled ? { opacity: 0.45 } : null,
                 style,
             ]}
         >
             {busy ? (
-                <ActivityIndicator color={textColor[variant]} />
+                <ActivityIndicator color={textColor(variant)} />
             ) : (
                 <View style={styles.content}>
                     {icon ? (
-                        <Ionicons
-                            name={icon}
-                            size={18}
-                            color={textColor[variant]}
-                        />
+                        <Ionicons name={icon} size={18} color={textColor(variant)} />
                     ) : null}
-                    <Text style={[styles.label, { color: textColor[variant] }]} allowFontScaling={false}>
+                    <Text
+                        style={[styles.label, { color: textColor(variant) }]}
+                        allowFontScaling={false}
+                    >
                         {label}
                     </Text>
                 </View>
@@ -67,36 +71,53 @@ export const Button: React.FC<Props> = ({
     );
 };
 
-const styles = makeThemedStyles(() => StyleSheet.create({
-    base: {
-        height: 52,
-        paddingHorizontal: spacing.lg,
-        borderRadius: radius.md,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    label: {
-        fontWeight: typography.weights.bold,
-        fontSize: typography.sizes.md,
-        letterSpacing: 0.5,
-    },
-    content: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-}));
+function textColor(variant: Variant): string {
+    switch (variant) {
+        case 'primary':
+            return colors.bg;
+        case 'secondary':
+            return colors.text;
+        case 'ghost':
+            return colors.textDim;
+        case 'danger':
+            return colors.danger;
+    }
+}
+
+const styles = makeThemedStyles(() =>
+    StyleSheet.create({
+        base: {
+            height: 54,
+            paddingHorizontal: spacing.lg,
+            borderRadius: radius.md,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        label: {
+            fontFamily: typography.familyDisplay,
+            fontWeight: typography.weights.bold,
+            fontSize: typography.sizes.md,
+            letterSpacing: 0.5,
+        },
+        content: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.sm,
+        },
+    })
+);
 
 const variantStyles: Record<Variant, ViewStyle> = {
     primary: { backgroundColor: colors.primary },
-    secondary: { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border },
+    secondary: {
+        backgroundColor: colors.surfaceElevated,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
     ghost: { backgroundColor: 'transparent' },
-    danger: { backgroundColor: colors.danger },
-};
-
-const textColor: Record<Variant, string> = {
-    primary: '#0F1115',
-    secondary: colors.text,
-    ghost: colors.textDim,
-    danger: '#FFFFFF',
+    danger: {
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: colors.danger,
+    },
 };

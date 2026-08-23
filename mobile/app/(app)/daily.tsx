@@ -400,11 +400,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
     },
     subtitle: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
@@ -423,6 +425,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginTop: spacing.sm,
     },
     hintNotice: {
+        fontFamily: typography.family,
         color: colors.warning,
         textAlign: 'center',
         marginTop: spacing.sm,
@@ -442,11 +445,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.primary,
     },
     solvedTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.primary,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
     },
     solvedStats: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
     },
@@ -462,6 +467,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginTop: spacing.xs,
     },
     shareBtnText: {
+        fontFamily: typography.familyDisplay,
         color: colors.primary,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.semibold,
@@ -472,6 +478,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         gap: spacing.xs,
     },
     lbHeader: {
+        fontFamily: typography.familyDisplay,
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
@@ -488,17 +495,20 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderTopColor: colors.border,
     },
     lbRank: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.bold,
         minWidth: 18,
     },
     lbName: {
+        fontFamily: typography.family,
         flex: 1,
         color: colors.text,
         fontSize: typography.sizes.sm,
     },
     lbScore: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },

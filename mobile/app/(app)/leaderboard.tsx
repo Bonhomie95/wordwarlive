@@ -409,11 +409,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         paddingBottom: spacing.sm,
     },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xxl,
         fontWeight: typography.weights.black,
     },
     subtitle: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         marginTop: spacing.xs,
@@ -457,6 +459,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.warning,
     },
     modeLabel: {
+        fontFamily: typography.familyDisplay,
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.semibold,
@@ -465,6 +468,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: colors.warning,
     },
     periodLabel: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.semibold,
@@ -485,11 +489,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         paddingHorizontal: spacing.xl,
     },
     emptyTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.lg,
         fontWeight: typography.weights.bold,
     },
     emptyDesc: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         textAlign: 'center',
@@ -527,6 +533,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.primary,
     },
     podiumInitial: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.lg,
         fontWeight: typography.weights.bold,
@@ -538,6 +545,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         maxWidth: '100%',
     },
     podiumName: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
@@ -558,6 +566,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontFamily: typography.familyMono,
     },
     podiumWins: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: 10,
         letterSpacing: 1,
@@ -597,16 +606,19 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     rowInitial: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.bold,
     },
     rowName: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.semibold,
     },
     rowStats: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
@@ -639,11 +651,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         minWidth: 50,
     },
     youPillName: {
+        fontFamily: typography.familyDisplay,
         color: '#0F1115',
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.bold,
     },
     youPillStats: {
+        fontFamily: typography.family,
         color: '#0F1115',
         opacity: 0.7,
         fontSize: typography.sizes.xs,

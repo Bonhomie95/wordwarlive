@@ -111,15 +111,18 @@ export default function AppTabsLayout() {
                         tabBarStyle: {
                             backgroundColor: colors.surface,
                             borderTopColor: colors.border,
-                            height: 54,
-                            paddingTop: 4,
-                            paddingBottom: 6,
+                            borderTopWidth: 1,
+                            height: 62,
+                            paddingTop: 8,
+                            paddingBottom: 8,
                         },
                         tabBarActiveTintColor: colors.primary,
                         tabBarInactiveTintColor: colors.textMuted,
                         tabBarLabelStyle: {
-                            fontSize: typography.sizes.xs,
-                            fontWeight: typography.weights.semibold,
+                            fontFamily: typography.familyMono,
+                            fontSize: 10,
+                            letterSpacing: 0.5,
+                            textTransform: 'uppercase',
                         },
                     }}
                 >

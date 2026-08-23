@@ -1,6 +1,6 @@
-# WordWar Live
+# WordWar
 
-Real-time 1v1 word game. Two players, same hidden word, 90 seconds to solve. Wordle meets head-to-head competition.
+Real-time 1v1 word game. Two players, same hidden word, one shared clock — first to solve wins. Wordle meets head-to-head competition.
 
 ## Repo layout
 

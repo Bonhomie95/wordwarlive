@@ -1,16 +1,36 @@
+// Typography system.
+//
+// Two custom faces drive the "competitive / terminal" look of the revamped UI:
+//   • Space Grotesk — bold geometric display for the wordmark, headings, CTAs.
+//   • Space Mono    — monospace for labels, timers, ranks, stat readouts.
+// Both are loaded at boot in app/_layout.tsx via @expo-google-fonts. Until
+// they're ready the app falls back to the system faces below (no crash, just
+// a brief system-font flash — _layout blocks render until they load).
+
 import { Platform } from 'react-native';
 
+// Font-family KEYS — these must match the keys registered in useFonts().
+export const fonts = {
+    display: 'SpaceGrotesk_700Bold',
+    displaySemi: 'SpaceGrotesk_600SemiBold',
+    displayMedium: 'SpaceGrotesk_500Medium',
+    mono: 'SpaceMono_400Regular',
+    monoBold: 'SpaceMono_700Bold',
+} as const;
+
 export const typography = {
-    // Use a system font with letter-spacing tuned for the all-caps tile look.
-    family: Platform.select({
+    // Body / general text. Space Grotesk reads well at body sizes too.
+    family: fonts.displayMedium,
+    familyDisplay: fonts.display,
+    familySemi: fonts.displaySemi,
+    // Monospace for the readout aesthetic (timers, RP, all-caps labels).
+    familyMono: fonts.mono,
+    familyMonoBold: fonts.monoBold,
+    // System fallbacks if a face fails to load.
+    familySystem: Platform.select({
         ios: 'System',
         android: 'sans-serif',
         default: 'System',
-    }),
-    familyMono: Platform.select({
-        ios: 'Menlo',
-        android: 'monospace',
-        default: 'monospace',
     }),
     sizes: {
         xs: 12,
@@ -19,6 +39,7 @@ export const typography = {
         lg: 20,
         xl: 28,
         xxl: 40,
+        display: 52, // wordmark / hero headings
     },
     weights: {
         regular: '400' as const,
@@ -39,8 +60,9 @@ export const spacing = {
 };
 
 export const radius = {
-    sm: 6,
-    md: 10,
-    lg: 16,
+    sm: 8,
+    md: 14,
+    lg: 20,
+    xl: 28,
     pill: 999,
 };

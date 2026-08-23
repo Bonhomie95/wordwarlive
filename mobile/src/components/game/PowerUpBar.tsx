@@ -24,12 +24,14 @@ interface Props {
 
 const META: Record<
     PowerUpKind,
-    { icon: keyof typeof Ionicons.glyphMap; label: string; a11y: string }
+    { icon: keyof typeof Ionicons.glyphMap; label: string; a11y: string; accent: keyof typeof ACCENTS }
 > = {
-    reveal: { icon: 'eye-outline', label: 'Reveal', a11y: 'Use reveal power-up' },
-    scramble: { icon: 'shuffle-outline', label: 'Scramble', a11y: 'Use scramble power-up' },
-    lock: { icon: 'lock-closed-outline', label: 'Lock', a11y: 'Use lock power-up' },
+    reveal: { icon: 'eye', label: 'Reveal', a11y: 'Use reveal power-up', accent: 'reveal' },
+    scramble: { icon: 'shuffle', label: 'Scramble', a11y: 'Use scramble power-up', accent: 'scramble' },
+    lock: { icon: 'lock-closed', label: 'Lock', a11y: 'Use lock power-up', accent: 'lock' },
 };
+
+const ACCENTS = { reveal: 'primary', scramble: 'warning', lock: 'info' } as const;
 
 export const PowerUpBar: React.FC<Props> = ({ counts, locked, onUse }) => {
     const [busy, setBusy] = useState<PowerUpKind | null>(null);
@@ -56,6 +58,7 @@ export const PowerUpBar: React.FC<Props> = ({ counts, locked, onUse }) => {
             {kinds.map((kind) => {
                 const count = counts[kind];
                 const disabled = locked || count <= 0 || busy !== null;
+                const accent = colors[ACCENTS[kind]];
                 return (
                     <Pressable
                         key={kind}
@@ -66,14 +69,14 @@ export const PowerUpBar: React.FC<Props> = ({ counts, locked, onUse }) => {
                         accessibilityState={{ disabled }}
                         style={({ pressed }) => [
                             styles.btn,
-                            disabled ? styles.btnDisabled : null,
+                            disabled ? styles.btnDisabled : { borderColor: accent + '55' },
                             pressed && !disabled ? { transform: [{ scale: 0.95 }] } : null,
                         ]}
                     >
                         <Ionicons
                             name={META[kind].icon}
-                            size={18}
-                            color={disabled ? colors.textMuted : colors.primary}
+                            size={16}
+                            color={disabled ? colors.textMuted : accent}
                         />
                         <Text
                             style={[styles.label, disabled ? styles.labelDisabled : null]}
@@ -81,7 +84,12 @@ export const PowerUpBar: React.FC<Props> = ({ counts, locked, onUse }) => {
                         >
                             {META[kind].label}
                         </Text>
-                        <View style={styles.countPill}>
+                        <View
+                            style={[
+                                styles.countPill,
+                                { backgroundColor: disabled ? colors.border : accent },
+                            ]}
+                        >
                             <Text style={styles.countText} allowFontScaling={false}>
                                 {count}
                             </Text>
@@ -118,8 +126,10 @@ const styles = makeThemedStyles(() =>
         },
         label: {
             color: colors.text,
-            fontSize: typography.sizes.xs,
-            fontWeight: typography.weights.semibold,
+            fontFamily: typography.familyMono,
+            fontSize: 11,
+            letterSpacing: 0.5,
+            textTransform: 'uppercase',
         },
         labelDisabled: {
             color: colors.textMuted,
@@ -128,13 +138,13 @@ const styles = makeThemedStyles(() =>
             minWidth: 18,
             height: 18,
             borderRadius: 9,
-            backgroundColor: colors.primaryDim,
             alignItems: 'center',
             justifyContent: 'center',
             paddingHorizontal: 4,
         },
         countText: {
             color: colors.bg,
+            fontFamily: typography.familyMonoBold,
             fontSize: 11,
             fontWeight: typography.weights.black,
         },

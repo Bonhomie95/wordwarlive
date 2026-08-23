@@ -1,6 +1,6 @@
 # WordWar Server
 
-Real-time game server for WordWar Live. Node + Express + Socket.io, Postgres for persistent state, Redis for matchmaking and rate limiting, Groq for AI bots and word curation.
+Real-time game server for WordWar. Node + Express + Socket.io, Postgres for persistent state, Redis for matchmaking and rate limiting, Groq for AI bots and word curation.
 
 ## Run it
 

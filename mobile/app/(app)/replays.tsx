@@ -11,8 +11,8 @@ import {
     View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Screen } from '../../src/components/ui/Screen';
 import { replaysApi, type ReplayMeta } from '../../src/api/resources';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
@@ -37,7 +37,7 @@ export default function ReplaysScreen() {
     useFocusEffect(useCallback(() => { load(); }, [load]));
 
     return (
-        <SafeAreaView style={styles.safe}>
+        <Screen edges={['top']}>
             <View style={styles.header}>
                 <Pressable
                     onPress={() => router.back()}
@@ -75,7 +75,7 @@ export default function ReplaysScreen() {
                     renderItem={({ item }) => <ReplayRow replay={item} />}
                 />
             )}
-        </SafeAreaView>
+        </Screen>
     );
 }
 
@@ -121,6 +121,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xxl,
         fontWeight: typography.weights.black,
@@ -139,9 +140,11 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     empty: {
         color: colors.textMuted,
+        fontFamily: typography.family,
         fontSize: typography.sizes.sm,
         textAlign: 'center',
         maxWidth: 260,
+        lineHeight: 20,
     },
     list: { padding: spacing.md, gap: spacing.xs },
     row: {
@@ -162,24 +165,27 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderWidth: 1.5,
     },
     outcomeLabel: {
+        fontFamily: typography.familyMonoBold,
         fontSize: 10,
         fontWeight: typography.weights.black,
         letterSpacing: 1,
     },
     opponent: {
         color: colors.text,
+        fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.md,
-        fontWeight: typography.weights.semibold,
+        fontWeight: typography.weights.bold,
     },
     metaText: {
         color: colors.textDim,
+        fontFamily: typography.familyMono,
         fontSize: typography.sizes.xs,
         marginTop: 2,
     },
     word: {
         color: colors.textMuted,
+        fontFamily: typography.familyMonoBold,
         fontSize: typography.sizes.sm,
-        fontWeight: typography.weights.semibold,
         letterSpacing: 1,
     },
 }));

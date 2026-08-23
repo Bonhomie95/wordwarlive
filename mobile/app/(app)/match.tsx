@@ -278,40 +278,42 @@ export default function Match() {
                     </Text>
                 </Pressable>
                 <Pressable
-                    style={styles.playerCard}
+                    style={[styles.playerCard, { alignItems: 'flex-start' }]}
+                    onPress={() => setStatsPlayer({ player: me, title: 'Your Stats' })}
+                    accessibilityRole="button"
+                    accessibilityLabel="View your stats"
+                    hitSlop={6}
+                >
+                    <Text style={[styles.playerLabel, { color: colors.primary }]} allowFontScaling={false}>
+                        YOU
+                    </Text>
+                    <Text style={styles.playerName} allowFontScaling={false} numberOfLines={1}>
+                        {me.username}
+                    </Text>
+                    <RankBadge tier={meTier} size="sm" />
+                </Pressable>
+                <Timer />
+                <Pressable
+                    style={[styles.playerCard, { alignItems: 'flex-end' }]}
                     onPress={() => setStatsPlayer({ player: opponent, title: 'Opponent' })}
                     accessibilityRole="button"
                     accessibilityLabel={`View opponent ${opponent.username} stats`}
                     hitSlop={6}
                 >
-                    <Text style={styles.playerLabel} allowFontScaling={false}>
-                        Opponent
+                    <Text style={[styles.playerLabel, { color: colors.danger }]} allowFontScaling={false}>
+                        NEMESIS
                     </Text>
-                    <Text style={styles.playerName} allowFontScaling={false}>
+                    <Text style={styles.playerName} allowFontScaling={false} numberOfLines={1}>
                         {opponent.username}
                     </Text>
                     <RankBadge tier={oppTier} size="sm" />
-                </Pressable>
-                <Timer />
-                <Pressable
-                    style={styles.playerCard}
-                    onPress={() => setStatsPlayer({ player: me, title: 'Your Stats' })}
-                    hitSlop={6}
-                >
-                    <Text style={styles.playerLabel} allowFontScaling={false}>
-                        You
-                    </Text>
-                    <Text style={styles.playerName} allowFontScaling={false}>
-                        {me.username}
-                    </Text>
-                    <RankBadge tier={meTier} size="sm" />
                 </Pressable>
             </View>
 
             {/* Opponent's mini-grid — hint button floats on the right */}
             <View style={styles.oppWrap}>
                 <Text style={styles.oppLabel} allowFontScaling={false}>
-                    Opponent&apos;s board
+                    Nemesis&apos;s board
                 </Text>
                 <OpponentGrid
                     wordLength={matchFound.wordLength}
@@ -419,6 +421,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     backLabel: {
         color: colors.danger,
+        fontFamily: typography.familyMono,
         fontSize: 10,
         fontWeight: '700',
         letterSpacing: 0.8,
@@ -436,14 +439,17 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     playerLabel: {
         color: colors.textMuted,
+        fontFamily: typography.familyMono,
         fontSize: 10,
         textTransform: 'uppercase',
-        letterSpacing: 1,
+        letterSpacing: 1.5,
     },
     playerName: {
         color: colors.text,
+        fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.bold,
+        maxWidth: 96,
     },
     botBanner: {
         backgroundColor: colors.surfaceElevated,
@@ -476,9 +482,10 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     oppLabel: {
         color: colors.textDim,
+        fontFamily: typography.familyMono,
         fontSize: 10,
         textTransform: 'uppercase',
-        letterSpacing: 1,
+        letterSpacing: 1.5,
     },
     gridWrap: {
         alignItems: 'center',

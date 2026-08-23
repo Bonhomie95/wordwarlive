@@ -1,7 +1,7 @@
 {
   "name": "wordwar-server",
   "version": "0.1.0",
-  "description": "WordWar Live game server — real-time 1v1 word racing",
+  "description": "WordWar game server — real-time 1v1 word racing",
   "private": true,
   "type": "module",
   "main": "dist/index.js",

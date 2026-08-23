@@ -262,11 +262,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
     },
     subtitle: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
@@ -288,6 +290,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginBottom: spacing.sm,
     },
     keepText: {
+        fontFamily: typography.family,
         flex: 1,
         color: colors.text,
         fontSize: typography.sizes.sm,
@@ -309,6 +312,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         backgroundColor: colors.border,
     },
     dividerText: {
+        fontFamily: typography.family,
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
         textTransform: 'uppercase',
@@ -318,6 +322,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     field: { gap: spacing.xs },
     label: { color: colors.textDim, fontSize: typography.sizes.sm },
     input: {
+        fontFamily: typography.family,
         backgroundColor: colors.surfaceElevated,
         color: colors.text,
         height: 52,

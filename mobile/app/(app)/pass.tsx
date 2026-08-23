@@ -339,11 +339,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     header: { paddingTop: spacing.lg, paddingBottom: spacing.lg, gap: spacing.xs },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xxl,
         fontWeight: typography.weights.bold,
     },
     subtitle: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         marginBottom: spacing.sm,
@@ -385,17 +387,20 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.border,
     },
     xpBoostTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.bold,
     },
     upgradeTextWrap: { flex: 1, gap: spacing.xs },
     upgradeTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.bold,
     },
     upgradeSub: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
@@ -413,6 +418,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginTop: spacing.sm,
     },
     tierNum: {
+        fontFamily: typography.familyDisplay,
         width: 32,
         textAlign: 'center',
         color: colors.text,
@@ -440,16 +446,19 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     cellClaimed: { borderColor: colors.primary },
     cellLocked: { opacity: 0.5 },
     cellTrackLabel: {
+        fontFamily: typography.familyDisplay,
         fontSize: 10,
         letterSpacing: 1,
         color: colors.textDim,
         fontWeight: typography.weights.bold,
     },
     cellId: {
+        fontFamily: typography.family,
         color: colors.text,
         fontSize: typography.sizes.xs,
     },
     cellStatus: {
+        fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
         letterSpacing: 1,

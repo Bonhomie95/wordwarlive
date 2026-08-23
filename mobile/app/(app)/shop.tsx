@@ -491,17 +491,20 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     listContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
     header: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.md },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xxl,
         fontWeight: typography.weights.bold,
     },
     subtitle: {
+        fontFamily: typography.family,
         color: colors.textDim,
         marginTop: spacing.xs,
         fontSize: typography.sizes.sm,
     },
     group: { marginTop: spacing.lg, gap: spacing.sm },
     groupTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.semibold,
@@ -531,16 +534,19 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         alignItems: 'center',
     },
     itemName: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.semibold,
     },
     rarity: {
+        fontFamily: typography.familyDisplay,
         fontSize: 10,
         letterSpacing: 1,
         fontWeight: typography.weights.bold,
     },
     itemDesc: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
     },
@@ -566,6 +572,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     actionEquip: { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border },
     actionEquipped: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary },
     actionLabel: {
+        fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
         letterSpacing: 1,
@@ -595,11 +602,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         flex: 1,
     },
     removeAdsTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.bold,
     },
     removeAdsSub: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         marginTop: spacing.xs,
@@ -614,6 +623,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         gap: spacing.sm,
     },
     coinHeaderTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.bold,
@@ -621,6 +631,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         letterSpacing: 1,
     },
     coinHeaderSub: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         marginBottom: spacing.xs,
@@ -657,6 +668,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         gap: spacing.xs,
     },
     packName: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.bold,
@@ -674,6 +686,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.warning,
     },
     bonusBadgeText: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: 10,
         fontWeight: typography.weights.bold,
@@ -686,6 +699,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         backgroundColor: colors.primary,
     },
     bestValueText: {
+        fontFamily: typography.familyDisplay,
         color: '#0F1115',
         fontSize: 10,
         fontWeight: typography.weights.bold,
@@ -698,6 +712,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontWeight: typography.weights.bold,
     },
     packDesc: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
@@ -712,6 +727,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontFamily: typography.familyMono,
     },
     packBuyHint: {
+        fontFamily: typography.familyDisplay,
         color: colors.textMuted,
         fontSize: 9,
         letterSpacing: 1,

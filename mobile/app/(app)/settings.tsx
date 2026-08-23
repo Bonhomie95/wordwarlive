@@ -433,11 +433,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xxl,
         fontWeight: typography.weights.black,
     },
     sectionHeader: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
@@ -457,11 +459,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.border,
     },
     rowLabel: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.semibold,
     },
     rowDesc: {
+        fontFamily: typography.family,
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
         marginTop: 2,
@@ -500,6 +504,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         gap: spacing.xs,
     },
     themeName: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.bold,
@@ -511,12 +516,14 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderRadius: 4,
     },
     premiumBadgeText: {
+        fontFamily: typography.familyDisplay,
         color: colors.bg,
         fontSize: 9,
         fontWeight: typography.weights.black,
         letterSpacing: 0.5,
     },
     themeDesc: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         marginTop: 2,
@@ -533,6 +540,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.danger,
     },
     logoutText: {
+        fontFamily: typography.familyDisplay,
         color: colors.danger,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.semibold,
@@ -546,6 +554,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         padding: spacing.sm,
     },
     deleteText: {
+        fontFamily: typography.family,
         color: colors.textMuted,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.medium,

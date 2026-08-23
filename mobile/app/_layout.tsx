@@ -9,6 +9,13 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
+import {
+    useFonts,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
+} from '@expo-google-fonts/space-grotesk';
+import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
 import { useAuthStore } from '../src/store/authStore';
 import { useGameStore } from '../src/store/gameStore';
 import { initAds } from '../src/ads';
@@ -39,6 +46,13 @@ function useAuthGate() {
 
 export default function RootLayout() {
     const router = useRouter();
+    const [fontsLoaded] = useFonts({
+        SpaceGrotesk_500Medium,
+        SpaceGrotesk_600SemiBold,
+        SpaceGrotesk_700Bold,
+        SpaceMono_400Regular,
+        SpaceMono_700Bold,
+    });
     const hydrate = useAuthStore((s) => s.hydrate);
     const hydrated = useAuthStore((s) => s.hydrated);
     const token = useAuthStore((s) => s.token);
@@ -85,7 +99,7 @@ export default function RootLayout() {
 
     useAuthGate();
 
-    if (!hydrated) {
+    if (!hydrated || !fontsLoaded) {
         return (
             <View style={styles.loadingScreen}>
                 <ActivityIndicator color={colors.primary} size="large" />

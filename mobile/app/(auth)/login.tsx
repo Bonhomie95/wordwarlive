@@ -9,8 +9,8 @@ import {
     View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../src/components/ui/Button';
+import { Screen } from '../../src/components/ui/Screen';
 import { useAuthStore } from '../../src/store/authStore';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
@@ -35,9 +35,9 @@ export default function Login() {
     }
 
     return (
-        <SafeAreaView style={styles.safe}>
+        <Screen>
             <KeyboardAvoidingView
-                style={styles.flex}
+                style={styles.kav}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
                 <View style={styles.flex}>
@@ -74,7 +74,7 @@ export default function Login() {
                     />
                 </View>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </Screen>
     );
 }
 
@@ -107,15 +107,18 @@ function Field(p: FieldProps) {
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
+    kav: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
     flex: { flex: 1 },
     title: {
+        fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.xxl,
         color: colors.text,
-        fontWeight: typography.weights.bold,
+        fontWeight: typography.weights.black,
+        letterSpacing: 0.5,
     },
     subtitle: {
-        fontSize: typography.sizes.md,
+        fontFamily: typography.familyMono,
+        fontSize: typography.sizes.sm,
         color: colors.textDim,
         marginTop: spacing.xs,
     },
@@ -126,7 +129,10 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     field: { gap: spacing.xs },
     label: {
         color: colors.textDim,
-        fontSize: typography.sizes.sm,
+        fontFamily: typography.familyMono,
+        fontSize: 11,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
     },
     input: {
         backgroundColor: colors.surfaceElevated,
@@ -136,6 +142,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderRadius: radius.md,
         borderWidth: 1,
         borderColor: colors.border,
+        fontFamily: typography.family,
         fontSize: typography.sizes.md,
     },
     actions: {

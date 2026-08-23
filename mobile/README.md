@@ -1,6 +1,6 @@
 # WordWar Mobile
 
-The Expo SDK 54 React Native client for WordWar Live. Renders the live grid, captures input, and reacts to socket events from the server. The server is the source of truth — this app never knows the target word until `match_over`.
+The Expo SDK 54 React Native client for WordWar. Renders the live grid, captures input, and reacts to socket events from the server. The server is the source of truth — this app never knows the target word until `match_over`.
 
 ## Run it
 

@@ -5,12 +5,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
+import { Screen } from '../../src/components/ui/Screen';
+import { HeroTitle, MonoLabel, Card } from '../../src/components/ui/primitives';
 import { Tile } from '../../src/components/game/Tile';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
@@ -24,18 +25,6 @@ import {
     type RankTier,
 } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
-
-const RESULT_TITLE = {
-    win: 'Victory',
-    loss: 'Defeat',
-    tie: 'Draw',
-} as const;
-
-const RESULT_COLOR = {
-    win: colors.primary,
-    loss: colors.danger,
-    tie: colors.textDim,
-};
 
 export default function PostGame() {
     const router = useRouter();
@@ -104,9 +93,9 @@ export default function PostGame() {
 
     if (!matchOver) {
         return (
-            <SafeAreaView style={styles.safe}>
+            <Screen>
                 <Text style={styles.empty} allowFontScaling={false}>No match data.</Text>
-            </SafeAreaView>
+            </Screen>
         );
     }
 
@@ -143,30 +132,110 @@ export default function PostGame() {
     }
 
     const tier = matchOver.newRankTier as RankTier;
-    const deltaSign =
-        matchOver.rankDelta > 0 ? '+' : matchOver.rankDelta < 0 ? '' : '±';
+    const result = matchOver.result;
+    const resultColor =
+        result === 'win' ? colors.primary : result === 'loss' ? colors.danger : colors.textDim;
+    const title = result === 'win' ? 'VICTORY!' : result === 'loss' ? 'DEFEAT' : 'DRAW';
+    const oppName = matchFound?.opponent?.username ?? 'your rival';
+    const subtitle =
+        result === 'win'
+            ? `You defeated ${oppName}`
+            : result === 'loss'
+            ? `${oppName} won this round`
+            : 'Evenly matched';
+    const deltaSign = matchOver.rankDelta > 0 ? '+' : matchOver.rankDelta < 0 ? '' : '±';
+    const durationSec = matchOver.matchDurationSec ?? 0;
 
     return (
-        <SafeAreaView style={styles.safe}>
-            <AdLoadingOverlay
-                visible={interstitialLoading}
-                label="Quick ad break…"
-            />
-            <ScrollView contentContainerStyle={styles.content}>
-                <Text
-                    style={[styles.headline, { color: RESULT_COLOR[matchOver.result] }]}
-                    allowFontScaling={false}
-                >
-                    {RESULT_TITLE[matchOver.result]}
-                </Text>
+        <Screen>
+            <AdLoadingOverlay visible={interstitialLoading} label="Quick ad break…" />
+            <ScrollView
+                contentContainerStyle={styles.content}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Outcome hero */}
+                <View style={styles.heroWrap}>
+                    <Ionicons
+                        name={result === 'win' ? 'trophy' : result === 'loss' ? 'skull-outline' : 'remove-circle-outline'}
+                        size={40}
+                        color={resultColor}
+                    />
+                    <HeroTitle color={resultColor} size={typography.sizes.xxl}>
+                        {title}
+                    </HeroTitle>
+                    <Text style={styles.subtitle} allowFontScaling={false}>
+                        {result === 'win' ? 'You defeated ' : result === 'loss' ? `${oppName} won ` : subtitle}
+                        {result !== 'tie' ? (
+                            <Text style={{ color: result === 'win' ? colors.danger : colors.primary }}>
+                                {result === 'win' ? oppName : ''}
+                            </Text>
+                        ) : null}
+                    </Text>
+                </View>
 
-                <Text style={styles.outcomeBlurb} allowFontScaling={false}>
-                    {outcomeBlurb(matchOver.outcome)}
-                </Text>
+                {/* Elo / rewards summary */}
+                <Card glowing accent={resultColor} style={styles.eloCard}>
+                    <View style={styles.eloTop}>
+                        <View style={styles.eloRank}>
+                            <RankBadge tier={tier} size="sm" />
+                            <Text style={styles.eloTier} allowFontScaling={false}>
+                                {tier.toUpperCase()} · {matchOver.newRankPoints} RP
+                            </Text>
+                        </View>
+                        <Text
+                            style={[
+                                styles.eloDelta,
+                                {
+                                    color:
+                                        matchOver.rankDelta > 0
+                                            ? colors.primary
+                                            : matchOver.rankDelta < 0
+                                            ? colors.danger
+                                            : colors.textDim,
+                                },
+                            ]}
+                            allowFontScaling={false}
+                        >
+                            {deltaSign}
+                            {matchOver.rankDelta} Elo
+                        </Text>
+                    </View>
+                    <View style={styles.eloBarTrack}>
+                        <View
+                            style={[
+                                styles.eloBarFill,
+                                { width: `${Math.round(tierProgress(matchOver.newRankPoints) * 100)}%` },
+                            ]}
+                        />
+                    </View>
+                    <View style={styles.eloBottom}>
+                        <View style={styles.eloStat}>
+                            <Ionicons name="ellipse" size={13} color={colors.warning} />
+                            <Text style={styles.eloStatText} allowFontScaling={false}>
+                                +{matchOver.coinsAwarded ?? 0} coins
+                            </Text>
+                        </View>
+                        <View style={styles.eloStat}>
+                            <Ionicons name="flash" size={13} color={colors.info} />
+                            <Text style={styles.eloStatText} allowFontScaling={false}>
+                                +{matchOver.battlePassXpAwarded} XP
+                            </Text>
+                        </View>
+                        <View style={styles.eloStat}>
+                            <Ionicons name="time-outline" size={13} color={colors.textDim} />
+                            <Text style={styles.eloStatText} allowFontScaling={false}>
+                                {formatDuration(durationSec)}
+                            </Text>
+                        </View>
+                    </View>
+                </Card>
 
+                {/* The word */}
                 <View style={styles.wordCard}>
-                    <Text style={styles.wordLabel} allowFontScaling={false}>The word was</Text>
-                    <Text style={styles.word} allowFontScaling={false}>{matchOver.word}</Text>
+                    <MonoLabel>The word was</MonoLabel>
+                    <Text style={styles.word} allowFontScaling={false}>
+                        {matchOver.word}
+                    </Text>
                     {matchOver.wordTheme ? (
                         <Text style={styles.wordTheme} allowFontScaling={false}>
                             “{matchOver.wordTheme}”
@@ -174,71 +243,60 @@ export default function PostGame() {
                     ) : null}
                 </View>
 
-                <View style={styles.metaRow}>
-                    <View style={styles.metaCard}>
-                        <Text style={styles.metaLabel} allowFontScaling={false}>Rank</Text>
-                        <Text
-                            style={[
-                                styles.metaValue,
-                                {
-                                    color:
-                                        matchOver.rankDelta > 0
-                                            ? colors.primary
-                                            : matchOver.rankDelta < 0
-                                            ? colors.danger
-                                            : colors.text,
-                                },
-                            ]}
-                            allowFontScaling={false}
-                        >
-                            {deltaSign}
-                            {matchOver.rankDelta}
-                        </Text>
-                        <RankBadge tier={tier} points={matchOver.newRankPoints} size="sm" />
-                    </View>
-                    <View style={styles.metaCard}>
-                        <Text style={styles.metaLabel} allowFontScaling={false}>Battle Pass XP</Text>
-                        <Text style={[styles.metaValue, { color: colors.warning }]} allowFontScaling={false}>
-                            +{matchOver.battlePassXpAwarded}
-                        </Text>
-                    </View>
-                </View>
-
                 <RewardsCard matchOver={matchOver} />
 
-                <Text style={styles.sectionLabel} allowFontScaling={false}>
-                    Boards revealed
-                </Text>
+                {/* Boards */}
                 <View style={styles.boardsRow}>
-                    <BoardColumn
-                        title="You"
-                        guesses={matchOver.yourGuesses}
-                    />
-                    <BoardColumn
-                        title="Opponent"
-                        guesses={matchOver.opponentGuesses}
-                    />
+                    <BoardColumn title="You" guesses={matchOver.yourGuesses} />
+                    <BoardColumn title="Opponent" guesses={matchOver.opponentGuesses} />
                 </View>
 
+                {/* Actions */}
                 <View style={styles.actions}>
-                    <Button
-                        label="Share result"
-                        onPress={onShare}
-                        variant="ghost"
-                        icon="share-social"
-                    />
                     {isMystery ? (
-                        <Button label="Back to Home" onPress={onHome} />
+                        <Button label="Back to Home" onPress={onHome} icon="home" />
                     ) : (
-                        <>
-                            <Button label="Play again" onPress={onPlayAgain} />
-                            <Button label="Home" onPress={onHome} variant="ghost" />
-                        </>
+                        <Button label="REMATCH" onPress={onPlayAgain} icon="refresh" />
                     )}
+                    <View style={styles.actionRow}>
+                        <Button
+                            label="Share"
+                            onPress={onShare}
+                            variant="secondary"
+                            icon="share-social"
+                            style={{ flex: 1 }}
+                        />
+                        {!isMystery ? (
+                            <Button
+                                label="Menu"
+                                onPress={onHome}
+                                variant="secondary"
+                                icon="home"
+                                style={{ flex: 1 }}
+                            />
+                        ) : null}
+                    </View>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </Screen>
     );
+}
+
+function formatDuration(sec: number): string {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+/** Fraction (0..1) through the current rank tier band, for the summary bar. */
+function tierProgress(points: number): number {
+    const bands = [0, 1100, 1300, 1500, 1700, 1900, 2100, 2400];
+    for (let i = 0; i < bands.length - 1; i++) {
+        if (points >= bands[i]! && points < bands[i + 1]!) {
+            return (points - bands[i]!) / (bands[i + 1]! - bands[i]!);
+        }
+    }
+    return 1;
 }
 
 function RewardsCard({ matchOver }: { matchOver: MatchOver }) {
@@ -380,24 +438,49 @@ function outcomeBlurb(outcome: string): string {
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
-    content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxl },
+    content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
     empty: {
         textAlign: 'center',
         color: colors.textDim,
         marginTop: spacing.xxl,
     },
-    headline: {
-        fontSize: 48,
-        fontWeight: typography.weights.black,
-        textAlign: 'center',
-        letterSpacing: 2,
-    },
-    outcomeBlurb: {
-        textAlign: 'center',
+    heroWrap: { alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
+    subtitle: {
         color: colors.textDim,
+        fontFamily: typography.familyMono,
         fontSize: typography.sizes.sm,
-        marginTop: -spacing.sm,
+        textAlign: 'center',
+    },
+    eloCard: { gap: spacing.md },
+    eloTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    eloRank: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    eloTier: {
+        color: colors.text,
+        fontFamily: typography.familyMono,
+        fontSize: typography.sizes.sm,
+    },
+    eloDelta: {
+        fontFamily: typography.familyMonoBold,
+        fontSize: typography.sizes.lg,
+        fontWeight: typography.weights.black,
+    },
+    eloBarTrack: {
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.surfaceElevated,
+        overflow: 'hidden',
+    },
+    eloBarFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
+    eloBottom: { flexDirection: 'row', justifyContent: 'space-between' },
+    eloStat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    eloStatText: {
+        color: colors.textDim,
+        fontFamily: typography.familyMono,
+        fontSize: typography.sizes.xs,
     },
     wordCard: {
         backgroundColor: colors.surface,
@@ -408,44 +491,20 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.border,
     },
-    wordLabel: {
-        color: colors.textDim,
-        fontSize: typography.sizes.sm,
-    },
     word: {
         color: colors.text,
         fontSize: typography.sizes.xxl,
         fontWeight: typography.weights.black,
         letterSpacing: 6,
-        fontFamily: typography.familyMono,
+        fontFamily: typography.familyMonoBold,
     },
     wordTheme: {
         color: colors.warning,
+        fontFamily: typography.familyMono,
         fontSize: typography.sizes.sm,
         fontStyle: 'italic',
     },
-    metaRow: { flexDirection: 'row', gap: spacing.sm },
-    metaCard: {
-        flex: 1,
-        backgroundColor: colors.surface,
-        borderRadius: radius.md,
-        padding: spacing.md,
-        gap: spacing.xs,
-        borderWidth: 1,
-        borderColor: colors.border,
-    },
-    metaLabel: { color: colors.textDim, fontSize: typography.sizes.xs },
-    metaValue: {
-        fontSize: typography.sizes.lg,
-        fontWeight: typography.weights.bold,
-        fontFamily: typography.familyMono,
-    },
-    sectionLabel: {
-        color: colors.textDim,
-        fontSize: typography.sizes.sm,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
-    },
+    actionRow: { flexDirection: 'row', gap: spacing.sm },
     boardsRow: { flexDirection: 'row', gap: spacing.md },
     boardCol: { flex: 1, alignItems: 'center', gap: spacing.sm },
     boardTitle: {

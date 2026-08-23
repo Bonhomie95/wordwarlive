@@ -1,4 +1,4 @@
--- WordWar Live — baseline schema (recovered via pg_dump from the original dev DB
+-- WordWar — baseline schema (recovered via pg_dump from the original dev DB
 -- on 2026-07-09; original migration files 001–009 were lost to a gitignore rule).
 -- The _migrations bookkeeping table is created by src/db/migrate.ts itself.
 

@@ -1,21 +1,19 @@
 import { useState } from 'react';
-import {
-    Alert,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Button } from '../../src/components/ui/Button';
+import { Screen } from '../../src/components/ui/Screen';
+import { Wordmark } from '../../src/components/ui/Wordmark';
+import { MonoLabel } from '../../src/components/ui/primitives';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { appleSignIn, isAppleAvailable } from '../../src/auth/appleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
-import { typography, spacing } from '../../src/theme/typography'; 
+import { typography, spacing, radius } from '../../src/theme/typography';
+
+const APP_VERSION = 'v0.1.0 · STABLE';
 
 export default function Welcome() {
     const router = useRouter();
@@ -63,110 +61,120 @@ export default function Welcome() {
     }
 
     return (
-        <SafeAreaView style={styles.safe}>
-            <LinearGradient
-                colors={['#0F1115', '#161B23', '#0F1115']}
-                style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.hero}>
-                <Text style={styles.brand} allowFontScaling={false}>
-                    WORDWAR
-                </Text>
-                <Text style={styles.tagline} allowFontScaling={false}>
-                    1v1 word racing. 360 seconds. One winner.
-                </Text>
-            </View>
+        <Screen>
+            <View style={styles.container}>
+                {/* Hero */}
+                <View style={styles.hero}>
+                    <Wordmark size={typography.sizes.display} />
+                    <MonoLabel size={13} style={styles.tagline}>
+                        1v1 competitive word game
+                    </MonoLabel>
+                </View>
 
-            <View style={styles.actions}>
-                <Button
-                    label="Continue as Guest"
-                    onPress={onGuest}
-                    busy={busy}
-                />
-                <Button
-                    label="Sign in with Email"
-                    onPress={() => router.push('/(auth)/login')}
-                    variant="secondary"
-                />
-                {google.available ? (
+                {/* Primary quick-play */}
+                <View style={styles.actions}>
+                    <Button label="PLAY NOW  ⚡" onPress={onGuest} busy={busy} />
+                    <MonoLabel size={10} style={styles.connecting}>
+                        Race a live opponent in seconds
+                    </MonoLabel>
+
+                    <View style={styles.divider}>
+                        <View style={styles.line} />
+                        <MonoLabel size={10}>Save progress</MonoLabel>
+                        <View style={styles.line} />
+                    </View>
+
+                    {isAppleAvailable() ? (
+                        <AppleAuthentication.AppleAuthenticationButton
+                            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                            cornerRadius={radius.md}
+                            style={styles.appleButton}
+                            onPress={onApple}
+                        />
+                    ) : null}
+                    {google.available ? (
+                        <Button
+                            label="Continue with Google"
+                            onPress={onGoogle}
+                            variant="secondary"
+                            icon="logo-google"
+                            busy={oauthBusy || google.inProgress}
+                        />
+                    ) : null}
                     <Button
-                        label="Continue with Google"
-                        onPress={onGoogle}
+                        label="Continue with Email"
+                        onPress={() => router.push('/(auth)/login')}
                         variant="secondary"
-                        busy={oauthBusy || google.inProgress}
+                        icon="mail-outline"
                     />
-                ) : null}
-                {isAppleAvailable() ? (
-                    <AppleAuthentication.AppleAuthenticationButton
-                        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                        buttonStyle={
-                            AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                        }
-                        cornerRadius={10}
-                        style={styles.appleButton}
-                        onPress={onApple}
-                    />
-                ) : null}
 
-                <Pressable onPress={() => router.push('/(auth)/register')}>
-                    <Text style={styles.smallLink} allowFontScaling={false}>
-                        Don&apos;t have an account?{' '}
-                        <Text style={{ color: colors.primary }}>Create one</Text>
-                    </Text>
-                </Pressable>
+                    <Pressable
+                        onPress={() => router.push('/(auth)/register')}
+                        hitSlop={8}
+                    >
+                        <Text style={styles.smallLink} allowFontScaling={false}>
+                            New here?{' '}
+                            <Text style={{ color: colors.primary }}>Create an account</Text>
+                        </Text>
+                    </Pressable>
+                </View>
+
+                {/* Footer */}
+                <View style={styles.footer}>
+                    <View style={styles.versionPill}>
+                        <Ionicons name="ellipse" size={7} color={colors.primary} />
+                        <MonoLabel size={9}>{APP_VERSION}</MonoLabel>
+                    </View>
+                </View>
             </View>
-
-            <Text style={styles.footnote} allowFontScaling={false}>
-                Guest play is available offline-friendly. Link an account later
-                to keep your rank.
-            </Text>
-        </SafeAreaView>
+        </Screen>
     );
 }
 
-const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: {
-        flex: 1,
-        paddingHorizontal: spacing.xl,
-        justifyContent: 'space-between',
-    },
-    hero: {
-        marginTop: spacing.xxl * 2,
-        gap: spacing.md,
-        alignItems: 'center',
-    },
-    brand: {
-        fontSize: 56,
-        fontWeight: typography.weights.black,
-        color: colors.text,
-        letterSpacing: 4,
-    },
-    tagline: {
-        fontSize: typography.sizes.md,
-        color: colors.textDim,
-        textAlign: 'center',
-    },
-    actions: {
-        gap: spacing.md,
-        marginBottom: spacing.xl,
-    },
-    appleButton: {
-        height: 52,
-        width: '100%',
-    },
-    smallLink: {
-        textAlign: 'center',
-        color: colors.textDim,
-        fontSize: typography.sizes.sm,
-        marginTop: spacing.sm,
-    },
-    footnote: {
-        textAlign: 'center',
-        color: colors.textMuted,
-        fontSize: typography.sizes.xs,
-        marginBottom: spacing.lg,
-    },
-}));
+const styles = makeThemedStyles(() =>
+    StyleSheet.create({
+        container: {
+            flex: 1,
+            paddingHorizontal: spacing.xl,
+            justifyContent: 'space-between',
+        },
+        hero: {
+            marginTop: spacing.xxl,
+            alignItems: 'center',
+            gap: spacing.sm,
+        },
+        tagline: { textAlign: 'center' },
+        actions: { gap: spacing.md },
+        connecting: { textAlign: 'center', marginTop: -4, marginBottom: spacing.xs },
+        divider: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.md,
+            marginVertical: spacing.sm,
+        },
+        line: { flex: 1, height: 1, backgroundColor: colors.border },
+        appleButton: { height: 54, width: '100%' },
+        smallLink: {
+            textAlign: 'center',
+            color: colors.textDim,
+            fontFamily: typography.familyMono,
+            fontSize: typography.sizes.sm,
+            marginTop: spacing.xs,
+        },
+        footer: { alignItems: 'center', paddingBottom: spacing.md },
+        versionPill: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: radius.pill,
+            paddingHorizontal: 12,
+            paddingVertical: 5,
+        },
+    })
+);
 
-// Use Link to silence unused warning; not necessary if removed.
 void Link;

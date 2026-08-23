@@ -217,11 +217,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
     },
     subtitle: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         marginTop: 2,
@@ -236,6 +238,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.border,
     },
     submitLabel: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
@@ -243,6 +246,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         textTransform: 'uppercase',
     },
     input: {
+        fontFamily: typography.familyDisplay,
         backgroundColor: colors.bg,
         borderRadius: radius.sm,
         padding: spacing.md,
@@ -255,6 +259,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.border,
     },
     hint: {
+        fontFamily: typography.family,
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
         marginBottom: spacing.xs,
@@ -269,18 +274,21 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.warning,
     },
     pendingLabel: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
         letterSpacing: 1.5,
     },
     pendingWord: {
+        fontFamily: typography.familyDisplay,
         color: colors.warning,
         fontSize: 36,
         fontWeight: typography.weights.black,
         letterSpacing: 4,
     },
     pendingMeta: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         marginBottom: spacing.sm,
@@ -299,6 +307,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     withdrawText: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         fontWeight: typography.weights.semibold,
@@ -312,6 +321,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.border,
     },
     howTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
@@ -320,6 +330,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginBottom: spacing.xs,
     },
     howBody: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         lineHeight: 22,

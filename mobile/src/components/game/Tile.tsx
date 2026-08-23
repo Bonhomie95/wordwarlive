@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { makeThemedStyles, colors, useThemeStore } from '../../theme/colors';
 import { typography, radius } from '../../theme/typography';
+import { glow } from '../../theme/effects';
 import type { Tile as TileColor } from '../../types/index';
 
 interface Props {
@@ -95,6 +96,10 @@ const TileRaw: React.FC<Props> = ({
     const showLetter = !hideLetter && !!letter && !isSmall;
     const showHint = !hideLetter && !letter && !!hintLetter && !isSmall;
     const borderRadius = isSmall ? 3 : Math.min(radius.md, dim / 6);
+    // Bright tile backgrounds (green/gold/orange/blue) read best with dark
+    // text; the dark "wrong" tile and empty/filled cells use light text.
+    const letterColor =
+        state === 'correct' || state === 'misplaced' ? colors.bg : colors.text;
 
     return (
         <Animated.View
@@ -110,11 +115,17 @@ const TileRaw: React.FC<Props> = ({
                     : showHint
                     ? styles.borderHint
                     : styles.borderEmpty,
+                // Neon bloom on a solved (green) tile.
+                state === 'correct' && !isSmall ? glow(palette.correct, 10, 0.7) : null,
+                cursor && !isSmall ? glow(colors.primary, 8, 0.5) : null,
                 animatedStyle,
             ]}
         >
             {showLetter ? (
-                <Text style={[styles.letter, { fontSize }]} allowFontScaling={false}>
+                <Text
+                    style={[styles.letter, { fontSize, color: letterColor }]}
+                    allowFontScaling={false}
+                >
                     {letter}
                 </Text>
             ) : showHint ? (
@@ -157,16 +168,17 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     letter: {
         color: colors.text,
-        fontWeight: typography.weights.bold,
+        fontFamily: typography.familyDisplay,
+        fontWeight: typography.weights.black,
         letterSpacing: 1,
         includeFontPadding: false,
     },
     hintLetter: {
         color: colors.warning,
+        fontFamily: typography.familyMono,
         fontWeight: typography.weights.bold,
         letterSpacing: 1,
         includeFontPadding: false,
         opacity: 0.7,
-        fontStyle: 'italic',
     },
 }));

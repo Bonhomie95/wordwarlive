@@ -10,10 +10,11 @@ import {
     Text,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
+import { Screen } from '../../src/components/ui/Screen';
+import { TopBar } from '../../src/components/ui/TopBar';
 import { useAuthStore } from '../../src/store/authStore';
 import { matchesApi } from '../../src/api/resources';
 import type { RecentMatch } from '../../src/types/index';
@@ -74,7 +75,8 @@ export default function Profile() {
     }
 
     return (
-        <SafeAreaView style={styles.safe}>
+        <Screen edges={['top']}>
+            <TopBar title="Profile" />
             <FlatList
                 ListHeaderComponent={
                     <View style={styles.header}>
@@ -160,7 +162,7 @@ export default function Profile() {
                     </View>
                 }
             />
-        </SafeAreaView>
+        </Screen>
     );
 }
 
@@ -207,8 +209,8 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
-    listContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
-    header: { gap: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.lg },
+    listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl * 2 },
+    header: { gap: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
     identityRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -216,13 +218,17 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     username: {
         color: colors.text,
+        fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.xl,
-        fontWeight: typography.weights.bold,
+        fontWeight: typography.weights.black,
     },
     provider: {
         color: colors.textDim,
+        fontFamily: typography.familyMono,
         fontSize: typography.sizes.xs,
         marginTop: spacing.xs,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
     },
     statsCard: {
         flexDirection: 'row',
@@ -239,18 +245,25 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     statValue: {
         color: colors.text,
+        fontFamily: typography.familyMonoBold,
         fontSize: typography.sizes.lg,
-        fontWeight: typography.weights.bold,
+        fontWeight: typography.weights.black,
     },
     statLabel: {
-        color: colors.textDim,
-        fontSize: typography.sizes.xs,
+        color: colors.textMuted,
+        fontFamily: typography.familyMono,
+        fontSize: 10,
         marginTop: spacing.xs,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
     },
     sectionLabel: {
         color: colors.textDim,
+        fontFamily: typography.familyMono,
         fontSize: typography.sizes.sm,
         marginTop: spacing.sm,
+        textTransform: 'uppercase',
+        letterSpacing: 1.5,
     },
     matchRow: {
         flexDirection: 'row',

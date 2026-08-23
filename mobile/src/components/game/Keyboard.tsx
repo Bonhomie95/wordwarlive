@@ -27,7 +27,10 @@ const KeyRaw: React.FC<{
     state?: TileColor;
     flex?: number;
     disabled?: boolean;
-}> = ({ label, onPress, state, flex = 1, disabled }) => {
+    /** 'enter' tints the label green, 'backspace' shows a wider neutral key. */
+    accent?: 'enter';
+    a11yLabel?: string;
+}> = ({ label, onPress, state, flex = 1, disabled, accent, a11yLabel }) => {
     const bg = state
         ? state === 'correct'
             ? colors.tileCorrect
@@ -35,7 +38,15 @@ const KeyRaw: React.FC<{
             ? colors.tileMisplaced
             : colors.tileWrong
         : colors.surfaceElevated;
-    const fg = state ? colors.text : colors.text;
+    // Dark text on bright (green/gold) keys; muted on eliminated letters.
+    const fg =
+        state === 'correct' || state === 'misplaced'
+            ? colors.bg
+            : state === 'wrong'
+            ? colors.textMuted
+            : accent === 'enter'
+            ? colors.primary
+            : colors.text;
 
     return (
         <Pressable
@@ -45,8 +56,11 @@ const KeyRaw: React.FC<{
                 onPress();
             }}
             disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={a11yLabel ?? label}
             style={({ pressed }) => [
                 styles.key,
+                state ? null : styles.keyIdle,
                 { backgroundColor: bg, flex, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 },
             ]}
         >
@@ -78,8 +92,10 @@ const KeyboardRaw: React.FC<Props> = ({
                                     key={label}
                                     label="ENTER"
                                     onPress={onEnter}
-                                    flex={1.6}
+                                    flex={1.7}
                                     disabled={disabled}
+                                    accent="enter"
+                                    a11yLabel="Submit guess"
                                 />
                             );
                         }
@@ -89,8 +105,9 @@ const KeyboardRaw: React.FC<Props> = ({
                                     key={label}
                                     label="⌫"
                                     onPress={onBackspace}
-                                    flex={1.6}
+                                    flex={1.7}
                                     disabled={disabled}
+                                    a11yLabel="Delete letter"
                                 />
                             );
                         }
@@ -147,14 +164,19 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     key: {
-        height: 42,
+        height: 46,
         borderRadius: radius.sm,
         alignItems: 'center',
         justifyContent: 'center',
     },
+    keyIdle: {
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
     keyLabel: {
+        fontFamily: typography.familyDisplay,
         fontWeight: typography.weights.bold,
-        fontSize: typography.sizes.sm,
+        fontSize: typography.sizes.md,
         letterSpacing: 0.5,
     },
 }));

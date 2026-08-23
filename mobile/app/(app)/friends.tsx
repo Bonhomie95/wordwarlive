@@ -392,6 +392,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     title: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.xxl,
         fontWeight: typography.weights.black,
@@ -405,6 +406,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.border,
     },
     cardLabel: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
@@ -412,6 +414,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         textTransform: 'uppercase',
     },
     codeText: {
+        fontFamily: typography.familyDisplay,
         color: colors.primary,
         fontSize: 32,
         fontWeight: typography.weights.black,
@@ -420,11 +423,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginVertical: spacing.xs,
     },
     hint: {
+        fontFamily: typography.family,
         color: colors.textMuted,
         fontSize: typography.sizes.sm,
         lineHeight: 18,
     },
     input: {
+        fontFamily: typography.familyDisplay,
         backgroundColor: colors.bg,
         borderRadius: radius.sm,
         padding: spacing.md,
@@ -438,6 +443,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     },
     section: { gap: spacing.xs, marginTop: spacing.sm },
     sectionHeader: {
+        fontFamily: typography.familyDisplay,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
         fontWeight: typography.weights.bold,
@@ -446,11 +452,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginBottom: spacing.sm,
     },
     listHint: {
+        fontFamily: typography.family,
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
         marginBottom: spacing.xs,
     },
     empty: {
+        fontFamily: typography.family,
         color: colors.textMuted,
         fontSize: typography.sizes.sm,
         fontStyle: 'italic',
@@ -473,11 +481,13 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         backgroundColor: colors.surfaceElevated,
     },
     friendName: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.semibold,
     },
     friendMeta: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.xs,
     },
@@ -496,6 +506,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderColor: colors.border,
     },
     challengePillText: {
+        fontFamily: typography.familyDisplay,
         fontSize: 11,
         fontWeight: typography.weights.black,
         letterSpacing: 0.5,
@@ -518,12 +529,14 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         width: '100%',
     },
     overlayTitle: {
+        fontFamily: typography.familyDisplay,
         color: colors.text,
         fontSize: typography.sizes.lg,
         fontWeight: typography.weights.bold,
         textAlign: 'center',
     },
     overlaySub: {
+        fontFamily: typography.family,
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         textAlign: 'center',
