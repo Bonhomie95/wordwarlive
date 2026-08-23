@@ -45,7 +45,7 @@ export const Button: React.FC<Props> = ({
             accessibilityState={{ disabled: !!isDisabled, busy: !!busy }}
             style={({ pressed }) => [
                 styles.base,
-                variantStyles[variant],
+                variantStyle(variant),
                 variant === 'primary' && !isDisabled ? glow(colors.primary, 16, 0.5) : null,
                 pressed && !isDisabled ? { opacity: 0.9, transform: [{ scale: 0.98 }] } : null,
                 isDisabled ? { opacity: 0.45 } : null,
@@ -107,17 +107,26 @@ const styles = makeThemedStyles(() =>
     })
 );
 
-const variantStyles: Record<Variant, ViewStyle> = {
-    primary: { backgroundColor: colors.primary },
-    secondary: {
-        backgroundColor: colors.surfaceElevated,
-        borderWidth: 1,
-        borderColor: colors.border,
-    },
-    ghost: { backgroundColor: 'transparent' },
-    danger: {
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: colors.danger,
-    },
-};
+// Read at RENDER time (not module load) so the background/border track the
+// active theme — otherwise a theme switch leaves a frozen dark background under
+// live theme text (e.g. dark text on a dark button = invisible).
+function variantStyle(variant: Variant): ViewStyle {
+    switch (variant) {
+        case 'primary':
+            return { backgroundColor: colors.primary };
+        case 'secondary':
+            return {
+                backgroundColor: colors.surfaceElevated,
+                borderWidth: 1,
+                borderColor: colors.border,
+            };
+        case 'ghost':
+            return { backgroundColor: 'transparent' };
+        case 'danger':
+            return {
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.danger,
+            };
+    }
+}

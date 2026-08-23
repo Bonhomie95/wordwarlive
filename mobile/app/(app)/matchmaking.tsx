@@ -1,7 +1,7 @@
 // Matchmaking screen (classic + mystery, via ?mode=). Visual revamp only —
 // all the queue/focus/navigation logic is unchanged from before.
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +27,13 @@ const PRO_TIPS = [
     'You can see your opponent’s tile colors, never their letters. Read their progress.',
     'Win streaks of 3, 5, 10… award a Reveal power-up. Power-ups are earned, never bought.',
     'A Lock power-up freezes your opponent’s power-ups for 8 seconds. Time it well.',
+    'A hint reveals one correct letter. Your first hint ever is free — spend it wisely.',
+    'Longer words give more letter info per guess, but cost you precious seconds to type.',
+    'In Mystery Duel you race your opponent’s word while they race yours. Pick something tricky.',
+    'Climb from Stone to Legend. Beating a higher-ranked rival earns you more Elo.',
+    'The Daily Challenge is the same word for the whole world — fewer guesses ranks you higher.',
+    'Tap a tile to move your cursor and edit mid-word without deleting everything.',
+    'Green = right spot. Yellow = right letter, wrong spot. Grey = not in the word.',
 ];
 
 /** One expanding radar ring. */
@@ -104,11 +111,23 @@ export default function Matchmaking() {
         ? 'FINDING A DUELIST…'
         : 'SEARCHING FOR OPPONENT…';
 
-    // Pick a stable tip per screen visit.
-    const tip = useMemo(
-        () => PRO_TIPS[Math.floor(Math.random() * PRO_TIPS.length)]!,
-        []
+    // Rotating pro tip. useMemo([]) computed ONCE for the screen's lifetime —
+    // and expo-router keeps this screen mounted, so every queue showed the same
+    // tip. Instead: pick a fresh random tip each time the screen gains focus,
+    // then rotate through the rest every 5s while the player waits.
+    const [tipIdx, setTipIdx] = useState(0);
+    useFocusEffect(
+        useCallback(() => {
+            let idx = Math.floor(Math.random() * PRO_TIPS.length);
+            setTipIdx(idx);
+            const id = setInterval(() => {
+                idx = (idx + 1) % PRO_TIPS.length;
+                setTipIdx(idx);
+            }, 5000);
+            return () => clearInterval(id);
+        }, [])
     );
+    const tip = PRO_TIPS[tipIdx]!;
 
     function onCancel() {
         leaveQueue();

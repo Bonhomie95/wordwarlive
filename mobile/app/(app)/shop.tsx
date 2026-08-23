@@ -40,12 +40,21 @@ const CATEGORY_TITLE: Record<CosmeticCategory, string> = {
     profile_border: 'Profile borders',
 };
 
-const RARITY_COLOR: Record<Cosmetic['rarity'], string> = {
-    common: colors.textDim,
-    rare: colors.info,
-    epic: '#C490FF',
-    legendary: colors.warning,
-};
+// Read at render time so rarity colors track the active theme (a module-level
+// const would freeze to whatever theme was loaded first).
+function rarityColor(rarity: Cosmetic['rarity']): string {
+    switch (rarity) {
+        case 'rare':
+            return colors.info;
+        case 'epic':
+            return '#C490FF';
+        case 'legendary':
+            return colors.warning;
+        case 'common':
+        default:
+            return colors.textDim;
+    }
+}
 
 export default function Shop() {
     const user = useAuthStore((s) => s.user);
@@ -341,7 +350,7 @@ function ShopItem({
                         {cosmetic.name}
                     </Text>
                     <Text
-                        style={[styles.rarity, { color: RARITY_COLOR[cosmetic.rarity] }]}
+                        style={[styles.rarity, { color: rarityColor(cosmetic.rarity) }]}
                         allowFontScaling={false}
                     >
                         {cosmetic.rarity.toUpperCase()}

@@ -85,7 +85,9 @@ const CLASSIC_LIGHT: ThemeTokens = {
     border: '#E2E8F0',
     text: '#0F172A',
     textDim: '#475569',
-    textMuted: '#94A3B8',
+    // Darkened from #94A3B8 (2.45:1 on the light bg — too faint for small
+    // labels) to meet ≥3:1 while staying lighter than textDim for hierarchy.
+    textMuted: '#64748B',
     primary: '#16A34A',
     primaryDim: '#15803D',
     danger: '#DC2626',
