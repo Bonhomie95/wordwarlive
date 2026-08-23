@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
-import { findUserById, updateEquippedCosmetic } from '../services/userService.js';
+import { deleteAccount, findUserById, updateEquippedCosmetic } from '../services/userService.js';
 import { getCosmetic } from '../services/cosmeticsService.js';
 import { applyResetIfNeeded } from '../services/rankSeasonService.js';
 import { effectiveStreak } from '../services/streakService.js';
@@ -112,6 +112,13 @@ usersRouter.get('/users/:id', async (req, res) => {
     const user = await findUserById(req.params.id!);
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(shapePublic(user));
+});
+
+// Permanent account deletion. Required by the App Store for any app with
+// account creation, and by GDPR/CCPA. Irreversible.
+usersRouter.delete('/me', requireAuth, async (req, res) => {
+    await deleteAccount(req.session!.userId);
+    res.json({ ok: true });
 });
 
 const equipSchema = z.object({

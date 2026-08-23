@@ -102,8 +102,12 @@ class MysteryHub {
                 botAfterMs: entry.botAfterMs,
             });
 
-            // 1. Try human match
-            const result = await tryMatch(entry.userId);
+            // 1. Try human match — only against players in THIS node's live
+            //    queue, so both sides are co-located (match runtime is
+            //    node-local). Prevents a cross-node pairing from consuming
+            //    both submissions without starting a match.
+            const localIds = [...this.queue.keys()];
+            const result = await tryMatch(entry.userId, localIds);
             if (result.matched) {
                 const oppEntry = this.queue.get(result.opponentUserId);
                 if (!oppEntry) {

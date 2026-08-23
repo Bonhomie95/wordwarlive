@@ -7,6 +7,9 @@
     "scheme": "wordwar",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -38,6 +41,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-apple-authentication",
+      "expo-notifications",
       [
         "react-native-google-mobile-ads",
         {

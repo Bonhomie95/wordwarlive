@@ -257,6 +257,8 @@ export interface ServerToClientEvents {
     match_tick: (payload: { msRemaining: number }) => void;
     match_over: (payload: MatchOver) => void;
     error: (payload: { message: string; code?: string }) => void;
+    /** The server is draining for a restart/deploy. */
+    server_restarting: (payload: { graceMs: number }) => void;
     friend_challenge_incoming: (payload: {
         challengeId: string;
         fromUserId: string;

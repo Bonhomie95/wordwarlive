@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+    bumpTokenVersion,
     createUser,
     findUserByEmail,
     findUserById,
@@ -10,6 +11,7 @@ import {
     type UserRow,
 } from '../services/userService.js';
 import { requireAuth } from '../auth/middleware.js';
+import { containsProfanity } from '../moderation/blocklist.js';
 import { query } from '../db/pool.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
@@ -71,6 +73,9 @@ authRouter.post('/anonymous', async (req, res) => {
         return res.status(400).json({ error: 'Invalid body', details: parsed.error.issues });
     }
     const { deviceId, desiredUsername } = parsed.data;
+    if (desiredUsername && containsProfanity(desiredUsername)) {
+        return res.status(400).json({ error: 'That username contains blocked content.' });
+    }
 
     let user = await findUserByProviderSubject('anonymous', deviceId);
     if (!user) {
@@ -88,6 +93,7 @@ authRouter.post('/anonymous', async (req, res) => {
     const token = signSession({
         userId: user.id,
         username: user.username,
+        tokenVersion: user.token_version,
         provider: 'anonymous',
     });
     res.json({ token, user: shapeUserForClient(user) });
@@ -111,6 +117,9 @@ authRouter.post('/email/register', async (req, res) => {
     if (!isValidUsername(username)) {
         return res.status(400).json({ error: 'Username must be 3–16 chars, letters/numbers/underscores only' });
     }
+    if (containsProfanity(username)) {
+        return res.status(400).json({ error: 'That username contains blocked content.' });
+    }
     if (await findUserByEmail(email)) {
         return res.status(409).json({ error: 'Email already in use' });
     }
@@ -129,6 +138,7 @@ authRouter.post('/email/register', async (req, res) => {
     const token = signSession({
         userId: user.id,
         username: user.username,
+        tokenVersion: user.token_version,
         provider: 'email',
     });
     res.json({ token, user: shapeUserForClient(user) });
@@ -159,6 +169,7 @@ authRouter.post('/email/login', async (req, res) => {
     const token = signSession({
         userId: user.id,
         username: user.username,
+        tokenVersion: user.token_version,
         provider: 'email',
     });
     res.json({ token, user: shapeUserForClient(user) });
@@ -193,6 +204,7 @@ authRouter.post('/google', async (req, res) => {
     const token = signSession({
         userId: user.id,
         username: user.username,
+        tokenVersion: user.token_version,
         provider: 'google',
     });
     res.json({ token, user: shapeUserForClient(user) });
@@ -227,6 +239,7 @@ authRouter.post('/apple', async (req, res) => {
     const token = signSession({
         userId: user.id,
         username: user.username,
+        tokenVersion: user.token_version,
         provider: 'apple',
     });
     res.json({ token, user: shapeUserForClient(user) });
@@ -293,6 +306,7 @@ authRouter.post('/link/email', requireAuth, async (req, res) => {
     const token = signSession({
         userId: check.user.id,
         username: check.user.username,
+        tokenVersion: check.user.token_version,
         provider: 'email',
     });
     const fresh = await findUserById(check.user.id);
@@ -336,6 +350,7 @@ authRouter.post('/link/google', requireAuth, async (req, res) => {
     const token = signSession({
         userId: check.user.id,
         username: check.user.username,
+        tokenVersion: check.user.token_version,
         provider: 'google',
     });
     const fresh = await findUserById(check.user.id);
@@ -379,8 +394,29 @@ authRouter.post('/link/apple', requireAuth, async (req, res) => {
     const token = signSession({
         userId: check.user.id,
         username: check.user.username,
+        tokenVersion: check.user.token_version,
         provider: 'apple',
     });
     const fresh = await findUserById(check.user.id);
     res.json({ token, user: shapeUserForClient(fresh!) });
+});
+
+// ─── Log out everywhere ───────────────────────────────────────────────────
+//
+// Bumps the user's token_version, immediately invalidating every previously
+// issued JWT (this device included), then returns a fresh token so the caller
+// can stay signed in on THIS device if it wants. Used from Settings and as a
+// remediation lever if a token is believed compromised.
+authRouter.post('/logout-all', requireAuth, async (req, res) => {
+    const userId = req.session!.userId;
+    const newVersion = await bumpTokenVersion(userId);
+    const user = await findUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const token = signSession({
+        userId: user.id,
+        username: user.username,
+        tokenVersion: newVersion,
+        provider: user.auth_provider,
+    });
+    res.json({ token, user: shapeUserForClient(user) });
 });

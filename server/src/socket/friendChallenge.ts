@@ -15,6 +15,7 @@ import { matchRegistry } from './matchHandler.js';
 import { socketIdFor } from './presence.js';
 import { findUserById } from '../services/userService.js';
 import { areFriends } from '../services/friendsService.js';
+import { sendPushToUser } from '../services/pushService.js';
 import { pickRankAwareWord } from '../game/words.js';
 import type { AppIOServer, AppSocket } from './server.js';
 
@@ -53,9 +54,18 @@ class FriendChallengeHub {
         if (matchRegistry.isInMatch(friendId)) {
             return { ok: false, error: 'Your friend is already in a match.' };
         }
-        const friendSocketId = socketIdFor(friendId);
+        const friendSocketId = await socketIdFor(friendId);
         if (!friendSocketId) {
             return { ok: false, error: 'Your friend is offline.' };
+        }
+        // Live friend challenges need both players on the same node (the match
+        // runtime is node-local). If they're on different instances, fail fast
+        // with a helpful message rather than after they accept.
+        if (!io.sockets.sockets.has(friendSocketId)) {
+            return {
+                ok: false,
+                error: "You and your friend are on different game servers right now. Try a private match code instead.",
+            };
         }
 
         const [me, friend] = await Promise.all([
@@ -65,7 +75,7 @@ class FriendChallengeHub {
         if (!me || !friend) return { ok: false, error: 'User not found.' };
 
         // Replace any earlier outgoing challenge from this user.
-        this.clearOutgoing(io, fromId, 'cancelled');
+        await this.clearOutgoing(io, fromId, 'cancelled');
 
         const id = randomUUID();
         const challenge: PendingChallenge = {
@@ -73,7 +83,11 @@ class FriendChallengeHub {
             fromUserId: fromId,
             toUserId: friendId,
             createdAt: Date.now(),
-            expiry: setTimeout(() => this.expire(io, id), CHALLENGE_TTL_MS),
+            expiry: setTimeout(() => {
+                this.expire(io, id).catch((err) =>
+                    logger.error({ err }, 'friend challenge expire failed')
+                );
+            }, CHALLENGE_TTL_MS),
         };
         this.byId.set(id, challenge);
         this.byFrom.set(fromId, id);
@@ -83,6 +97,13 @@ class FriendChallengeHub {
             fromUserId: fromId,
             fromUsername: me.username,
         });
+        // Also push — reaches the friend if their app is backgrounded even
+        // though the socket is still (briefly) connected. Best-effort.
+        sendPushToUser(friendId, {
+            title: 'Word War',
+            body: `${me.username} challenged you to a match!`,
+            data: { type: 'friend_challenge', challengeId: id, fromUserId: fromId },
+        }).catch(() => {});
         logger.info({ fromId, friendId, id }, 'friend challenge sent');
         return { ok: true, challengeId: id };
     }
@@ -101,7 +122,7 @@ class FriendChallengeHub {
         }
         this.dispose(challenge);
 
-        const fromSocketId = socketIdFor(challenge.fromUserId);
+        const fromSocketId = await socketIdFor(challenge.fromUserId);
 
         if (!accept) {
             if (fromSocketId) {
@@ -114,6 +135,18 @@ class FriendChallengeHub {
 
         if (!fromSocketId) {
             return { ok: false, error: 'The challenger went offline.' };
+        }
+        // Both sockets must be on THIS node for the match runtime to work
+        // (see startMatch's co-location guard). The responder (socket) is
+        // local by definition; verify the challenger is too.
+        if (!io.sockets.sockets.has(fromSocketId)) {
+            io.to(fromSocketId).emit('friend_challenge_cancelled', {
+                reason: 'busy',
+            });
+            return {
+                ok: false,
+                error: "You and your friend are on different game servers right now. Try a private match code instead.",
+            };
         }
         if (
             matchRegistry.isInMatch(challenge.fromUserId) ||
@@ -155,18 +188,20 @@ class FriendChallengeHub {
 
     /** A cancels their own outgoing challenge before B responds. */
     cancel(io: AppIOServer, socket: AppSocket): void {
-        this.clearOutgoing(io, socket.data.session.userId, 'cancelled');
+        this.clearOutgoing(io, socket.data.session.userId, 'cancelled').catch(
+            (err) => logger.error({ err }, 'clearOutgoing (cancel) failed')
+        );
     }
 
     /** A socket dropped — tear down anything that involved that user. */
-    handleDisconnect(io: AppIOServer, userId: string): void {
+    async handleDisconnect(io: AppIOServer, userId: string): Promise<void> {
         // Any outgoing challenge from them.
-        this.clearOutgoing(io, userId, 'offline');
+        await this.clearOutgoing(io, userId, 'offline');
         // Any incoming challenge aimed at them.
         for (const challenge of [...this.byId.values()]) {
             if (challenge.toUserId === userId) {
                 this.dispose(challenge);
-                const fromSocketId = socketIdFor(challenge.fromUserId);
+                const fromSocketId = await socketIdFor(challenge.fromUserId);
                 if (fromSocketId) {
                     io.to(fromSocketId).emit('friend_challenge_cancelled', {
                         reason: 'offline',
@@ -178,12 +213,12 @@ class FriendChallengeHub {
 
     // ─── internals ───────────────────────────────────────────────────────
 
-    private expire(io: AppIOServer, challengeId: string): void {
+    private async expire(io: AppIOServer, challengeId: string): Promise<void> {
         const challenge = this.byId.get(challengeId);
         if (!challenge) return;
         this.dispose(challenge);
         for (const userId of [challenge.fromUserId, challenge.toUserId]) {
-            const sid = socketIdFor(userId);
+            const sid = await socketIdFor(userId);
             if (sid) {
                 io.to(sid).emit('friend_challenge_cancelled', {
                     reason: 'expired',
@@ -192,17 +227,17 @@ class FriendChallengeHub {
         }
     }
 
-    private clearOutgoing(
+    private async clearOutgoing(
         io: AppIOServer,
         fromUserId: string,
         reason: 'cancelled' | 'offline'
-    ): void {
+    ): Promise<void> {
         const id = this.byFrom.get(fromUserId);
         if (!id) return;
         const challenge = this.byId.get(id);
         if (challenge) {
             this.dispose(challenge);
-            const toSocketId = socketIdFor(challenge.toUserId);
+            const toSocketId = await socketIdFor(challenge.toUserId);
             if (toSocketId) {
                 io.to(toSocketId).emit('friend_challenge_cancelled', { reason });
             }

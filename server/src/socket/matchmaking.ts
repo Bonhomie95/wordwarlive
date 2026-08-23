@@ -18,10 +18,29 @@ import { createBotUser, difficultyForRank, adaptiveDifficulty } from '../ai/bot.
 import { getRecentResultsSummary } from '../services/matchService.js';
 import { logger } from '../utils/logger.js';
 import { matchRegistry } from './matchHandler.js';
+import { isShuttingDown } from './drain.js';
 import type { AppIOServer, AppSocket } from './server.js';
 
-const QUEUE_KEY = 'mm:queue';
-const META_KEY = (userId: string) => `mm:meta:${userId}`;
+// The matchmaking queue is scoped PER NODE (`mm:queue:{nodeId}`). A node only
+// ever enqueues players whose sockets it holds, and only scans its own queue,
+// so both sides of every ranked match are guaranteed to live on the same
+// instance — which is required because the live match runtime (timers, guess
+// handling, in-memory registry) is node-local. This is what makes ranked play
+// correct behind a sticky-session load balancer with more than one node. See
+// README "Scaling & sticky routing".
+const QUEUE_KEY = `mm:queue:${env.nodeId}`;
+const META_KEY = (userId: string) => `mm:meta:${env.nodeId}:${userId}`;
+
+/** Drop any stale queue members left over from a previous run of THIS node id
+ *  (e.g. a crash without clean shutdown). Safe: the queue only ever holds
+ *  this node's own players. */
+export async function resetMatchmakingQueue(): Promise<void> {
+    try {
+        await redis.del(QUEUE_KEY);
+    } catch {
+        // best-effort
+    }
+}
 
 /** Lower / upper bound for the randomized "spawn a bot" timeout, ms. Each
  *  enqueued user gets a value picked uniformly from this range so the bot
@@ -47,6 +66,12 @@ class MatchmakingHub {
 
     /** Add a user to the queue and look for a match. */
     async enqueue(io: AppIOServer, socket: AppSocket): Promise<void> {
+        if (isShuttingDown()) {
+            socket.emit('error', {
+                message: 'Server is restarting — try again in a moment.',
+            });
+            return;
+        }
         const session = socket.data.session;
         const user = await findUserById(session.userId);
         if (!user) throw new Error('User not found');

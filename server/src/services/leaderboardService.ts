@@ -9,8 +9,15 @@
 // Updated on every match completion (winner gets +1 win; loser gets +1 loss).
 
 import { pool } from '../db/pool.js';
+import { redis } from '../db/redis.js';
+import { logger } from '../utils/logger.js';
 
 export type LeaderboardPeriod = 'all_time' | 'monthly' | 'weekly' | 'daily';
+
+/** Top-N leaderboard rows are identical for every viewer, so we cache them in
+ *  Redis for a short window. The per-viewer "you" row is always computed live
+ *  and never cached. */
+const LEADERBOARD_CACHE_TTL_S = 15;
 
 /**
  * Compute the bucket label for a given period at the given timestamp.
@@ -77,39 +84,40 @@ export async function recordMatchResult(args: RecordResultArgs): Promise<void> {
     // leaderboards work without scanning multiple modes.
     const modes: string[] = [args.mode, 'overall'];
 
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        for (const b of buckets) {
-            for (const m of modes) {
-                await client.query(
-                    `INSERT INTO leaderboard_entries
-                        (user_id, period, bucket, mode, wins, losses, rank_points, last_match_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
-                     ON CONFLICT (period, bucket, mode, user_id) DO UPDATE
-                     SET wins = leaderboard_entries.wins + EXCLUDED.wins,
-                         losses = leaderboard_entries.losses + EXCLUDED.losses,
-                         rank_points = EXCLUDED.rank_points,
-                         last_match_at = now()`,
-                    [
-                        args.userId,
-                        b.period,
-                        b.bucket,
-                        m,
-                        args.isWin ? 1 : 0,
-                        args.isWin ? 0 : 1,
-                        args.rankPoints,
-                    ]
-                );
-            }
+    // Batch all 4 periods × 2 modes = 8 upserts into a SINGLE statement via
+    // UNNEST. This replaces the previous 8-round-trip loop-in-a-transaction —
+    // a meaningful reduction in per-match-end DB work under load.
+    const periodsArr: string[] = [];
+    const bucketsArr: string[] = [];
+    const modesArr: string[] = [];
+    for (const b of buckets) {
+        for (const m of modes) {
+            periodsArr.push(b.period);
+            bucketsArr.push(b.bucket);
+            modesArr.push(m);
         }
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
     }
+
+    await pool.query(
+        `INSERT INTO leaderboard_entries
+            (user_id, period, bucket, mode, wins, losses, rank_points, last_match_at)
+         SELECT $1, p, b, m, $5, $6, $7, now()
+         FROM unnest($2::text[], $3::text[], $4::text[]) AS t(p, b, m)
+         ON CONFLICT (period, bucket, mode, user_id) DO UPDATE
+         SET wins = leaderboard_entries.wins + EXCLUDED.wins,
+             losses = leaderboard_entries.losses + EXCLUDED.losses,
+             rank_points = EXCLUDED.rank_points,
+             last_match_at = now()`,
+        [
+            args.userId,
+            periodsArr,
+            bucketsArr,
+            modesArr,
+            args.isWin ? 1 : 0,
+            args.isWin ? 0 : 1,
+            args.rankPoints,
+        ]
+    );
 }
 
 export interface LeaderboardEntry {
@@ -154,47 +162,63 @@ export async function getLeaderboard(args: {
 
     const { query } = await import('../db/pool.js');
 
-    const topRows = await query<{
-        user_id: string;
-        username: string;
-        rank_tier: string;
-        wins: number;
-        losses: number;
-        rank_points: number;
-        equipped_avatar: string | null;
-        equipped_profile_border: string | null;
-        rank_in_leaderboard: string;
-    }>(
-        `SELECT
-            le.user_id,
-            u.username,
-            u.rank_tier,
-            le.wins,
-            le.losses,
-            le.rank_points,
-            u.equipped_avatar,
-            u.equipped_profile_border,
-            ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC) AS rank_in_leaderboard
-         FROM leaderboard_entries le
-         JOIN users u ON u.id = le.user_id
-         WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
-           AND u.auth_subject NOT LIKE 'bot-%'
-         ORDER BY le.wins DESC, le.rank_points DESC
-         LIMIT $4`,
-        [args.period, bucket, mode, limit]
-    );
+    // Short-lived cache of the shared top-N rows.
+    const cacheKey = `lb:${args.period}:${bucket}:${mode}:${limit}`;
+    let entries: LeaderboardEntry[] | null = null;
+    try {
+        const cached = await redis.get(cacheKey);
+        if (cached) entries = JSON.parse(cached) as LeaderboardEntry[];
+    } catch (err) {
+        logger.warn({ err }, 'leaderboard cache read failed');
+    }
 
-    const entries: LeaderboardEntry[] = topRows.map((r) => ({
-        userId: r.user_id,
-        username: r.username,
-        rankTier: r.rank_tier,
-        wins: r.wins,
-        losses: r.losses,
-        rankPoints: r.rank_points,
-        avatarId: r.equipped_avatar,
-        profileBorderId: r.equipped_profile_border,
-        rankInLeaderboard: Number(r.rank_in_leaderboard),
-    }));
+    if (!entries) {
+        const topRows = await query<{
+            user_id: string;
+            username: string;
+            rank_tier: string;
+            wins: number;
+            losses: number;
+            rank_points: number;
+            equipped_avatar: string | null;
+            equipped_profile_border: string | null;
+            rank_in_leaderboard: string;
+        }>(
+            `SELECT
+                le.user_id,
+                u.username,
+                u.rank_tier,
+                le.wins,
+                le.losses,
+                le.rank_points,
+                u.equipped_avatar,
+                u.equipped_profile_border,
+                ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC) AS rank_in_leaderboard
+             FROM leaderboard_entries le
+             JOIN users u ON u.id = le.user_id
+             WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
+               AND u.auth_subject NOT LIKE 'bot-%'
+             ORDER BY le.wins DESC, le.rank_points DESC
+             LIMIT $4`,
+            [args.period, bucket, mode, limit]
+        );
+
+        entries = topRows.map((r) => ({
+            userId: r.user_id,
+            username: r.username,
+            rankTier: r.rank_tier,
+            wins: r.wins,
+            losses: r.losses,
+            rankPoints: r.rank_points,
+            avatarId: r.equipped_avatar,
+            profileBorderId: r.equipped_profile_border,
+            rankInLeaderboard: Number(r.rank_in_leaderboard),
+        }));
+
+        redis
+            .set(cacheKey, JSON.stringify(entries), 'EX', LEADERBOARD_CACHE_TTL_S)
+            .catch((err) => logger.warn({ err }, 'leaderboard cache write failed'));
+    }
 
     let you: LeaderboardEntry | null = null;
     if (args.requesterId) {

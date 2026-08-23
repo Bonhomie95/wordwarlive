@@ -20,6 +20,8 @@ export const usersApi = {
             method: 'PATCH',
             body: { category, cosmeticId },
         }),
+    deleteAccount: () =>
+        apiRequest<{ ok: boolean }>('/api/me', { method: 'DELETE' }),
 };
 
 export const matchesApi = {
@@ -283,4 +285,48 @@ export const replaysApi = {
                 opponentGuesses: { guess: string; tiles: string[] }[];
             }
         >(`/api/replays/${matchId}`),
+};
+
+export type ReportTargetType = 'user' | 'mystery_word' | 'match';
+export type ReportReason =
+    | 'offensive_name'
+    | 'offensive_word'
+    | 'cheating'
+    | 'harassment'
+    | 'other';
+
+export const reportsApi = {
+    submit: (args: {
+        targetType: ReportTargetType;
+        targetId?: string;
+        reason: ReportReason;
+        detail?: string;
+    }) =>
+        apiRequest<{ ok: boolean }>('/api/reports', {
+            method: 'POST',
+            body: args,
+        }),
+};
+
+export const pushApi = {
+    register: (token: string, platform?: 'ios' | 'android') =>
+        apiRequest<{ ok: boolean }>('/api/push/register', {
+            method: 'POST',
+            body: { token, platform },
+        }),
+    unregister: (token: string) =>
+        apiRequest<{ ok: boolean }>('/api/push/unregister', {
+            method: 'POST',
+            body: { token },
+        }),
+};
+
+export const authAccountApi = {
+    /** Invalidate every session (all devices) and return a fresh token for
+     *  this device. */
+    logoutEverywhere: () =>
+        apiRequest<{ token: string; user: PublicUser }>('/api/auth/logout-all', {
+            method: 'POST',
+            body: {},
+        }),
 };

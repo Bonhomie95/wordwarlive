@@ -6,21 +6,65 @@
 // owns the open/close state.
 
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import { RankBadge } from '../ui/RankBadge';
+import { reportsApi } from '../../api/resources';
 import type { PublicUser, RankTier } from '../../types/index';
 
 interface Props {
     player: PublicUser | null;
     /** Label for the modal title — "Your Stats" vs "Opponent" etc. */
     title: string;
+    /** Show a "Report player" action (only for opponents, not yourself). */
+    reportable?: boolean;
     onClose: () => void;
 }
 
-export const PlayerStatsModal: React.FC<Props> = ({ player, title, onClose }) => {
+function reportPlayer(player: PublicUser) {
+    Alert.alert(
+        `Report ${player.username}?`,
+        'Report this player for an offensive username or bad behavior. Our team will review it.',
+        [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Offensive name',
+                onPress: () =>
+                    submitReport(player, 'offensive_name'),
+            },
+            {
+                text: 'Harassment',
+                style: 'destructive',
+                onPress: () => submitReport(player, 'harassment'),
+            },
+        ]
+    );
+}
+
+async function submitReport(
+    player: PublicUser,
+    reason: 'offensive_name' | 'harassment'
+) {
+    try {
+        await reportsApi.submit({
+            targetType: 'user',
+            targetId: player.id,
+            reason,
+        });
+        Alert.alert('Thanks', 'Your report has been submitted.');
+    } catch {
+        Alert.alert('Could not submit', 'Please try again later.');
+    }
+}
+
+export const PlayerStatsModal: React.FC<Props> = ({
+    player,
+    title,
+    reportable,
+    onClose,
+}) => {
     return (
         <Modal
             visible={!!player}
@@ -67,6 +111,24 @@ export const PlayerStatsModal: React.FC<Props> = ({ player, title, onClose }) =>
                                 value={`${winRate(player.wins, player.losses)}%`}
                             />
                         </View>
+
+                        {reportable ? (
+                            <Pressable
+                                onPress={() => reportPlayer(player)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Report ${player.username}`}
+                                style={({ pressed }) => [
+                                    styles.reportBtn,
+                                    pressed ? { opacity: 0.7 } : null,
+                                ]}
+                                hitSlop={6}
+                            >
+                                <Ionicons name="flag-outline" size={14} color={colors.textMuted} />
+                                <Text style={styles.reportText} allowFontScaling={false}>
+                                    Report player
+                                </Text>
+                            </Pressable>
+                        ) : null}
                     </Pressable>
                 </Pressable>
             ) : null}
@@ -174,5 +236,17 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontWeight: typography.weights.semibold,
         marginTop: 2,
         letterSpacing: 0.5,
+    },
+    reportBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: spacing.xs,
+    },
+    reportText: {
+        color: colors.textMuted,
+        fontSize: typography.sizes.xs,
+        fontWeight: typography.weights.medium,
     },
 }));

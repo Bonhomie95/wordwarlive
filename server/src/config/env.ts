@@ -3,6 +3,7 @@
 // if something's misconfigured.
 
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -20,8 +21,20 @@ const schema = z.object({
     // have lets clients spoof X-Forwarded-For and bypass rate limits.
     TRUST_PROXY: z.coerce.number().int().nonnegative().default(0),
 
+    // Stable identity for THIS server instance. Used to namespace the
+    // per-node matchmaking queue (so a node only ever pairs players whose
+    // sockets it actually holds — see socket/matchmaking.ts) and to label
+    // logs/metrics in a multi-node deployment. Defaults to the hostname, or
+    // a random id if unset — but set it explicitly (e.g. the pod/task name)
+    // in production so a restarted instance reuses its queue namespace.
+    NODE_ID: z.string().optional().default(''),
+
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
+    // Postgres pool size. The match-end path fans out several concurrent
+    // queries per completed match, so this needs headroom under load. Behind
+    // PgBouncer (transaction pooling) you can push this higher safely.
+    DB_POOL_MAX: z.coerce.number().int().positive().default(50),
 
     JWT_SECRET: z
         .string()
@@ -36,6 +49,14 @@ const schema = z.object({
 
     GROQ_API_KEY: z.string().optional().default(''),
     GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
+
+    // Error reporting. When set (and @sentry/node installed), exceptions are
+    // forwarded to Sentry; otherwise they're logged. Leave empty in dev.
+    SENTRY_DSN: z.string().optional().default(''),
+
+    // Optional bearer token guarding GET /metrics. Leave empty to expose it
+    // openly (fine when only reachable on an internal network).
+    METRICS_TOKEN: z.string().optional().default(''),
 
     // ─── In-app purchase verification ───────────────────────────────────────
     // When false (dev default), purchase endpoints grant items without
@@ -71,6 +92,11 @@ if (!parsed.success) {
 
 export const env = {
     ...parsed.data,
+    // Resolve a stable node id: explicit NODE_ID → OS hostname → random.
+    nodeId:
+        parsed.data.NODE_ID ||
+        process.env.HOSTNAME ||
+        `node-${randomUUID().slice(0, 8)}`,
     googleClientIds: parsed.data.GOOGLE_CLIENT_IDS.split(',')
         .map((s) => s.trim())
         .filter(Boolean),

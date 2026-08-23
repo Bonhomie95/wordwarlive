@@ -4,6 +4,8 @@
 
 import type { Server as HttpServer } from 'node:http';
 import { Server as IOServer, type Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { redis } from '../db/redis.js';
 import { env } from '../config/env.js';
 import { verifySession, type SessionToken } from '../auth/jwt.js';
 import { logger } from '../utils/logger.js';
@@ -22,7 +24,17 @@ import {
     resolvePrivateMatchCode,
 } from '../services/friendsService.js';
 import { pickRankAwareWord, pickRandomWord } from '../game/words.js';
-import { findUserById } from '../services/userService.js';
+import { findUserById, getTokenVersion } from '../services/userService.js';
+import {
+    parse,
+    guessSubmitSchema,
+    powerUpSchema,
+    emojiSchema,
+    privateJoinSchema,
+    friendChallengeSchema,
+    friendChallengeRespondSchema,
+} from './validate.js';
+import { isShuttingDown } from './drain.js';
 
 interface SocketData {
     session: SessionToken;
@@ -64,12 +76,30 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         allowUpgrades: true,
     });
 
-    io.use((socket, next) => {
+    // Redis adapter — lets `io.to(socketId).emit(...)` reach a socket that is
+    // connected to a DIFFERENT server instance. This makes presence-driven
+    // features (friend challenges, private-match invites) correct across a
+    // multi-node deployment. NOTE: the live match RUNTIME (timers, guess
+    // handling, in-memory match state) is still node-local, so the load
+    // balancer must route a given user consistently to one node (sticky
+    // sessions) and matchmaking co-locates a pair on the enqueuing node.
+    // See DEPLOYMENT.md "Scaling".
+    const pubClient = redis;
+    const subClient = redis.duplicate();
+    io.adapter(createAdapter(pubClient, subClient));
+
+    io.use(async (socket, next) => {
         const tok = (socket.handshake.auth as { token?: string } | undefined)
             ?.token;
         if (!tok) return next(new Error('No token'));
         try {
-            socket.data.session = verifySession(tok);
+            const session = verifySession(tok);
+            // Reject revoked sessions (see requireAuth for the rationale).
+            const current = await getTokenVersion(session.userId);
+            if (current === null || current !== session.tokenVersion) {
+                return next(new Error('Session expired'));
+            }
+            socket.data.session = session;
             next();
         } catch (err) {
             logger.warn({ err }, 'Socket handshake failed');
@@ -79,7 +109,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
 
     io.on('connection', (socket) => {
         logger.info({ userId: socket.data.session.userId }, 'Socket connected');
-        markOnline(socket.data.session.userId, socket.id);
+        markOnline(socket.data.session.userId, socket.id).catch(() => {});
 
         socket.on('queue_join', () => {
             matchmakingHub.enqueue(io, socket).catch((err) => {
@@ -93,8 +123,13 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         });
 
         socket.on('guess_submit', (payload, ack) => {
+            const data = parse(guessSubmitSchema, payload);
+            if (!data) {
+                ack({ ok: false, error: 'Invalid guess', errorCode: 'NON_ALPHABETIC' });
+                return;
+            }
             matchRegistry
-                .handleGuess(io, socket, payload.guess)
+                .handleGuess(io, socket, data.guess)
                 .then(ack)
                 .catch((err) => {
                     logger.error({ err }, 'guess_submit failed');
@@ -103,8 +138,13 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         });
 
         socket.on('powerup_use', (payload, ack) => {
+            const data = parse(powerUpSchema, payload);
+            if (!data) {
+                ack({ ok: false, error: 'Invalid powerup request' });
+                return;
+            }
             matchRegistry
-                .handlePowerUp(io, socket, payload.kind, payload.targetGuessIndex ?? null)
+                .handlePowerUp(io, socket, data.kind, data.targetGuessIndex ?? null)
                 .then(ack)
                 .catch((err) => {
                     logger.error({ err }, 'powerup_use failed');
@@ -148,13 +188,19 @@ export function createSocketServer(http: HttpServer): AppIOServer {
 
         socket.on('emoji_send', (payload) => {
             // No ack — fire and forget. Errors logged only.
+            const data = parse(emojiSchema, payload);
+            if (!data) return;
             matchRegistry
-                .handleEmoji(io, socket, payload.emoji)
+                .handleEmoji(io, socket, data.emoji)
                 .catch((err) => logger.error({ err }, 'emoji_send failed'));
         });
 
         socket.on('mystery_queue', async (_payload, ack) => {
             try {
+                if (isShuttingDown()) {
+                    ack({ ok: false, error: 'Server is restarting — try again in a moment.' });
+                    return;
+                }
                 // Require a pending submission first.
                 const userId = socket.data.session.userId;
                 const sub = await getMyPendingSubmission(userId);
@@ -184,7 +230,12 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         // ─── Friend challenges (live "play with friends") ────────────────
         socket.on('friend_challenge', async (payload, ack) => {
             try {
-                const friendId = String(payload?.friendId ?? '');
+                const data = parse(friendChallengeSchema, payload);
+                if (!data) {
+                    ack({ ok: false, error: 'Invalid friend id' });
+                    return;
+                }
+                const friendId = data.friendId;
                 const resp = await friendChallengeHub.challenge(
                     io,
                     socket,
@@ -199,11 +250,16 @@ export function createSocketServer(http: HttpServer): AppIOServer {
 
         socket.on('friend_challenge_respond', async (payload, ack) => {
             try {
+                const data = parse(friendChallengeRespondSchema, payload);
+                if (!data) {
+                    ack({ ok: false, error: 'Invalid challenge response' });
+                    return;
+                }
                 const resp = await friendChallengeHub.respond(
                     io,
                     socket,
-                    String(payload?.challengeId ?? ''),
-                    !!payload?.accept
+                    data.challengeId,
+                    data.accept
                 );
                 ack(resp);
             } catch (err) {
@@ -218,8 +274,9 @@ export function createSocketServer(http: HttpServer): AppIOServer {
 
         socket.on('private_join', async (payload, ack) => {
             try {
-                const code = String(payload?.code ?? '').toUpperCase();
-                if (!code) return ack({ ok: false, error: 'Missing code' });
+                const data = parse(privateJoinSchema, payload);
+                if (!data) return ack({ ok: false, error: 'Missing code' });
+                const code = data.code.toUpperCase();
 
                 const resolved = await resolvePrivateMatchCode(code);
                 if (!resolved) {
@@ -229,9 +286,16 @@ export function createSocketServer(http: HttpServer): AppIOServer {
                     return ack({ ok: false, error: "That's your own code." });
                 }
 
-                const hostSocketId = socketIdFor(resolved.hostId);
+                const hostSocketId = await socketIdFor(resolved.hostId);
                 if (!hostSocketId) {
                     return ack({ ok: false, error: 'Host is offline.' });
+                }
+                // Both sockets must be on this node (node-local match runtime).
+                if (!io.sockets.sockets.has(hostSocketId)) {
+                    return ack({
+                        ok: false,
+                        error: 'The host is on a different game server. Ask them to create a new code and retry.',
+                    });
                 }
 
                 const [host, joiner] = await Promise.all([
@@ -270,10 +334,12 @@ export function createSocketServer(http: HttpServer): AppIOServer {
 
         socket.on('disconnect', (reason) => {
             logger.info({ userId: socket.data.session.userId, reason }, 'Socket disconnected');
-            markOffline(socket.id);
+            markOffline(socket.id).catch(() => {});
             matchmakingHub.leave(socket.data.session.userId);
             mysteryHub.leave(socket.data.session.userId);
-            friendChallengeHub.handleDisconnect(io, socket.data.session.userId);
+            friendChallengeHub
+                .handleDisconnect(io, socket.data.session.userId)
+                .catch((err) => logger.error({ err }, 'friend challenge disconnect cleanup failed'));
             matchRegistry.handleDisconnect(io, socket).catch((err) => {
                 logger.error({ err }, 'disconnect cleanup failed');
             });

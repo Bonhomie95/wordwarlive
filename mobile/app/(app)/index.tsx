@@ -7,8 +7,10 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
+import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGameStore } from '../../src/store/gameStore';
 import { adsAvailable, showRewarded } from '../../src/ads';
@@ -61,12 +63,27 @@ export default function Home() {
     // conditional return crash with "Rendered more hooks than during the
     // previous render" the moment `user` flips from null to loaded.
     const [dailyLocallyClaimed, setDailyLocallyClaimed] = useState(false);
+    const [showOnboarding, setShowOnboarding] = useState(false);
 
     useEffect(() => {
         // Refresh /me when the home screen mounts so rank/win counts are
         // current after a match.
         refreshMe().catch(() => {});
     }, [refreshMe]);
+
+    // First-run tutorial — shown once, gated by a SecureStore flag.
+    useEffect(() => {
+        SecureStore.getItemAsync('wordwar.onboarded')
+            .then((v) => {
+                if (v !== '1') setShowOnboarding(true);
+            })
+            .catch(() => {});
+    }, []);
+
+    function dismissOnboarding() {
+        setShowOnboarding(false);
+        SecureStore.setItemAsync('wordwar.onboarded', '1').catch(() => {});
+    }
 
     if (!user || !token) {
         return null; // _layout will redirect to (auth)
@@ -146,6 +163,7 @@ export default function Home() {
 
     return (
         <SafeAreaView style={styles.safe}>
+            <OnboardingModal visible={showOnboarding} onDone={dismissOnboarding} />
             <AdLoadingOverlay visible={adBusy} label="Loading your reward…" />
             <ScrollView contentContainerStyle={styles.scroll}>
                 <View style={styles.header}>

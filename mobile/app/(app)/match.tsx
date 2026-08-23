@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
     useAnimatedStyle,
@@ -30,6 +30,7 @@ import { OpponentGrid } from '../../src/components/game/OpponentGrid';
 import { Keyboard, deriveLetterStates } from '../../src/components/game/Keyboard';
 import { Timer } from '../../src/components/game/Timer';
 import { HintButton } from '../../src/components/game/HintButton';
+import { PowerUpBar } from '../../src/components/game/PowerUpBar';
 import { VsSplash } from '../../src/components/game/VsSplash';
 import { PlayerStatsModal } from '../../src/components/game/PlayerStatsModal';
 import { RankBadge } from '../../src/components/ui/RankBadge';
@@ -62,6 +63,8 @@ export default function Match() {
     const submitGuess = useGameStore((s) => s.submitGuess);
     const quitMatch = useGameStore((s) => s.quitMatch);
     const requestHint = useGameStore((s) => s.requestHint);
+    const usePowerUp = useGameStore((s) => s.usePowerUp);
+    const lockedUntilMs = useGameStore((s) => s.lockedUntilMs);
     const hintsRevealed = useGameStore((s) => s.hintsRevealed);
     const hintRequesting = useGameStore((s) => s.hintRequesting);
     const hintToast = useGameStore((s) => s.hintToast);
@@ -112,7 +115,7 @@ export default function Match() {
                 withTiming(-6, { duration: 50 }),
                 withTiming(0, { duration: 50 })
             );
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+            notify(NotificationType.Error);
         }
     }, [lastError, shakeX]);
 
@@ -187,7 +190,7 @@ export default function Match() {
                 // The shake + lastError already handles UX; just log here if needed.
             }
         } else {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            impact(ImpactStyle.Light);
         }
     }
 
@@ -199,6 +202,13 @@ export default function Match() {
             // updates if the user clicks again.
             refreshMe().catch(() => {});
         }
+    }
+
+    async function onUsePowerUp(kind: 'reveal' | 'scramble' | 'lock') {
+        const ack = await usePowerUp(kind);
+        // Inventory changed server-side — refresh so counts update.
+        if (ack.ok) refreshMe().catch(() => {});
+        return ack;
     }
 
     /** Quit / forfeit. Confirms first so accidental taps don't cost a match. */
@@ -218,6 +228,11 @@ export default function Match() {
     }
 
     const coinBalance = user && 'coins' in user ? user.coins : 0;
+    const powerupCounts =
+        user && 'powerups' in user
+            ? user.powerups
+            : { reveal: 0, scramble: 0, lock: 0 };
+    const powerLocked = !!lockedUntilMs && Date.now() < lockedUntilMs;
     const hintCredits = user && 'hintCredits' in user ? user.hintCredits : 0;
     const lifetimeHintsUsed =
         user && 'lifetimeHintsUsed' in user ? user.lifetimeHintsUsed : 0;
@@ -234,6 +249,7 @@ export default function Match() {
             <PlayerStatsModal
                 player={statsPlayer?.player ?? null}
                 title={statsPlayer?.title ?? ''}
+                reportable={statsPlayer?.title === 'Opponent'}
                 onClose={() => setStatsPlayer(null)}
             />
             {/* VS splash before the game starts. Auto-dismisses when phase
@@ -248,6 +264,8 @@ export default function Match() {
             <View style={styles.header}>
                 <Pressable
                     onPress={onQuitMatch}
+                    accessibilityRole="button"
+                    accessibilityLabel="Quit match (forfeit)"
                     style={({ pressed }) => [
                         styles.backBtn,
                         pressed ? { opacity: 0.7, transform: [{ scale: 0.96 }] } : null,
@@ -262,6 +280,8 @@ export default function Match() {
                 <Pressable
                     style={styles.playerCard}
                     onPress={() => setStatsPlayer({ player: opponent, title: 'Opponent' })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View opponent ${opponent.username} stats`}
                     hitSlop={6}
                 >
                     <Text style={styles.playerLabel} allowFontScaling={false}>
@@ -311,6 +331,13 @@ export default function Match() {
                     />
                 </View>
             </View>
+
+            {/* Earned power-ups (hidden when the player owns none). */}
+            <PowerUpBar
+                counts={powerupCounts}
+                locked={powerLocked}
+                onUse={onUsePowerUp}
+            />
 
             {/* Player's grid */}
             <Animated.View style={[styles.gridWrap, shakeStyle]}>

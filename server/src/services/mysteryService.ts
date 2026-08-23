@@ -19,15 +19,8 @@
 
 import { pool, query } from '../db/pool.js';
 import { isValidWord } from '../game/words.js';
+import { containsProfanity } from '../moderation/blocklist.js';
 import { logger } from '../utils/logger.js';
-
-// Minimal profanity blocklist. Not exhaustive — players can also report
-// inappropriate matches in-app. The word_bank itself was curated to skip
-// vulgar words, so this catches edge cases.
-const BLOCKLIST = new Set<string>([
-    // Add explicit blocks here. Intentionally short; relies on word_bank's
-    // own curation. Examples: ['CRAP', 'HELL'] — start conservative.
-]);
 
 export interface MysterySubmission {
     id: string;
@@ -47,7 +40,9 @@ export async function submitWord(
         return { ok: false, error: 'Word must be 4-10 letters.' };
     if (!isValidWord(w))
         return { ok: false, error: 'Not in our word list.' };
-    if (BLOCKLIST.has(w)) return { ok: false, error: 'Word not allowed.' };
+    // Shared moderation backstop (leetspeak-folded slur/profanity check) on
+    // top of the curated word bank.
+    if (containsProfanity(w)) return { ok: false, error: 'Word not allowed.' };
 
     // Cap one available submission per user — otherwise they could spam
     // the pool with their own words to match themselves.
@@ -138,7 +133,15 @@ export async function withdrawSubmission(userId: string): Promise<void> {
  * single transaction — outside one, the row lock releases the moment the
  * SELECT returns and two concurrent ticks can claim the same opponent.
  */
-export async function tryMatch(userId: string): Promise<{
+export async function tryMatch(
+    userId: string,
+    /** Restrict pairing to these user ids (the callers' live, same-node queue).
+     *  Guarantees the two players are co-located on one instance — the match
+     *  runtime is node-local. If omitted/empty, any same-length opponent is
+     *  eligible (single-node behavior). Without this, a cross-node pairing
+     *  would consume BOTH submissions in the DB but fail to start a match. */
+    eligibleOpponentIds?: string[]
+): Promise<{
     matched: true;
     opponentUserId: string;
     /** The requesting user's target = the opponent's submission. */
@@ -168,15 +171,21 @@ export async function tryMatch(userId: string): Promise<{
             return { matched: false };
         }
 
-        // Find + lock someone else's same-length submission.
+        // Find + lock someone else's same-length submission. When an eligible
+        // set is supplied, only pair with those (co-located) players.
+        const restrictToLocal =
+            eligibleOpponentIds != null && eligibleOpponentIds.length > 0;
         const oppRes = await client.query<{ id: string; user_id: string; word: string }>(
             `SELECT id, user_id, word
              FROM mystery_submissions
              WHERE available = TRUE AND user_id <> $1 AND word_length = $2
+               ${restrictToLocal ? 'AND user_id = ANY($3::uuid[])' : ''}
              ORDER BY created_at ASC
              LIMIT 1
              FOR UPDATE SKIP LOCKED`,
-            [userId, mine.word_length]
+            restrictToLocal
+                ? [userId, mine.word_length, eligibleOpponentIds]
+                : [userId, mine.word_length]
         );
         const opponent = oppRes.rows[0];
         if (!opponent) {

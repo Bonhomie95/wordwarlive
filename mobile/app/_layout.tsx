@@ -12,6 +12,10 @@ import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../src/store/authStore';
 import { useGameStore } from '../src/store/gameStore';
 import { initAds } from '../src/ads';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { initObservability } from '../src/observability';
+import { restoreHapticsPref } from '../src/lib/haptics';
+import { registerForPush, onNotificationResponse } from '../src/lib/notifications';
 import { makeThemedStyles, colors, useThemeStore, type ThemeId } from '../src/theme/colors';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
@@ -34,6 +38,7 @@ function useAuthGate() {
 }
 
 export default function RootLayout() {
+    const router = useRouter();
     const hydrate = useAuthStore((s) => s.hydrate);
     const hydrated = useAuthStore((s) => s.hydrated);
     const token = useAuthStore((s) => s.token);
@@ -44,7 +49,9 @@ export default function RootLayout() {
     const applyTheme = useThemeStore((s) => s.applyTheme);
 
     useEffect(() => {
+        initObservability();
         hydrate();
+        restoreHapticsPref();
         // Restore saved theme — persisted across app launches via SecureStore.
         SecureStore.getItemAsync(THEME_STORAGE_KEY)
             .then((stored) => {
@@ -56,10 +63,25 @@ export default function RootLayout() {
 
     // Open the persistent socket as soon as we have a token. This keeps a
     // live connection for the whole session so friend challenges can reach
-    // the player even when they're idle on the home screen.
+    // the player even when they're idle on the home screen. Also register
+    // this device for push so challenges reach a backgrounded app.
     useEffect(() => {
-        if (token) connectPersistent(token);
+        if (token) {
+            connectPersistent(token);
+            registerForPush().catch(() => {});
+        }
     }, [token, connectPersistent]);
+
+    // Tapping a friend-challenge push routes the player to the app so the
+    // in-app prompt (driven by the socket event) can be answered.
+    useEffect(() => {
+        const unsub = onNotificationResponse((data) => {
+            if (data?.type === 'friend_challenge') {
+                router.navigate('/(app)');
+            }
+        });
+        return unsub;
+    }, [router]);
 
     useAuthGate();
 
@@ -72,21 +94,23 @@ export default function RootLayout() {
     }
 
     return (
-        <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
-            <SafeAreaProvider>
-                <StatusBar style="light" />
-                <Stack
-                    screenOptions={{
-                        headerShown: false,
-                        contentStyle: { backgroundColor: colors.bg },
-                        animation: 'fade',
-                    }}
-                >
-                    <Stack.Screen name="(auth)" />
-                    <Stack.Screen name="(app)" />
-                </Stack>
-            </SafeAreaProvider>
-        </GestureHandlerRootView>
+        <ErrorBoundary>
+            <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
+                <SafeAreaProvider>
+                    <StatusBar style="light" />
+                    <Stack
+                        screenOptions={{
+                            headerShown: false,
+                            contentStyle: { backgroundColor: colors.bg },
+                            animation: 'fade',
+                        }}
+                    >
+                        <Stack.Screen name="(auth)" />
+                        <Stack.Screen name="(app)" />
+                    </Stack>
+                </SafeAreaProvider>
+            </GestureHandlerRootView>
+        </ErrorBoundary>
     );
 }
 

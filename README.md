@@ -71,6 +71,52 @@ Two integrations, both via `llama-3.3-70b-versatile`:
 - Every guess is validated and scored server-side; clients only receive the per-tile result.
 - Guesses are rate-limited to 1 per 2 seconds per player per match.
 - All rank changes are computed server-side.
+- Every socket payload is schema-validated at runtime (Zod) before it reaches a
+  handler — the wire types are not trusted at runtime.
+- JWTs carry a `token_version`; bumping it (`POST /api/auth/logout-all`, or
+  "Log out of all devices" in the app) revokes every existing session.
+
+## Scaling & sticky routing
+
+**Early scale (recommended): run a single match-serving instance.** One node
+comfortably handles ~1,000–2,000 concurrent players. Everything works with zero
+routing concerns because all sockets are on that node.
+
+**When you add a second node, you MUST enable sticky sessions** at the load
+balancer. Two independent reasons:
+
+1. **Transport.** Socket.io begins each connection with an HTTP long-polling
+   handshake before upgrading to WebSocket; all of those requests must reach the
+   same backend or the client gets `Session ID unknown` errors. The Redis
+   adapter (wired up) handles cross-node *broadcast* but does **not** remove the
+   stickiness requirement.
+2. **Match co-location.** A live match's clock and state live in one node's
+   memory, so both players must be on the same node. This is guaranteed by
+   design:
+   - **Ranked matchmaking** uses a **per-node queue** (`mm:queue:{NODE_ID}`), so
+     a node only ever pairs players whose sockets it already holds. Sticky
+     sessions keep each user pinned there for the whole session.
+   - **Presence** (online status, friend/private lookups) is in **Redis**, so it
+     is correct across nodes.
+   - `startMatch` has a **co-location guard**: it refuses to start a match whose
+     players aren't both on the node, so a misroute fails cleanly instead of
+     producing a half-broken match.
+
+What this **doesn't** cover yet: a *live friend challenge or private match*
+between two friends who happen to be on **different** nodes is refused with a
+clear in-app message ("you're on different game servers — try a private code").
+Ranked play, dailies, and same-node friend matches are unaffected. Removing that
+last limitation (or spreading one match across nodes) needs cross-node
+match-action forwarding over Redis, or Redis-backed match state — deferred until
+a single match node is actually the bottleneck.
+
+Config: set `NODE_ID` (stable per instance), `TRUST_PROXY` (proxy hop count),
+and share `REDIS_URL` + `DATABASE_URL` across instances. Ready-made
+load-balancer configs (nginx, ALB, k8s, Fly, Render) are in
+[`deploy/`](deploy/README.md). Batched match-end writes, a single global match
+tick scheduler, a pooled/cached leaderboard, and graceful drain on deploy are
+already in place; `GET /metrics` reports `nodeId`, active matches, queue depth,
+online users, and pool stats.
 
 ## License
 

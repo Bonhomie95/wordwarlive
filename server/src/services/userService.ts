@@ -34,6 +34,7 @@ export interface UserRow {
     play_streak_best: number;
     last_play_date: string | null;
     lifetime_hints_used: number;
+    token_version: number;
 }
 
 const SAFE_USER_FIELDS = `
@@ -48,7 +49,7 @@ const SAFE_USER_FIELDS = `
     to_char(xp_boost_ads_day, 'YYYY-MM-DD') AS xp_boost_ads_day,
     coins, hint_credits, play_streak, play_streak_best,
     to_char(last_play_date, 'YYYY-MM-DD') AS last_play_date,
-    lifetime_hints_used
+    lifetime_hints_used, token_version
 `;
 
 export async function findUserById(id: string): Promise<UserRow | null> {
@@ -210,9 +211,58 @@ export async function updateEquippedCosmetic(
     );
 }
 
+/** Current token version for a user, or null if the user doesn't exist. */
+export async function getTokenVersion(userId: string): Promise<number | null> {
+    const rows = await query<{ token_version: number }>(
+        'SELECT token_version FROM users WHERE id = $1',
+        [userId]
+    );
+    return rows[0]?.token_version ?? null;
+}
+
+/** Invalidate all outstanding sessions for a user by bumping their token
+ *  version. Returns the new version. */
+export async function bumpTokenVersion(userId: string): Promise<number> {
+    const rows = await query<{ token_version: number }>(
+        `UPDATE users SET token_version = token_version + 1, updated_at = now()
+         WHERE id = $1 RETURNING token_version`,
+        [userId]
+    );
+    return rows[0]?.token_version ?? 0;
+}
+
 /** Username must be 3-16 chars, letters/numbers/underscores only. */
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,16}$/;
 
 export function isValidUsername(name: string): boolean {
     return USERNAME_RE.test(name);
+}
+
+/**
+ * Permanently delete a user and their data (GDPR / App Store "delete my
+ * account" requirement). Most child tables cascade on the users FK; matches
+ * and their guesses/replays do NOT cascade (they reference users without
+ * ON DELETE), so we delete the user's matches first inside the same
+ * transaction. Aggregate stats on the opponent's row (wins/losses) are
+ * denormalized and unaffected.
+ */
+export async function deleteAccount(userId: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        // Removes the user's matches → cascades their guesses + replays.
+        await client.query(
+            'DELETE FROM matches WHERE player1_id = $1 OR player2_id = $1',
+            [userId]
+        );
+        // Removes the user → cascades coins, cosmetics, friendships,
+        // leaderboard entries, mystery submissions, iap_transactions, etc.
+        await client.query('DELETE FROM users WHERE id = $1', [userId]);
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 }

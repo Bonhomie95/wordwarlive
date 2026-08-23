@@ -4,9 +4,12 @@ import { logger } from '../utils/logger.js';
 
 export const pool = new Pool({
     connectionString: env.DATABASE_URL,
-    max: 20,
+    max: env.DB_POOL_MAX,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
+    // Don't let a pathological query pin a pooled connection forever.
+    statement_timeout: 15_000,
+    query_timeout: 15_000,
 });
 
 pool.on('error', (err) => {

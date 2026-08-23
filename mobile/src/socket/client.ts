@@ -45,22 +45,27 @@ export function ensureSocket(token: string): AppSocket {
         timeout: 30_000,
     });
 
-    socket.on('connect', () => {
-        // eslint-disable-next-line no-console
-        console.log('[socket] connected', socket?.id);
-    });
-    socket.on('connect_error', (err) => {
-        // eslint-disable-next-line no-console
-        console.warn('[socket] connect_error', err.message);
-    });
-    socket.io.on('reconnect_attempt', (n: number) => {
-        // eslint-disable-next-line no-console
-        console.log('[socket] reconnect_attempt', n);
-    });
-    socket.on('disconnect', (reason) => {
-        // eslint-disable-next-line no-console
-        console.log('[socket] disconnect', reason);
-    });
+    // Diagnostic logging only in dev — in production these fire on every
+    // connect/disconnect/reconnect attempt, which is wasted work during a
+    // bad-network reconnect loop.
+    if (__DEV__) {
+        socket.on('connect', () => {
+            // eslint-disable-next-line no-console
+            console.log('[socket] connected', socket?.id);
+        });
+        socket.on('connect_error', (err) => {
+            // eslint-disable-next-line no-console
+            console.warn('[socket] connect_error', err.message);
+        });
+        socket.io.on('reconnect_attempt', (n: number) => {
+            // eslint-disable-next-line no-console
+            console.log('[socket] reconnect_attempt', n);
+        });
+        socket.on('disconnect', (reason) => {
+            // eslint-disable-next-line no-console
+            console.log('[socket] disconnect', reason);
+        });
+    }
 
     // Nudge a reconnect when the app returns to the foreground so the user
     // doesn't wait for the heartbeat to notice a network change.

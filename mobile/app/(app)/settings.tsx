@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+    Alert,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -20,7 +21,9 @@ import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
-import { settingsApi, type UserSettings } from '../../src/api/resources';
+import { settingsApi, usersApi, authAccountApi, type UserSettings } from '../../src/api/resources';
+import { setHapticsEnabled } from '../../src/lib/haptics';
+import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
 import { makeThemedStyles,
     colors,
     THEME_CATALOG,
@@ -41,10 +44,40 @@ function persistColorBlind(enabled: boolean) {
 export default function SettingsScreen() {
     const router = useRouter();
     const signOut = useAuthStore((s) => s.signOut);
+    const applyRotatedToken = useAuthStore((s) => s.applyRotatedToken);
+
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'Delete account?',
+            'This permanently deletes your account, rank, coins, cosmetics, and match history. This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await usersApi.deleteAccount();
+                        } catch {
+                            // Even if the call fails, sign out locally; the
+                            // account row may already be gone. Surface a notice.
+                            Alert.alert(
+                                'Could not delete',
+                                'Something went wrong. Please try again.'
+                            );
+                            return;
+                        }
+                        await signOut();
+                    },
+                },
+            ]
+        );
+    };
     const currentTheme = useThemeStore((s) => s.currentTheme);
     const applyTheme = useThemeStore((s) => s.applyTheme);
     const [settings, setSettings] = useState<UserSettings | null>(null);
     const [saving, setSaving] = useState(false);
+    const [showHowToPlay, setShowHowToPlay] = useState(false);
 
     const setColorBlind = useThemeStore((s) => s.setColorBlind);
 
@@ -53,9 +86,10 @@ export default function SettingsScreen() {
             .get()
             .then((s) => {
                 setSettings(s);
-                // Sync the tile palette with the server-side preference.
+                // Sync the tile palette + haptics with the server-side prefs.
                 setColorBlind(s.colorBlindMode);
                 persistColorBlind(s.colorBlindMode);
+                setHapticsEnabled(s.haptics);
             })
             .catch(() => {});
     }, [setColorBlind]);
@@ -76,6 +110,10 @@ export default function SettingsScreen() {
             setColorBlind(value as boolean);
             persistColorBlind(value as boolean);
         }
+        if (key === 'haptics') {
+            // Apply immediately so the very next tap reflects the choice.
+            setHapticsEnabled(value as boolean);
+        }
         try {
             const updated = await settingsApi.update({ [key]: value });
             setSettings(updated);
@@ -85,9 +123,39 @@ export default function SettingsScreen() {
                 setColorBlind(prev.colorBlindMode);
                 persistColorBlind(prev.colorBlindMode);
             }
+            if (key === 'haptics') setHapticsEnabled(prev.haptics);
         } finally {
             setSaving(false);
         }
+    }
+
+    const [loggingOutAll, setLoggingOutAll] = useState(false);
+    function onLogoutEverywhere() {
+        Alert.alert(
+            'Log out of all devices?',
+            'This signs you out everywhere. You stay signed in on this device.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Log out all',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setLoggingOutAll(true);
+                        try {
+                            const r = await authAccountApi.logoutEverywhere();
+                            // Keep this device signed in with the fresh token —
+                            // and rebuild the socket so it uses it.
+                            await applyRotatedToken(r.token);
+                            Alert.alert('Done', 'All other sessions were signed out.');
+                        } catch {
+                            Alert.alert('Could not complete', 'Please try again.');
+                        } finally {
+                            setLoggingOutAll(false);
+                        }
+                    },
+                },
+            ]
+        );
     }
 
     async function onPickTheme(themeId: ThemeId) {
@@ -106,12 +174,18 @@ export default function SettingsScreen() {
 
     return (
         <SafeAreaView style={styles.safe}>
+            <OnboardingModal
+                visible={showHowToPlay}
+                onDone={() => setShowHowToPlay(false)}
+            />
             <ScrollView contentContainerStyle={styles.scroll}>
                 <View style={styles.header}>
                     <Pressable
                         onPress={() => router.back()}
                         hitSlop={12}
                         style={styles.backBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Go back"
                     >
                         <Ionicons
                             name="chevron-back"
@@ -124,15 +198,8 @@ export default function SettingsScreen() {
                     </Text>
                 </View>
 
-                {/* ─── Audio / feedback ─────────────────────────────────── */}
-                <SectionHeader label="Audio &amp; Feedback" />
-                <ToggleRow
-                    label="Sound effects"
-                    description="Tile reveals, victory chimes, button taps."
-                    value={settings?.sound ?? true}
-                    onValueChange={(v) => updateSetting('sound', v)}
-                    disabled={saving || !settings}
-                />
+                {/* ─── Feedback ─────────────────────────────────────────── */}
+                <SectionHeader label="Feedback" />
                 <ToggleRow
                     label="Haptics"
                     description="Vibration on guesses and important events."
@@ -147,6 +214,29 @@ export default function SettingsScreen() {
                     onValueChange={(v) => updateSetting('colorBlindMode', v)}
                     disabled={saving || !settings}
                 />
+
+                {/* ─── Help ─────────────────────────────────────────────── */}
+                <SectionHeader label="Help" />
+                <Pressable
+                    onPress={() => setShowHowToPlay(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="How to play"
+                    style={({ pressed }) => [
+                        styles.row,
+                        { justifyContent: 'space-between' },
+                        pressed ? { opacity: 0.85 } : null,
+                    ]}
+                >
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.rowLabel} allowFontScaling={false}>
+                            How to play
+                        </Text>
+                        <Text style={styles.rowDesc} allowFontScaling={false}>
+                            Replay the tutorial: modes, power-ups, and hints.
+                        </Text>
+                    </View>
+                    <Ionicons name="help-circle-outline" size={22} color={colors.textDim} />
+                </Pressable>
 
                 {/* ─── Themes ───────────────────────────────────────────── */}
                 <SectionHeader label="Theme" />
@@ -232,9 +322,33 @@ export default function SettingsScreen() {
                 {/* ─── Account ──────────────────────────────────────────── */}
                 <SectionHeader label="Account" />
                 <Pressable
+                    onPress={onLogoutEverywhere}
+                    disabled={loggingOutAll}
+                    accessibilityRole="button"
+                    accessibilityLabel="Log out of all devices"
+                    style={({ pressed }) => [
+                        styles.row,
+                        { justifyContent: 'space-between' },
+                        pressed ? { opacity: 0.85 } : null,
+                    ]}
+                >
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.rowLabel} allowFontScaling={false}>
+                            Log out of all devices
+                        </Text>
+                        <Text style={styles.rowDesc} allowFontScaling={false}>
+                            Signs out everywhere; you stay in on this device.
+                        </Text>
+                    </View>
+                    <Ionicons name="shield-outline" size={20} color={colors.textDim} />
+                </Pressable>
+                <Pressable
                     onPress={() => signOut()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sign out"
                     style={({ pressed }) => [
                         styles.logoutBtn,
+                        { marginTop: spacing.sm },
                         pressed ? { opacity: 0.85 } : null,
                     ]}
                 >
@@ -245,6 +359,25 @@ export default function SettingsScreen() {
                     />
                     <Text style={styles.logoutText} allowFontScaling={false}>
                         Sign out
+                    </Text>
+                </Pressable>
+
+                <Pressable
+                    onPress={handleDeleteAccount}
+                    accessibilityRole="button"
+                    accessibilityLabel="Delete account"
+                    style={({ pressed }) => [
+                        styles.deleteBtn,
+                        pressed ? { opacity: 0.85 } : null,
+                    ]}
+                >
+                    <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color={colors.textMuted}
+                    />
+                    <Text style={styles.deleteText} allowFontScaling={false}>
+                        Delete account
                     </Text>
                 </Pressable>
             </ScrollView>
@@ -403,5 +536,18 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: colors.danger,
         fontSize: typography.sizes.md,
         fontWeight: typography.weights.semibold,
+    },
+    deleteBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacing.xs,
+        marginTop: spacing.md,
+        padding: spacing.sm,
+    },
+    deleteText: {
+        color: colors.textMuted,
+        fontSize: typography.sizes.sm,
+        fontWeight: typography.weights.medium,
     },
 }));

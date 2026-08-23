@@ -35,6 +35,9 @@ const TimerRaw: React.FC<Props> = ({ msRemaining: msProp }) => {
             cancelAnimation(pulse);
             pulse.value = 0;
         }
+        // Stop the loop if we unmount mid-critical (e.g. match ends while the
+        // pulse is running) so no animation lingers on a torn-down view.
+        return () => cancelAnimation(pulse);
     }, [critical, pulse]);
 
     const style = useAnimatedStyle(() => ({

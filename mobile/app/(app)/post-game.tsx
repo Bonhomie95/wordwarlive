@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
@@ -65,9 +65,9 @@ export default function PostGame() {
             if (matchOver && hapticMatchRef.current !== matchOver.matchId) {
                 hapticMatchRef.current = matchOver.matchId;
                 if (matchOver.result === 'win') {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                    notify(NotificationType.Success);
                 } else if (matchOver.result === 'loss') {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+                    notify(NotificationType.Warning);
                 }
             }
             return () => {
@@ -116,7 +116,7 @@ export default function PostGame() {
 
     function onShare() {
         if (!matchOver) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        impact(ImpactStyle.Light);
         const message = buildMatchShareMessage({
             result: matchOver.result,
             guesses: matchOver.yourGuesses,

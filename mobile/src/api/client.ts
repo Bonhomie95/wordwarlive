@@ -21,6 +21,16 @@ export async function clearStoredToken(): Promise<void> {
     await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
 }
 
+// Session-expiry hook. The auth store registers a handler here so that any
+// authenticated request that comes back 401 (expired/invalidated token) signs
+// the user out globally, instead of leaving the app in a broken half-logged-in
+// state until the next cold start. Registered via setUnauthorizedHandler to
+// avoid a circular import with the auth store.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+    onUnauthorized = fn;
+}
+
 export class ApiError extends Error {
     public status: number;
     public payload: unknown;
@@ -71,9 +81,13 @@ export async function apiRequest<T>(path: string, opts: RequestOpts = {}): Promi
         ...(opts.headers ?? {}),
     };
     const useAuth = opts.auth ?? true;
+    let sentWithToken = false;
     if (useAuth) {
         const tok = await getStoredToken();
-        if (tok) headers.authorization = `Bearer ${tok}`;
+        if (tok) {
+            headers.authorization = `Bearer ${tok}`;
+            sentWithToken = true;
+        }
     }
 
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -97,6 +111,11 @@ export async function apiRequest<T>(path: string, opts: RequestOpts = {}): Promi
             }
 
             if (!res.ok) {
+                // A 401 on a request we actually authenticated means the
+                // session token is expired/invalid → sign out globally.
+                if (res.status === 401 && sentWithToken && onUnauthorized) {
+                    onUnauthorized();
+                }
                 const message =
                     (payload && typeof payload === 'object' && 'error' in payload
                         ? String((payload as { error: unknown }).error)

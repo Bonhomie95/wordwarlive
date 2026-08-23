@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import { selection } from '../../lib/haptics';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
@@ -41,7 +41,7 @@ const KeyRaw: React.FC<{
         <Pressable
             onPress={() => {
                 if (disabled) return;
-                Haptics.selectionAsync().catch(() => {});
+                selection();
                 onPress();
             }}
             disabled={disabled}

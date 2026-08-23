@@ -110,8 +110,73 @@ class MatchRegistry {
     private byMatchId = new Map<string, ActiveMatch>();
     /** userId -> matchId */
     private byUserId = new Map<string, string>();
+    /** ONE process-wide 1 Hz ticker drives the clock for every active match,
+     *  instead of one setInterval per match. At hundreds/thousands of
+     *  concurrent matches this is far cheaper on the event loop and timer
+     *  heap. Started lazily when the first match begins, stopped when the
+     *  last one ends. */
+    private globalTicker: NodeJS.Timeout | null = null;
+    private io: AppIOServer | null = null;
+
+    private ensureTicker(io: AppIOServer): void {
+        this.io = io;
+        if (this.globalTicker) return;
+        this.globalTicker = setInterval(() => {
+            const server = this.io;
+            if (!server) return;
+            for (const match of this.byMatchId.values()) {
+                if (!match.ended) this.tick(server, match);
+            }
+        }, 1000);
+        // Don't keep the process alive solely for the ticker.
+        this.globalTicker.unref?.();
+    }
+
+    private stopTickerIfIdle(): void {
+        if (this.byMatchId.size === 0 && this.globalTicker) {
+            clearInterval(this.globalTicker);
+            this.globalTicker = null;
+        }
+    }
+
+    /** Number of live (not-ended) matches — used by ops/metrics. */
+    activeMatchCount(): number {
+        return this.byMatchId.size;
+    }
 
     async startMatch(io: AppIOServer, args: StartArgs): Promise<void> {
+        // Co-location guard. The live match runtime is node-local, so BOTH
+        // human sockets must be connected to THIS instance. `io.sockets.sockets`
+        // only contains sockets on the local node (the Redis adapter routes
+        // emits cross-node, but inbound events land on whichever node holds the
+        // socket). Ranked matchmaking guarantees this by construction (per-node
+        // queue); friend challenges / private joins can span nodes, so we check
+        // and refuse rather than start a match whose guesses would silently
+        // fail on the other node. See README "Scaling & sticky routing".
+        const p1Local = io.sockets.sockets.has(args.p1SocketId);
+        const p2Local =
+            args.p2IsBot ||
+            args.p2SocketId == null ||
+            io.sockets.sockets.has(args.p2SocketId);
+        if (!p1Local || !p2Local) {
+            logger.warn(
+                {
+                    p1UserId: args.p1UserId,
+                    p2UserId: args.p2UserId,
+                    p1Local,
+                    p2Local,
+                },
+                'Refusing to start a match whose players are not on the same node'
+            );
+            const msg = {
+                message:
+                    'Could not start the match — the other player is on a different server. Please try again.',
+            };
+            if (args.p1SocketId) io.to(args.p1SocketId).emit('error', msg);
+            if (args.p2SocketId) io.to(args.p2SocketId).emit('error', msg);
+            throw new Error('Match players not co-located on this node');
+        }
+
         const [p1, p2] = await Promise.all([
             findUserById(args.p1UserId),
             findUserById(args.p2UserId),
@@ -192,8 +257,11 @@ class MatchRegistry {
             });
         }
 
-        // Tick + auto-end timers.
-        match.timerHandle = setInterval(() => this.tick(io, match), 1000);
+        // Per-second clock is driven by the shared global ticker (started
+        // here if it isn't already running). A per-match hard-stop timer
+        // still guarantees the match ends exactly at durationMs even if a
+        // tick is briefly delayed.
+        this.ensureTicker(io);
         match.endTimerHandle = setTimeout(
             () => this.endMatch(io, match, { reason: 'time_up' }).catch(() => {}),
             match.durationMs
@@ -338,8 +406,16 @@ class MatchRegistry {
             };
         }
 
-        // Check + decrement inventory atomically.
-        const col = `powerup_${kind}` as 'powerup_reveal' | 'powerup_scramble' | 'powerup_lock';
+        // Check + decrement inventory atomically. `kind` is whitelisted below
+        // (never trust the wire type at runtime) and mapped to a fixed column
+        // name — no client string is ever interpolated into SQL.
+        const COLS = {
+            reveal: 'powerup_reveal',
+            scramble: 'powerup_scramble',
+            lock: 'powerup_lock',
+        } as const;
+        const col = COLS[kind];
+        if (!col) return { ok: false, error: 'Unknown powerup' };
         const rows = await query<{ remaining: number }>(
             `UPDATE users SET ${col} = ${col} - 1, updated_at = now()
              WHERE id = $1 AND ${col} > 0
@@ -799,6 +875,7 @@ class MatchRegistry {
             this.byMatchId.delete(match.id);
             this.byUserId.delete(match.p1UserId);
             this.byUserId.delete(match.p2UserId);
+            this.stopTickerIfIdle();
             return;
         }
 
@@ -881,72 +958,86 @@ class MatchRegistry {
             );
         }
 
-        // Battle pass XP.
-        const p1XpResult = match.p1IsBot
-            ? { xpAwarded: 0, newXp: 0, newTier: 0 }
-            : await awardMatchXp({
-                  userId: p1.id,
-                  result: winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
-              });
-        const p2XpResult = match.p2IsBot
-            ? { xpAwarded: 0, newXp: 0, newTier: 0 }
-            : await awardMatchXp({
-                  userId: p2.id,
-                  result: winner === 'p2' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
-              });
-
-        // Coins for the winner. Bots don't earn anything.
+        // Post-match grants. These are independent between the two players
+        // and independent across categories (XP / coins / streak /
+        // leaderboard), so we fan them out concurrently instead of running
+        // a long sequential await chain — the match-end path was the main
+        // per-match DB-latency cost. Coins for the winner only; bots earn
+        // nothing and never touch the leaderboards.
         let p1CoinsAwarded = 0;
         let p2CoinsAwarded = 0;
         let p1CoinsTotal = updatedP1.coins;
         let p2CoinsTotal = updatedP2.coins;
-        if (winner === 'p1' && !match.p1IsBot) {
-            p1CoinsAwarded = COINS_PER_WIN;
-            p1CoinsTotal = await grantCoins({
-                userId: p1.id,
-                amount: COINS_PER_WIN,
-                source: 'match_win',
-                metadata: { matchId: match.id },
-            });
-        }
-        if (winner === 'p2' && !match.p2IsBot) {
-            p2CoinsAwarded = COINS_PER_WIN;
-            p2CoinsTotal = await grantCoins({
-                userId: p2.id,
-                amount: COINS_PER_WIN,
-                source: 'match_win',
-                metadata: { matchId: match.id },
-            });
-        }
+        if (winner === 'p1' && !match.p1IsBot) p1CoinsAwarded = COINS_PER_WIN;
+        if (winner === 'p2' && !match.p2IsBot) p2CoinsAwarded = COINS_PER_WIN;
 
-        // Daily play-streak. Both players get credit for completing a match
-        // (regardless of result), but bots don't.
-        const p1Streak = match.p1IsBot
-            ? null
-            : await advanceStreakOnMatchComplete(p1.id);
-        const p2Streak = match.p2IsBot
-            ? null
-            : await advanceStreakOnMatchComplete(p2.id);
+        const [
+            p1XpResult,
+            p2XpResult,
+            p1CoinsTotalRes,
+            p2CoinsTotalRes,
+            p1Streak,
+            p2Streak,
+        ] = await Promise.all([
+            match.p1IsBot
+                ? Promise.resolve({ xpAwarded: 0, newXp: 0, newTier: 0 })
+                : awardMatchXp({
+                      userId: p1.id,
+                      result: winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
+                  }),
+            match.p2IsBot
+                ? Promise.resolve({ xpAwarded: 0, newXp: 0, newTier: 0 })
+                : awardMatchXp({
+                      userId: p2.id,
+                      result: winner === 'p2' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
+                  }),
+            p1CoinsAwarded > 0
+                ? grantCoins({
+                      userId: p1.id,
+                      amount: COINS_PER_WIN,
+                      source: 'match_win',
+                      metadata: { matchId: match.id },
+                  })
+                : Promise.resolve<number | null>(null),
+            p2CoinsAwarded > 0
+                ? grantCoins({
+                      userId: p2.id,
+                      amount: COINS_PER_WIN,
+                      source: 'match_win',
+                      metadata: { matchId: match.id },
+                  })
+                : Promise.resolve<number | null>(null),
+            match.p1IsBot ? Promise.resolve(null) : advanceStreakOnMatchComplete(p1.id),
+            match.p2IsBot ? Promise.resolve(null) : advanceStreakOnMatchComplete(p2.id),
+        ]);
+        if (p1CoinsTotalRes != null) p1CoinsTotal = p1CoinsTotalRes;
+        if (p2CoinsTotalRes != null) p2CoinsTotal = p2CoinsTotalRes;
 
-        // Leaderboards (skip bots — we don't want them on the rankings).
-        if (!match.p1IsBot) {
-            await recordMatchResult({
-                userId: p1.id,
-                isWin: winner === 'p1',
-                rankPoints: updatedP1.rank_points,
-                mode: match.mode,
-            });
-            await updateSeasonPeak(p1.id, updatedP1.rank_points);
-        }
-        if (!match.p2IsBot) {
-            await recordMatchResult({
-                userId: p2.id,
-                isWin: winner === 'p2',
-                rankPoints: updatedP2.rank_points,
-                mode: match.mode,
-            });
-            await updateSeasonPeak(p2.id, updatedP2.rank_points);
-        }
+        // Leaderboards + season peak (skip bots). Independent between players.
+        await Promise.all([
+            match.p1IsBot
+                ? Promise.resolve()
+                : Promise.all([
+                      recordMatchResult({
+                          userId: p1.id,
+                          isWin: winner === 'p1',
+                          rankPoints: updatedP1.rank_points,
+                          mode: match.mode,
+                      }),
+                      updateSeasonPeak(p1.id, updatedP1.rank_points),
+                  ]).then(() => undefined),
+            match.p2IsBot
+                ? Promise.resolve()
+                : Promise.all([
+                      recordMatchResult({
+                          userId: p2.id,
+                          isWin: winner === 'p2',
+                          rankPoints: updatedP2.rank_points,
+                          mode: match.mode,
+                      }),
+                      updateSeasonPeak(p2.id, updatedP2.rank_points),
+                  ]).then(() => undefined),
+        ]);
 
         const p1Result: 'win' | 'loss' | 'tie' =
             winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss';
@@ -1017,6 +1108,7 @@ class MatchRegistry {
         this.byMatchId.delete(match.id);
         this.byUserId.delete(match.p1UserId);
         this.byUserId.delete(match.p2UserId);
+        this.stopTickerIfIdle();
 
         logger.info(
             { matchId: match.id, outcome, winner, durationSec },

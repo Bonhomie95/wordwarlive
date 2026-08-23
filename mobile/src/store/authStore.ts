@@ -7,6 +7,7 @@ import {
   clearStoredToken,
   setStoredToken,
   getStoredToken,
+  setUnauthorizedHandler,
 } from "../api/client";
 import {
   loginAnonymous,
@@ -21,6 +22,7 @@ import {
 import { usersApi } from "../api/resources";
 import type { MeResponse, PublicUser } from "../types/index";
 import { disconnectSocket } from "../socket/client";
+import { unregisterPush } from "../lib/notifications";
 
 const DEVICE_KEY = "wordwar.deviceId";
 /** Last-known profile, cached so cold starts render instantly (and offline)
@@ -79,6 +81,11 @@ interface AuthState {
   linkEmail: (email: string, password: string) => Promise<void>;
   linkGoogle: (idToken: string) => Promise<void>;
   linkApple: (idToken: string) => Promise<void>;
+
+  /** Adopt a freshly-rotated token for THIS device (e.g. after
+   *  "log out everywhere"). Persists it, tears down the old socket so the
+   *  next connect uses the new token, and updates state. */
+  applyRotatedToken: (token: string) => Promise<void>;
 
   signOut: () => Promise<void>;
 }
@@ -262,10 +269,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  applyRotatedToken: async (token) => {
+    await setStoredToken(token);
+    // The persistent socket was opened with the OLD token; its handshake
+    // already passed, but the bumped token_version would reject it on the
+    // next reconnect. Tear it down so _layout re-opens a fresh socket with
+    // the new token (ensureSocket reuses an existing socket, so we must
+    // disconnect first). Setting `token` re-triggers that effect.
+    disconnectSocket();
+    set({ token });
+  },
+
   signOut: async () => {
+    // Best-effort: drop this device's push token before we lose the session.
+    await unregisterPush().catch(() => {});
     await clearStoredToken();
     cacheUser(null);
     disconnectSocket();
     set({ token: null, user: null, error: null, hydrated: true });
   },
 }));
+
+// Any authenticated request that 401s (expired/invalidated session) signs the
+// user out globally. Only fires if we're actually signed in, so a bad-password
+// 401 on the login endpoint won't trigger it.
+setUnauthorizedHandler(() => {
+  if (useAuthStore.getState().token) {
+    void useAuthStore.getState().signOut();
+  }
+});

@@ -98,6 +98,11 @@ interface GameState {
     quitMatch: () => void;
     /** Fire an emoji reaction at the opponent. Rate-limited server-side. */
     sendEmoji: (emoji: string) => void;
+    /** Spend an earned power-up (reveal / scramble / lock). Resolves with the
+     *  server ack so the caller can refresh inventory + surface errors. */
+    usePowerUp: (
+        kind: 'reveal' | 'scramble' | 'lock'
+    ) => Promise<{ ok: boolean; error?: string }>;
     appendLetter: (l: string) => void;
     backspace: () => void;
     clearInput: () => void;
@@ -304,6 +309,19 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
         set({ lastError: e.message });
     });
 
+    sock.on('server_restarting', () => {
+        // Surface a gentle notice. In-flight matches are given a grace window
+        // server-side to finish; queued players are told to retry shortly.
+        const phase = get().phase;
+        if (phase === 'queueing') {
+            set({
+                phase: 'idle',
+                queueStatus: null,
+                challengeNotice: 'Server is updating — try again in a moment.',
+            });
+        }
+    });
+
     // ─── Friend challenges ───────────────────────────────────────────────
     sock.on('friend_challenge_incoming', (payload) => {
         // Can't accept while mid-match - ignore the prompt entirely.
@@ -424,6 +442,41 @@ export const useGameStore = create<GameState>((set, get) => ({
     sendEmoji: (emoji) => {
         const sock = getSocket();
         sock?.emit('emoji_send', { emoji });
+    },
+
+    usePowerUp: (kind) => {
+        const { phase, lockedUntilMs } = get();
+        if (phase !== 'playing') {
+            return Promise.resolve({ ok: false, error: 'Match not active' });
+        }
+        if (lockedUntilMs && Date.now() < lockedUntilMs) {
+            return Promise.resolve({
+                ok: false,
+                error: 'Your powerups are locked.',
+            });
+        }
+        const sock = getSocket();
+        if (!sock) return Promise.resolve({ ok: false, error: 'Not connected' });
+        return new Promise((resolve) => {
+            sock.timeout(8000).emit(
+                'powerup_use',
+                { kind },
+                (
+                    err: Error | null,
+                    ack: { ok: boolean; error?: string } = {
+                        ok: false,
+                        error: 'Timed out',
+                    }
+                ) => {
+                    if (err) {
+                        resolve({ ok: false, error: 'Network timeout' });
+                        return;
+                    }
+                    if (!ack.ok && ack.error) set({ lastError: ack.error });
+                    resolve(ack);
+                }
+            );
+        });
     },
 
     appendLetter: (l) => {
