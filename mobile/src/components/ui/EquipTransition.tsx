@@ -11,7 +11,6 @@ import Animated, {
     withTiming,
     withSpring,
     withRepeat,
-    withSequence,
     withDelay,
     Easing,
     cancelAnimation,
