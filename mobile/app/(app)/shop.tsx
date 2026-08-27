@@ -629,14 +629,18 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         alignItems: 'center',
     },
     actionBuy: { backgroundColor: colors.primary },
-    actionEquip: { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border },
+    // EQUIP is the clear call-to-action → filled green (dark label), like BUY.
+    actionEquip: { backgroundColor: colors.primary },
+    // EQUIPPED is a "done/selected" state → muted outline (green label).
     actionEquipped: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary },
     actionLabel: {
         fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.xs,
-        fontWeight: typography.weights.bold,
+        fontWeight: typography.weights.black,
         letterSpacing: 1,
-        color: '#0F1115',
+        // Dark label reads on the filled green BUY/EQUIP buttons. The equipped
+        // state overrides this to the primary color inline (green on outline).
+        color: colors.bg,
     },
     empty: {
         textAlign: 'center',

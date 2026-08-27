@@ -35,7 +35,7 @@ interface Props {
     onDone: () => void;
 }
 
-const HOLD_MS = 1900;
+const HOLD_MS = 5000;
 
 export const EquipTransition: React.FC<Props> = ({ visible, category, from, to, onDone }) => {
     const appear = useSharedValue(0);
@@ -153,6 +153,9 @@ export const EquipTransition: React.FC<Props> = ({ visible, category, from, to, 
                             Equipped
                         </Text>
                     </View>
+                    <Text style={styles.skipHint} allowFontScaling={false}>
+                        Tap anywhere to continue
+                    </Text>
                 </Animated.View>
             </Animated.View>
         </Modal>
@@ -221,6 +224,13 @@ const styles = makeThemedStyles(() =>
             fontSize: typography.sizes.xs,
             letterSpacing: 1,
             textTransform: 'uppercase',
+        },
+        skipHint: {
+            color: colors.textMuted,
+            fontFamily: typography.familyMono,
+            fontSize: 11,
+            letterSpacing: 0.5,
+            marginTop: spacing.xs,
         },
     })
 );
