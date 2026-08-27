@@ -220,6 +220,18 @@ export async function getTokenVersion(userId: string): Promise<number | null> {
     return rows[0]?.token_version ?? null;
 }
 
+/** Session validity snapshot: token version + banned flag. Used by auth. */
+export async function getSessionState(
+    userId: string
+): Promise<{ tokenVersion: number; banned: boolean } | null> {
+    const rows = await query<{ token_version: number; banned: boolean }>(
+        'SELECT token_version, banned FROM users WHERE id = $1',
+        [userId]
+    );
+    const r = rows[0];
+    return r ? { tokenVersion: r.token_version, banned: r.banned } : null;
+}
+
 /** Invalidate all outstanding sessions for a user by bumping their token
  *  version. Returns the new version. */
 export async function bumpTokenVersion(userId: string): Promise<number> {

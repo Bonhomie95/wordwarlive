@@ -37,6 +37,7 @@ import { friendsRouter } from './routes/friends.js';
 import { replaysRouter } from './routes/replays.js';
 import { reportsRouter } from './routes/reports.js';
 import { pushRouter } from './routes/push.js';
+import { adminRouter } from './routes/admin.js';
 import { createSocketServer } from './socket/server.js';
 import { matchRegistry } from './socket/matchHandler.js';
 import { resetMatchmakingQueue } from './socket/matchmaking.js';
@@ -66,6 +67,13 @@ async function main() {
     // Clear any stale matchmaking queue left behind by a previous run of this
     // node id (e.g. a crash without a clean shutdown).
     await resetMatchmakingQueue();
+
+    // Promote any configured bootstrap admins (ADMIN_EMAILS). Idempotent.
+    if (env.adminEmails.length) {
+        const { promoteAdminEmails } = await import('./services/adminService.js');
+        const n = await promoteAdminEmails(env.adminEmails).catch(() => 0);
+        if (n) logger.info({ promoted: n }, 'Promoted bootstrap admin(s)');
+    }
 
     const app = express();
     // Behind a proxy/LB, trust exactly TRUST_PROXY hops so rate limiting keys
@@ -126,6 +134,7 @@ async function main() {
     app.use('/api', replaysRouter);
     app.use('/api', reportsRouter);
     app.use('/api', pushRouter);
+    app.use('/api', adminRouter);
 
     // Operational metrics. Guarded by METRICS_TOKEN when set (send it as
     // `Authorization: Bearer <token>`); otherwise open for internal scraping.

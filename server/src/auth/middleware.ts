@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifySession, type SessionToken } from './jwt.js';
-import { getTokenVersion } from '../services/userService.js';
+import { getSessionState } from '../services/userService.js';
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -39,9 +39,13 @@ export async function requireAuth(
         return;
     }
     try {
-        const current = await getTokenVersion(session.userId);
-        if (current === null || current !== session.tokenVersion) {
+        const state = await getSessionState(session.userId);
+        if (state === null || state.tokenVersion !== session.tokenVersion) {
             res.status(401).json({ error: 'Session expired. Please sign in again.' });
+            return;
+        }
+        if (state.banned) {
+            res.status(403).json({ error: 'This account has been suspended.' });
             return;
         }
     } catch {
@@ -51,6 +55,31 @@ export async function requireAuth(
         return;
     }
     req.session = session;
+    next();
+}
+
+/** Gate for the admin surface. MUST be mounted AFTER requireAuth (it reads
+ *  req.session). Rejects any non-admin with 403. */
+export async function requireAdmin(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    const userId = req.session?.userId;
+    if (!userId) {
+        res.status(401).json({ error: 'Not authenticated' });
+        return;
+    }
+    try {
+        const { isAdmin } = await import('../services/adminService.js');
+        if (!(await isAdmin(userId))) {
+            res.status(403).json({ error: 'Admin access required' });
+            return;
+        }
+    } catch {
+        res.status(503).json({ error: 'Admin check unavailable' });
+        return;
+    }
     next();
 }
 

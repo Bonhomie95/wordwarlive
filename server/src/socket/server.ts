@@ -24,7 +24,7 @@ import {
     resolvePrivateMatchCode,
 } from '../services/friendsService.js';
 import { pickRankAwareWord, pickRandomWord } from '../game/words.js';
-import { findUserById, getTokenVersion } from '../services/userService.js';
+import { findUserById, getSessionState } from '../services/userService.js';
 import {
     parse,
     guessSubmitSchema,
@@ -94,10 +94,13 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         if (!tok) return next(new Error('No token'));
         try {
             const session = verifySession(tok);
-            // Reject revoked sessions (see requireAuth for the rationale).
-            const current = await getTokenVersion(session.userId);
-            if (current === null || current !== session.tokenVersion) {
+            // Reject revoked or banned sessions (see requireAuth for rationale).
+            const state = await getSessionState(session.userId);
+            if (state === null || state.tokenVersion !== session.tokenVersion) {
                 return next(new Error('Session expired'));
+            }
+            if (state.banned) {
+                return next(new Error('Account suspended'));
             }
             socket.data.session = session;
             next();
