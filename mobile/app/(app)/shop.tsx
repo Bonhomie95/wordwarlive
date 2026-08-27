@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
+import { EquipTransition, type EquipTarget } from '../../src/components/ui/EquipTransition';
 import { useAuthStore } from '../../src/store/authStore';
 import { adsApi, coinsApi, cosmeticsApi, usersApi } from '../../src/api/resources';
 import type { CoinPack, Cosmetic, CosmeticCategory } from '../../src/types/index';
@@ -65,6 +66,12 @@ export default function Shop() {
     const [busyId, setBusyId] = useState<string | null>(null);
     const [packBusyId, setPackBusyId] = useState<string | null>(null);
     const [removeAdsBusy, setRemoveAdsBusy] = useState(false);
+    // Drives the "before → after" equip reveal overlay.
+    const [equipReveal, setEquipReveal] = useState<{
+        category: CosmeticCategory;
+        from: EquipTarget | null;
+        to: EquipTarget;
+    } | null>(null);
 
     const load = useCallback(async () => {
         try {
@@ -100,8 +107,42 @@ export default function Shop() {
         return out;
     }, [items]);
 
+    // Currently-equipped cosmetic id for a category (the "before" of a reveal).
+    function equippedIdFor(cat: CosmeticCategory): string | null {
+        if (!user || !('equipped' in user) || !user.equipped) return null;
+        const e = user.equipped;
+        switch (cat) {
+            case 'board_theme':
+                return e.boardTheme;
+            case 'victory_anim':
+                return e.victoryAnim;
+            case 'avatar':
+                return e.avatar;
+            case 'nameplate':
+                return e.nameplate;
+            case 'profile_border':
+                return e.profileBorder;
+        }
+    }
+    function renderDataFor(id: string | null): Record<string, unknown> | null {
+        if (!id) return null;
+        return items.find((i) => i.id === id)?.renderData ?? null;
+    }
+    function showEquipReveal(c: Cosmetic, fromId: string | null) {
+        setEquipReveal({
+            category: c.category,
+            from:
+                fromId && fromId !== c.id
+                    ? { id: fromId, renderData: renderDataFor(fromId) }
+                    : null,
+            to: { id: c.id, name: c.name, renderData: c.renderData },
+        });
+    }
+
     async function onPurchase(c: Cosmetic) {
+        const fromId = equippedIdFor(c.category);
         setBusyId(c.id);
+        let equipOk = false;
         try {
             await cosmeticsApi.purchase(c.id);
             // Auto-equip the just-purchased cosmetic. UX: you bought it,
@@ -109,15 +150,16 @@ export default function Shop() {
             // confused that "Buy" didn't visually do anything.
             try {
                 await usersApi.equip(c.category, c.id);
+                equipOk = true;
             } catch (equipErr) {
                 // Non-fatal — the cosmetic is still purchased, user can
                 // tap Equip manually.
-                // eslint-disable-next-line no-console
                 console.warn('auto-equip after purchase failed', equipErr);
             }
             // Refresh both the shop catalog (now owned=true) and /me (now
             // equipped). Without both, the UI doesn't reflect the change.
             await Promise.all([load(), refreshMe()]);
+            if (equipOk) showEquipReveal(c, fromId);
         } catch (err) {
             Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
@@ -126,12 +168,14 @@ export default function Shop() {
     }
 
     async function onEquip(c: Cosmetic) {
+        const fromId = equippedIdFor(c.category);
         setBusyId(c.id);
         try {
             await usersApi.equip(c.category, c.id);
             await refreshMe();
             // Also reload shop so equipped state on cards updates immediately.
             await load();
+            showEquipReveal(c, fromId);
         } catch (err) {
             Alert.alert('Equip failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
@@ -212,6 +256,13 @@ export default function Shop() {
 
     return (
         <SafeAreaView style={styles.safe}>
+            <EquipTransition
+                visible={!!equipReveal}
+                category={equipReveal?.category ?? null}
+                from={equipReveal?.from ?? null}
+                to={equipReveal?.to ?? null}
+                onDone={() => setEquipReveal(null)}
+            />
             <View style={styles.header}>
                 <Text style={styles.title} allowFontScaling={false}>Shop</Text>
                 <Text style={styles.subtitle} allowFontScaling={false}>

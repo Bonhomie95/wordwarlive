@@ -100,7 +100,7 @@ interface GameState {
     sendEmoji: (emoji: string) => void;
     /** Spend an earned power-up (reveal / scramble / lock). Resolves with the
      *  server ack so the caller can refresh inventory + surface errors. */
-    usePowerUp: (
+    activatePowerUp: (
         kind: 'reveal' | 'scramble' | 'lock'
     ) => Promise<{ ok: boolean; error?: string }>;
     appendLetter: (l: string) => void;
@@ -444,7 +444,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         sock?.emit('emoji_send', { emoji });
     },
 
-    usePowerUp: (kind) => {
+    activatePowerUp: (kind) => {
         const { phase, lockedUntilMs } = get();
         if (phase !== 'playing') {
             return Promise.resolve({ ok: false, error: 'Match not active' });

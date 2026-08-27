@@ -64,7 +64,7 @@ export default function Match() {
     const submitGuess = useGameStore((s) => s.submitGuess);
     const quitMatch = useGameStore((s) => s.quitMatch);
     const requestHint = useGameStore((s) => s.requestHint);
-    const usePowerUp = useGameStore((s) => s.usePowerUp);
+    const activatePowerUp = useGameStore((s) => s.activatePowerUp);
     const lockedUntilMs = useGameStore((s) => s.lockedUntilMs);
     const hintsRevealed = useGameStore((s) => s.hintsRevealed);
     const hintRequesting = useGameStore((s) => s.hintRequesting);
@@ -206,7 +206,7 @@ export default function Match() {
     }
 
     async function onUsePowerUp(kind: 'reveal' | 'scramble' | 'lock') {
-        const ack = await usePowerUp(kind);
+        const ack = await activatePowerUp(kind);
         // Inventory changed server-side — refresh so counts update.
         if (ack.ok) refreshMe().catch(() => {});
         return ack;

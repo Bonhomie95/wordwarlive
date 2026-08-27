@@ -1,5 +1,5 @@
 import React, { memo, useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -8,7 +8,7 @@ import Animated, {
     cancelAnimation,
 } from 'react-native-reanimated';
 import { makeThemedStyles, colors } from '../../theme/colors';
-import { typography, radius, spacing } from '../../theme/typography';
+import { typography } from '../../theme/typography';
 import { useGameStore } from '../../store/gameStore';
 
 interface Props {

@@ -56,7 +56,8 @@ function Ring({ delay }: { delay: number }) {
     }));
     return (
         <Animated.View style={[styles.centered]} pointerEvents="none">
-            <Animated.View style={[styles.ring, style]} />
+            {/* borderColor applied at render time so it tracks the theme. */}
+            <Animated.View style={[styles.ring, { borderColor: colors.primary }, style]} />
         </Animated.View>
     );
 }
@@ -136,7 +137,6 @@ const styles = StyleSheet.create({
         height: 240,
         borderRadius: 120,
         borderWidth: 4,
-        borderColor: colors.primary,
     },
     confetti: {
         position: 'absolute',

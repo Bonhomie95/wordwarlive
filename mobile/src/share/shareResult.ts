@@ -25,7 +25,7 @@ const TILE_EMOJI_HC: Record<Tile, string> = {
 };
 
 export function emojiGrid(
-    guesses: ReadonlyArray<{ tiles: Tile[] }>,
+    guesses: readonly { tiles: Tile[] }[],
     highContrast = false
 ): string {
     const map = highContrast ? TILE_EMOJI_HC : TILE_EMOJI;
@@ -44,7 +44,7 @@ function formatDuration(sec: number | undefined): string {
 
 export interface MatchShareArgs {
     result: 'win' | 'loss' | 'tie';
-    guesses: ReadonlyArray<{ tiles: Tile[] }>;
+    guesses: readonly { tiles: Tile[] }[];
     solved: boolean;
     opponentName?: string;
     mode?: 'classic' | 'mystery';
@@ -85,7 +85,7 @@ export function buildMatchShareMessage(args: MatchShareArgs): string {
 export interface DailyShareArgs {
     /** YYYY-MM-DD of the challenge. */
     date: string;
-    guesses: ReadonlyArray<{ tiles: Tile[] }>;
+    guesses: readonly { tiles: Tile[] }[];
     solved: boolean;
     durationMs?: number;
     highContrast?: boolean;

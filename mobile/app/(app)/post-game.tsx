@@ -37,8 +37,6 @@ export default function PostGame() {
     const markInterstitialShown = useGameStore((s) => s.markInterstitialShown);
     const refreshMe = useAuthStore((s) => s.refreshMe);
     const user = useAuthStore((s) => s.user);
-    const token = useAuthStore((s) => s.token);
-    const connectAndQueue = useGameStore((s) => s.connectAndQueue);
     const [interstitialLoading, setInterstitialLoading] = useState(false);
     // One-shot guard per match. Without it the refresh/interstitial effect
     // re-runs every time `user` changes (refreshMe below updates it!) —
@@ -427,22 +425,6 @@ function BoardColumn({
     );
 }
 
-function outcomeBlurb(outcome: string): string {
-    switch (outcome) {
-        case 'p1_solved':
-        case 'p2_solved':
-            return 'Solved.';
-        case 'p1_more_correct':
-        case 'p2_more_correct':
-            return 'Decided on letters in correct positions.';
-        case 'tie':
-            return 'Even count of correct positions. Tie.';
-        case 'forfeit':
-            return 'Opponent disconnected.';
-        default:
-            return '';
-    }
-}
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },

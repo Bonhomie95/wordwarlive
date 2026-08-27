@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { makeThemedStyles, colors, rankColors, type RankTier } from '../../theme/colors';
-import { typography, radius, spacing } from '../../theme/typography';
+import { typography, spacing } from '../../theme/typography';
 
 interface Props {
     tier: RankTier;

@@ -50,19 +50,19 @@ export function ensureSocket(token: string): AppSocket {
     // bad-network reconnect loop.
     if (__DEV__) {
         socket.on('connect', () => {
-            // eslint-disable-next-line no-console
+             
             console.log('[socket] connected', socket?.id);
         });
         socket.on('connect_error', (err) => {
-            // eslint-disable-next-line no-console
+             
             console.warn('[socket] connect_error', err.message);
         });
         socket.io.on('reconnect_attempt', (n: number) => {
-            // eslint-disable-next-line no-console
+             
             console.log('[socket] reconnect_attempt', n);
         });
         socket.on('disconnect', (reason) => {
-            // eslint-disable-next-line no-console
+             
             console.log('[socket] disconnect', reason);
         });
     }

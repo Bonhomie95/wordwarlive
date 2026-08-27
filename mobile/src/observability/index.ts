@@ -21,7 +21,7 @@ export function initObservability(): void {
     // Placeholder: when a provider is added, initialize it here using DSN /
     // ANALYTICS_KEY. Intentionally empty so the app runs provider-free today.
     if (__DEV__ && (DSN || ANALYTICS_KEY)) {
-        // eslint-disable-next-line no-console
+         
         console.log('[observability] provider keys present (init stub)');
     }
 }
@@ -33,7 +33,7 @@ export function captureError(
 ): void {
     try {
         if (__DEV__) {
-            // eslint-disable-next-line no-console
+             
             console.error('[captureError]', error, context ?? '');
         }
         // When Sentry is wired: Sentry.captureException(error, { extra: context })
@@ -49,7 +49,7 @@ export function track(
 ): void {
     try {
         if (__DEV__) {
-            // eslint-disable-next-line no-console
+             
             console.log('[track]', event, props ?? '');
         }
         // When analytics is wired: analytics.capture(event, props)

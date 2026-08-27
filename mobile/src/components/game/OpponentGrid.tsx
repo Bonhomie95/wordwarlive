@@ -1,7 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Tile } from './Tile';
-import { spacing } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
 import { makeThemedStyles } from '../../theme/colors';
 

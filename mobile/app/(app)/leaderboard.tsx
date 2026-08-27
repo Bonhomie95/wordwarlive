@@ -34,7 +34,7 @@ import type {
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
-const PERIODS: ReadonlyArray<{ key: LeaderboardPeriod; label: string }> = [
+const PERIODS: readonly { key: LeaderboardPeriod; label: string }[] = [
     { key: 'daily', label: 'Daily' },
     { key: 'weekly', label: 'Weekly' },
     { key: 'monthly', label: 'Monthly' },
@@ -42,7 +42,7 @@ const PERIODS: ReadonlyArray<{ key: LeaderboardPeriod; label: string }> = [
 ];
 
 type Mode = 'overall' | 'classic' | 'mystery';
-const MODES: ReadonlyArray<{ key: Mode; label: string }> = [
+const MODES: readonly { key: Mode; label: string }[] = [
     { key: 'overall', label: 'All' },
     { key: 'classic', label: 'Classic' },
     { key: 'mystery', label: 'Mystery' },
@@ -63,7 +63,7 @@ export default function LeaderboardScreen() {
                 setData(r);
             } catch (err) {
                 // Soft-fail; the empty state below renders.
-                // eslint-disable-next-line no-console
+                 
                 console.warn('leaderboard fetch failed', err);
                 setData(null);
             } finally {

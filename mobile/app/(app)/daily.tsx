@@ -74,7 +74,7 @@ export default function DailyChallengeScreen() {
             setBoard(new Array(r.challenge.wordLength).fill(null));
             setCursor(0);
         } catch (err) {
-            // eslint-disable-next-line no-console
+             
             console.warn('daily today failed', err);
         }
     }, []);

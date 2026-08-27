@@ -336,8 +336,8 @@ export interface MatchOver {
     newRankPoints: number;
     newRankTier: RankTier;
     battlePassXpAwarded: number;
-    yourGuesses: Array<{ guess: string; tiles: Tile[] }>;
-    opponentGuesses: Array<{ guess: string; tiles: Tile[] }>;
+    yourGuesses: { guess: string; tiles: Tile[] }[];
+    opponentGuesses: { guess: string; tiles: Tile[] }[];
     wordTheme?: string;
     coinsAwarded?: number;
     coinsTotal?: number;
