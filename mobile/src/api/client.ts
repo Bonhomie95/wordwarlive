@@ -31,6 +31,16 @@ export function setUnauthorizedHandler(fn: (() => void) | null): void {
     onUnauthorized = fn;
 }
 
+// Account-suspension hook. The server returns 403 with `code:
+// 'ACCOUNT_SUSPENDED'` for a banned user on any authenticated request. The auth
+// store registers a handler here to route the user to the suspended screen
+// instead of leaving 403s surfacing as inline errors. Registered separately to
+// avoid a circular import (mirrors setUnauthorizedHandler).
+let onForbidden: ((message: string) => void) | null = null;
+export function setForbiddenHandler(fn: ((message: string) => void) | null): void {
+    onForbidden = fn;
+}
+
 export class ApiError extends Error {
     public status: number;
     public payload: unknown;
@@ -121,6 +131,18 @@ export async function apiRequest<T>(path: string, opts: RequestOpts = {}): Promi
                         ? String((payload as { error: unknown }).error)
                         : null) ??
                     `Request failed (${res.status})`;
+                // A banned account → route to the suspended screen. Gated on the
+                // explicit code so other 403s don't trip it.
+                if (
+                    res.status === 403 &&
+                    sentWithToken &&
+                    onForbidden &&
+                    payload &&
+                    typeof payload === 'object' &&
+                    (payload as { code?: string }).code === 'ACCOUNT_SUSPENDED'
+                ) {
+                    onForbidden(message);
+                }
                 // Don't retry application errors — only network/timeouts.
                 throw new ApiError(res.status, message, payload);
             }

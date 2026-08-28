@@ -11,6 +11,19 @@ export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 let socket: AppSocket | null = null;
 let appStateSub: { remove: () => void } | null = null;
 
+// The handshake can be rejected by the server for auth reasons: a banned user
+// ('Account suspended') or a revoked/rotated token ('Session expired'). Those
+// are terminal — socket.io would otherwise retry them forever. The auth store
+// registers a handler so it can route to the suspended screen / sign out.
+// Registered via a setter to avoid a circular import with the store.
+export type SocketAuthError = 'suspended' | 'expired';
+let onAuthError: ((kind: SocketAuthError) => void) | null = null;
+export function setSocketAuthErrorHandler(
+    fn: ((kind: SocketAuthError) => void) | null
+): void {
+    onAuthError = fn;
+}
+
 /**
  * The socket is now a PERSISTENT, session-long singleton, not a per-match
  * throwaway.
@@ -45,16 +58,28 @@ export function ensureSocket(token: string): AppSocket {
         timeout: 30_000,
     });
 
+    // Terminal auth rejections at the handshake. These are the exact strings
+    // the server sends via `next(new Error(...))`; matching them precisely means
+    // an ordinary transient network `connect_error` (e.g. 'websocket error')
+    // never trips a sign-out. We stop the retry loop and hand off to the store.
+    socket.on('connect_error', (err) => {
+        if (err.message === 'Account suspended') {
+            onAuthError?.('suspended');
+        } else if (err.message === 'Session expired') {
+            onAuthError?.('expired');
+        }
+    });
+
     // Diagnostic logging only in dev — in production these fire on every
     // connect/disconnect/reconnect attempt, which is wasted work during a
     // bad-network reconnect loop.
     if (__DEV__) {
         socket.on('connect', () => {
-             
+
             console.log('[socket] connected', socket?.id);
         });
         socket.on('connect_error', (err) => {
-             
+
             console.warn('[socket] connect_error', err.message);
         });
         socket.io.on('reconnect_attempt', (n: number) => {

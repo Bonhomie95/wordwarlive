@@ -57,6 +57,12 @@
             "kotlinVersion": "2.1.20"
           }
         }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This identifier will be used to deliver personalized ads to you."
+        }
       ]
     ],
     "experiments": {

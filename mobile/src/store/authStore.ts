@@ -8,6 +8,7 @@ import {
   setStoredToken,
   getStoredToken,
   setUnauthorizedHandler,
+  setForbiddenHandler,
 } from "../api/client";
 import {
   loginAnonymous,
@@ -21,7 +22,7 @@ import {
 } from "../api/auth";
 import { usersApi } from "../api/resources";
 import type { MeResponse, PublicUser } from "../types/index";
-import { disconnectSocket } from "../socket/client";
+import { disconnectSocket, setSocketAuthErrorHandler } from "../socket/client";
 import { unregisterPush } from "../lib/notifications";
 
 const DEVICE_KEY = "wordwar.deviceId";
@@ -62,8 +63,18 @@ interface AuthState {
   /** True when an auth call is in-flight. */
   busy: boolean;
   error: string | null;
+  /** The server has banned this account. While true the app shows the
+   *  suspended screen and everything else is gated off. */
+  suspended: boolean;
+  suspendedMessage: string | null;
 
   hydrate: () => Promise<void>;
+
+  /** Flag the account as suspended (banned). Tears down the socket so it
+   *  stops retrying a handshake the server will keep rejecting. Keeps the
+   *  token so the suspended screen persists across restarts until the user
+   *  explicitly signs out. */
+  markSuspended: (message?: string) => void;
 
   signInAnonymous: (desiredUsername?: string) => Promise<void>;
   signInEmail: (email: string, password: string) => Promise<void>;
@@ -106,6 +117,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   busy: false,
   error: null,
+  suspended: false,
+  suspendedMessage: null,
+
+  markSuspended: (message) => {
+    // Stop the socket's forever-retry loop against a handshake that will
+    // keep being rejected, then flip into the suspended state.
+    disconnectSocket();
+    set({
+      suspended: true,
+      suspendedMessage: message ?? "This account has been suspended.",
+    });
+  },
 
   hydrate: async () => {
     try {
@@ -127,7 +150,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         cacheUser(me);
         set({ user: me });
       } catch (err) {
+        // A banned account: keep the token and show the suspended screen
+        // rather than silently logging out to the welcome screen.
         if (
+          err instanceof ApiError &&
+          err.status === 403 &&
+          (err.payload as { code?: string } | null)?.code === "ACCOUNT_SUSPENDED"
+        ) {
+          get().markSuspended(err.message);
+        } else if (
           err instanceof ApiError &&
           (err.status === 401 || err.status === 403)
         ) {
@@ -286,7 +317,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await clearStoredToken();
     cacheUser(null);
     disconnectSocket();
-    set({ token: null, user: null, error: null, hydrated: true });
+    set({
+      token: null,
+      user: null,
+      error: null,
+      hydrated: true,
+      suspended: false,
+      suspendedMessage: null,
+    });
   },
 }));
 
@@ -296,5 +334,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 setUnauthorizedHandler(() => {
   if (useAuthStore.getState().token) {
     void useAuthStore.getState().signOut();
+  }
+});
+
+// A 403 ACCOUNT_SUSPENDED on any authenticated HTTP request → suspended screen.
+setForbiddenHandler((message) => {
+  const s = useAuthStore.getState();
+  if (s.token && !s.suspended) s.markSuspended(message);
+});
+
+// Handshake rejections on the persistent socket: banned → suspended screen,
+// revoked/rotated token → sign out (mirrors the HTTP 401 behavior).
+setSocketAuthErrorHandler((kind) => {
+  const s = useAuthStore.getState();
+  if (!s.token) return;
+  if (kind === "suspended") {
+    if (!s.suspended) s.markSuspended();
+  } else if (kind === "expired") {
+    void s.signOut();
   }
 });

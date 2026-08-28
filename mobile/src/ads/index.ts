@@ -27,11 +27,17 @@ interface AdsModule {
     RewardedAd: {
         createForAdRequest: (
             unitId: string,
-            opts: { serverSideVerificationOptions?: { customData?: string } }
+            opts: {
+                requestNonPersonalizedAdsOnly?: boolean;
+                serverSideVerificationOptions?: { customData?: string };
+            }
         ) => RewardedAdInstance;
     };
     InterstitialAd: {
-        createForAdRequest: (unitId: string) => InterstitialAdInstance;
+        createForAdRequest: (
+            unitId: string,
+            opts?: { requestNonPersonalizedAdsOnly?: boolean }
+        ) => InterstitialAdInstance;
     };
     RewardedAdEventType: {
         LOADED: string;
@@ -63,6 +69,39 @@ interface InterstitialAdInstance {
 let mod: AdsModule | null = null;
 let initialized = false;
 let initPromise: Promise<void> | null = null;
+
+// App Tracking Transparency result. On iOS we must ask before using the IDFA
+// for personalized ads (Apple 5.1.2 / ATT). Until granted we serve
+// non-personalized ads. Defaults to false → non-personalized, the safe state
+// (also correct on Android, where ATT doesn't apply and Google handles consent
+// via UMP; non-personalized-until-init never serves a personalized ad we
+// shouldn't).
+let trackingAuthorized = false;
+
+/**
+ * Ask for App Tracking Transparency (iOS only), once, before ads initialize.
+ * Safe in Expo Go / when the module is absent — it just leaves us in the
+ * non-personalized state. Never throws.
+ */
+async function requestTrackingIfNeeded(): Promise<void> {
+    if (Platform.OS !== 'ios') return;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const att = require('expo-tracking-transparency') as {
+            requestTrackingPermissionsAsync: () => Promise<{ granted: boolean }>;
+        };
+        const { granted } = await att.requestTrackingPermissionsAsync();
+        trackingAuthorized = granted;
+    } catch {
+        trackingAuthorized = false;
+    }
+}
+
+/** Request options applied to every ad load. When tracking isn't authorized we
+ *  ask AdMob for non-personalized ads only. */
+export function adRequestOptions(): { requestNonPersonalizedAdsOnly: boolean } {
+    return { requestNonPersonalizedAdsOnly: !trackingAuthorized };
+}
 
 /**
  * Lazy-load the native module. Returns null in Expo Go (storeClient) or
@@ -101,6 +140,9 @@ export async function initAds(): Promise<void> {
             return;
         }
         try {
+            // ATT must be resolved BEFORE the SDK initializes so the first ad
+            // requests already honor the user's choice.
+            await requestTrackingIfNeeded();
             await m.default().initialize();
             initialized = true;
         } catch {
@@ -178,6 +220,7 @@ export async function showRewarded(
 
     return new Promise<RewardedShowResult>((resolve) => {
         const ad = m.RewardedAd.createForAdRequest(unitId, {
+            ...adRequestOptions(),
             serverSideVerificationOptions: {
                 customData: `${userId}|${slot}`,
             },
@@ -264,7 +307,7 @@ export async function showInterstitial(): Promise<void> {
     if (!unitId) return;
 
     return new Promise<void>((resolve) => {
-        const ad = m.InterstitialAd.createForAdRequest(unitId);
+        const ad = m.InterstitialAd.createForAdRequest(unitId, adRequestOptions());
         let resolved = false;
         let showWatchdog: ReturnType<typeof setTimeout> | null = null;
         const done = () => {

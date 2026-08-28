@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
@@ -34,6 +35,17 @@ import { typography, radius, spacing } from '../../src/theme/typography';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
 const COLOR_BLIND_STORAGE_KEY = 'wordwar.colorblind';
+
+// Legal document URLs. Both stores require a reachable privacy policy, and
+// Apple wants it linked in-app. Override per environment; these defaults must
+// resolve to the hosted PRIVACY.md / TERMS.md before submission.
+const PRIVACY_URL =
+    process.env.EXPO_PUBLIC_PRIVACY_URL ?? 'https://wordwar.app/privacy';
+const TERMS_URL = process.env.EXPO_PUBLIC_TERMS_URL ?? 'https://wordwar.app/terms';
+
+function openLegal(url: string) {
+    WebBrowser.openBrowserAsync(url).catch(() => {});
+}
 
 function persistColorBlind(enabled: boolean) {
     SecureStore.setItemAsync(COLOR_BLIND_STORAGE_KEY, enabled ? '1' : '0').catch(
@@ -238,6 +250,21 @@ export default function SettingsScreen() {
                     <Ionicons name="help-circle-outline" size={22} color={colors.textDim} />
                 </Pressable>
 
+                {/* ─── Legal ────────────────────────────────────────────── */}
+                <SectionHeader label="Legal" />
+                <LinkRow
+                    label="Privacy Policy"
+                    description="How your data is collected and used."
+                    icon="lock-closed-outline"
+                    onPress={() => openLegal(PRIVACY_URL)}
+                />
+                <LinkRow
+                    label="Terms of Service"
+                    description="The rules for playing WordWar."
+                    icon="document-text-outline"
+                    onPress={() => openLegal(TERMS_URL)}
+                />
+
                 {/* ─── Themes ───────────────────────────────────────────── */}
                 <SectionHeader label="Theme" />
                 <View style={styles.themeList}>
@@ -389,6 +416,34 @@ const SectionHeader: React.FC<{ label: string }> = ({ label }) => (
     <Text style={styles.sectionHeader} allowFontScaling={false}>
         {label}
     </Text>
+);
+
+const LinkRow: React.FC<{
+    label: string;
+    description: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    onPress: () => void;
+}> = ({ label, description, icon, onPress }) => (
+    <Pressable
+        onPress={onPress}
+        accessibilityRole="link"
+        accessibilityLabel={label}
+        style={({ pressed }) => [
+            styles.row,
+            { justifyContent: 'space-between' },
+            pressed ? { opacity: 0.85 } : null,
+        ]}
+    >
+        <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel} allowFontScaling={false}>
+                {label}
+            </Text>
+            <Text style={styles.rowDesc} allowFontScaling={false}>
+                {description}
+            </Text>
+        </View>
+        <Ionicons name={icon} size={20} color={colors.textDim} />
+    </Pressable>
 );
 
 const ToggleRow: React.FC<{

@@ -45,7 +45,10 @@ export async function requireAuth(
             return;
         }
         if (state.banned) {
-            res.status(403).json({ error: 'This account has been suspended.' });
+            res.status(403).json({
+                error: 'This account has been suspended.',
+                code: 'ACCOUNT_SUSPENDED',
+            });
             return;
         }
     } catch {

@@ -14,11 +14,17 @@
       "distribution": "internal",
       "autoIncrement": true,
       "android": { "buildType": "apk" },
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.wordwar.app"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.wordwar.app"
+      }
     }
   },
   "submit": {

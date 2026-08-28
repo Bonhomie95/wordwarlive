@@ -32,16 +32,25 @@ function useAuthGate() {
     const segments = useSegments();
     const hydrated = useAuthStore((s) => s.hydrated);
     const token = useAuthStore((s) => s.token);
+    const suspended = useAuthStore((s) => s.suspended);
 
     useEffect(() => {
         if (!hydrated) return;
+        // A suspended account is corralled onto the suspended screen and kept
+        // out of both the app and the normal auth flow, regardless of token.
+        if (suspended) {
+            if (segments[1] !== 'suspended') {
+                router.replace('/(auth)/suspended');
+            }
+            return;
+        }
         const inAuthGroup = segments[0] === '(auth)';
         if (!token && !inAuthGroup) {
             router.replace('/(auth)/welcome');
         } else if (token && inAuthGroup) {
             router.replace('/(app)');
         }
-    }, [hydrated, token, segments, router]);
+    }, [hydrated, token, suspended, segments, router]);
 }
 
 export default function RootLayout() {
