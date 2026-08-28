@@ -36,15 +36,18 @@ function useAuthGate() {
 
     useEffect(() => {
         if (!hydrated) return;
+        // `segments` is a typed tuple whose length varies with the generated
+        // route types; read it as a plain string[] so deeper indices typecheck.
+        const segs = segments as readonly string[];
         // A suspended account is corralled onto the suspended screen and kept
         // out of both the app and the normal auth flow, regardless of token.
         if (suspended) {
-            if (segments[1] !== 'suspended') {
+            if (segs[1] !== 'suspended') {
                 router.replace('/(auth)/suspended');
             }
             return;
         }
-        const inAuthGroup = segments[0] === '(auth)';
+        const inAuthGroup = segs[0] === '(auth)';
         if (!token && !inAuthGroup) {
             router.replace('/(auth)/welcome');
         } else if (token && inAuthGroup) {
