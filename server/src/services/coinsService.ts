@@ -96,6 +96,8 @@ export type CoinSource =
     | 'streak_daily'
     | 'streak_milestone'
     | 'match_win'
+    | 'match_play'
+    | 'daily_solve'
     | 'iap'
     | 'hint_spend'
     | 'ad_reward'
@@ -104,6 +106,26 @@ export type CoinSource =
     | 'boost_spend'
     | 'username_spend'
     | 'bundle';
+
+// Match coins. Small on purpose (a hint is 50): a win pays a hint every
+// five games, a loser still edges toward one. Nothing for quitting or for a
+// match with zero guesses, so re-queue-and-forfeit can't farm coins.
+export const COINS_MATCH_WIN = 10;
+export const COINS_MATCH_TIE = 5;
+export const COINS_MATCH_LOSS = 3;
+
+export function matchCoins(args: {
+    result: 'win' | 'loss' | 'tie';
+    /** This player quit / disconnected out of the match. */
+    forfeited: boolean;
+    /** This player submitted at least one guess. */
+    guessed: boolean;
+}): number {
+    if (args.forfeited) return 0;
+    if (args.result === 'win') return COINS_MATCH_WIN;
+    if (!args.guessed) return 0;
+    return args.result === 'tie' ? COINS_MATCH_TIE : COINS_MATCH_LOSS;
+}
 
 /**
  * Grant coins to a user. amount must be positive. Source is recorded for

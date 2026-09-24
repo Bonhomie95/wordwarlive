@@ -13,6 +13,11 @@ import { query } from '../db/pool.js';
 import { isValidWord, pickRandomWord } from '../game/words.js';
 import { scoreGuess, validateGuess, type GuessResult } from '../game/engine.js';
 import { redeemHint, type HintResult, type HintError } from './hintService.js';
+import { grantCoins } from './coinsService.js';
+import { logger } from '../utils/logger.js';
+
+/** Coins for solving the day's word. Once per day; a hint costs 50. */
+export const DAILY_SOLVE_COINS = 15;
 
 export interface DailyChallenge {
     challengeDate: string; // YYYY-MM-DD
@@ -25,6 +30,7 @@ export interface DailyAttempt {
     guessCount: number;
     durationMs: number;
     startedAt: number;
+    coinsAwarded: number;
 }
 
 /**
@@ -87,8 +93,9 @@ export async function getMyAttempt(userId: string): Promise<DailyAttempt | null>
         guess_count: number;
         duration_ms: number;
         created_at: Date;
+        coins_awarded: number;
     }>(
-        `SELECT guesses, solved, guess_count, duration_ms, created_at
+        `SELECT guesses, solved, guess_count, duration_ms, created_at, coins_awarded
          FROM daily_challenge_attempts
          WHERE challenge_date = $1 AND user_id = $2`,
         [date, userId]
@@ -101,6 +108,7 @@ export async function getMyAttempt(userId: string): Promise<DailyAttempt | null>
         guessCount: r.guess_count,
         durationMs: r.duration_ms,
         startedAt: new Date(r.created_at).getTime(),
+        coinsAwarded: r.coins_awarded,
     };
 }
 
@@ -117,6 +125,7 @@ export async function submitGuess(
           tiles: ('correct' | 'misplaced' | 'wrong')[];
           solved: boolean;
           guessCount: number;
+          coinsAwarded: number;
       }
     | { ok: false; error: string; errorCode: string }
 > {
@@ -147,15 +156,20 @@ export async function submitGuess(
     ];
     const durationMs = solved ? Date.now() - startedAt : existing?.durationMs ?? 0;
 
-    await query(
+    // The WHERE guard makes a racing second solve a no-op (no row returned),
+    // so the coin grant below can only happen once per day.
+    const written = await query<{ solved: boolean }>(
         `INSERT INTO daily_challenge_attempts
-            (challenge_date, user_id, guesses, solved, guess_count, duration_ms, created_at)
-         VALUES ($1, $2, $3::jsonb, $4, $5, $6, to_timestamp($7 / 1000.0))
+            (challenge_date, user_id, guesses, solved, guess_count, duration_ms, created_at, coins_awarded)
+         VALUES ($1, $2, $3::jsonb, $4, $5, $6, to_timestamp($7 / 1000.0), $8)
          ON CONFLICT (challenge_date, user_id) DO UPDATE SET
             guesses = EXCLUDED.guesses,
             solved = EXCLUDED.solved,
             guess_count = EXCLUDED.guess_count,
-            duration_ms = EXCLUDED.duration_ms`,
+            duration_ms = EXCLUDED.duration_ms,
+            coins_awarded = EXCLUDED.coins_awarded
+         WHERE daily_challenge_attempts.solved = FALSE
+         RETURNING solved`,
         [
             date,
             userId,
@@ -164,10 +178,32 @@ export async function submitGuess(
             newGuesses.length,
             durationMs,
             startedAt,
+            solved ? DAILY_SOLVE_COINS : 0,
         ]
     );
+    if (!written[0]) {
+        return {
+            ok: false,
+            error: "You've already solved today's challenge.",
+            errorCode: 'ALREADY_SOLVED',
+        };
+    }
 
-    return { ok: true, tiles, solved, guessCount: newGuesses.length };
+    let coinsAwarded = 0;
+    if (solved) {
+        try {
+            await grantCoins({ userId, amount: DAILY_SOLVE_COINS, source: 'daily_solve', metadata: { date } });
+            coinsAwarded = DAILY_SOLVE_COINS;
+        } catch (err) {
+            logger.error({ err, userId, date }, 'daily solve coin grant failed');
+            await query(
+                'UPDATE daily_challenge_attempts SET coins_awarded = 0 WHERE challenge_date = $1 AND user_id = $2',
+                [date, userId]
+            ).catch(() => {});
+        }
+    }
+
+    return { ok: true, tiles, solved, guessCount: newGuesses.length, coinsAwarded };
 }
 
 // ─── Hints ──────────────────────────────────────────────────────────────────

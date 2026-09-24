@@ -336,7 +336,7 @@ function RewardsCard({ matchOver }: { matchOver: MatchOver }) {
                 <RewardLine
                     icon="trophy"
                     iconColor={colors.warning}
-                    label="Match win"
+                    label={matchOver.result === 'win' ? 'Match win' : 'Match played'}
                     value={`+${coinsAwarded} coins`}
                 />
             ) : null}

@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>WordWar — Brag</title>
+    <script src="assets/gsap.min.js"></script>
+    <script src="assets/audio-energy.js"></script>
+    <style>
+      @font-face { font-family: "Space Grotesk"; font-weight: 700; src: url("assets/fonts/SpaceGrotesk_700Bold.ttf") format("truetype"); }
+      @font-face { font-family: "Space Grotesk"; font-weight: 500; src: url("assets/fonts/SpaceGrotesk_500Medium.ttf") format("truetype"); }
+      @font-face { font-family: "Space Mono"; font-weight: 400; src: url("assets/fonts/SpaceMono_400Regular.ttf") format("truetype"); }
+      @font-face { font-family: "Space Mono"; font-weight: 700; src: url("assets/fonts/SpaceMono_700Bold.ttf") format("truetype"); }
+
+      :root {
+        --bg: #0f1115; --surface: #16191f; --elev: #1f232b; --border: #2a2e37;
+        --text: #f2f4f7; --dim: #9aa1ac;
+        --green: #3ddc97; --amber: #f4b940; --red: #ef4444; --blue: #60a5fa;
+        --wrong: #3a3d44; --empty: #1f232b;
+      }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: "Space Grotesk", sans-serif; }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+
+      /* shared backdrop */
+      #bg { position: absolute; inset: 0; background: linear-gradient(160deg, #0f1b0e 0%, #0b0e0b 50%, #0a0c0a 100%); }
+      #aura { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(61,220,151,0.24), rgba(61,220,151,0) 70%); opacity: 0.6; }
+      #flash { position: absolute; inset: 0; background: var(--green); opacity: 0; pointer-events: none; z-index: 50; }
+
+      .clip { position: absolute; inset: 0; box-sizing: border-box; }
+      .center { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; }
+      .mono { font-family: "Space Mono", monospace; }
+
+      /* ── tiles ── */
+      .tile { display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+        background: var(--empty); border: 2px solid var(--border); color: var(--text); font-weight: 700; }
+      .tile .ch { opacity: 0; }
+
+      /* Scene 1 — hook */
+      #s1 .stack { display: flex; flex-direction: column; align-items: center; gap: 26px; }
+      .hrow { display: flex; gap: 12px; }
+      .hrow .tile { width: 104px; height: 104px; border-radius: 14px; font-size: 62px; }
+      .hrow .sp { width: 40px; }
+
+      /* Scene 2 — VS */
+      #s2 .label { font-size: 26px; letter-spacing: 8px; color: var(--dim); margin-bottom: 64px; }
+      .vsrow { display: flex; align-items: center; gap: 48px; }
+      .pcard { width: 640px; box-sizing: border-box; display: flex; align-items: center; gap: 30px; padding: 32px 36px;
+        background: var(--surface); border: 2px solid; border-radius: 26px; }
+      .pcard.me { border-color: rgba(61,220,151,0.45); box-shadow: 0 0 40px rgba(61,220,151,0.18); }
+      .pcard.opp { border-color: rgba(239,68,68,0.45); box-shadow: 0 0 40px rgba(239,68,68,0.18); flex-direction: row-reverse; text-align: right; }
+      .avatar { width: 116px; height: 116px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-size: 54px; font-weight: 700; color: var(--bg); }
+      .me .avatar { background: linear-gradient(145deg, #5ff0b0, #2eb47c); box-shadow: 0 0 0 5px var(--bg), 0 0 0 8px var(--green); }
+      .opp .avatar { background: linear-gradient(145deg, #ff7a7a, #c42f2f); box-shadow: 0 0 0 5px var(--bg), 0 0 0 8px var(--red); }
+      .pinfo { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+      .opp .pinfo { align-items: flex-end; }
+      .ptag { font-size: 24px; letter-spacing: 5px; }
+      .me .ptag { color: var(--green); } .opp .ptag { color: var(--red); }
+      .pname { font-size: 48px; font-weight: 700; }
+      .prank { display: flex; align-items: center; gap: 14px; font-size: 22px; color: var(--dim); }
+      .opp .prank { flex-direction: row-reverse; }
+      .badge { font-family: "Space Mono", monospace; font-weight: 700; font-size: 20px; letter-spacing: 2px; padding: 4px 14px; border-radius: 999px; border: 2px solid; }
+      .vs { width: 150px; height: 150px; flex: none; border-radius: 50%; background: var(--text); color: var(--bg);
+        display: flex; align-items: center; justify-content: center; font-size: 64px; font-weight: 700; letter-spacing: -2px;
+        box-shadow: 0 0 60px rgba(242,244,247,0.35); }
+
+      /* Scene 3 — race */
+      #s3 .wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; padding-top: 56px; }
+      .topbar { width: 1480px; display: flex; align-items: center; justify-content: space-between; }
+      .topbar .side { font-size: 26px; letter-spacing: 4px; width: 460px; }
+      .topbar .side.r { text-align: right; }
+      .timer { font-size: 84px; font-weight: 700; letter-spacing: 4px; }
+      .arena { display: flex; align-items: center; gap: 130px; margin-top: 34px; }
+      .grid { display: grid; grid-template-columns: repeat(5, 100px); gap: 12px; }
+      .grid .tile { width: 100px; height: 100px; border-radius: 14px; font-size: 56px; }
+      .opanel { width: 430px; box-sizing: border-box; padding: 34px 0 30px; display: flex; flex-direction: column; align-items: center; gap: 26px;
+        background: var(--surface); border: 2px solid var(--border); border-radius: 26px; }
+      .opanel .title { font-size: 22px; letter-spacing: 4px; color: var(--dim); }
+      .mgrid { display: grid; grid-template-columns: repeat(5, 52px); gap: 8px; }
+      .mgrid .tile { width: 52px; height: 52px; border-radius: 9px; border-width: 0; }
+      .ostatus { font-size: 22px; letter-spacing: 3px; color: var(--red); font-weight: 700; }
+      .caption { position: absolute; left: 0; right: 0; bottom: 64px; text-align: center; font-size: 54px; font-weight: 700; }
+      .caption .hl { color: var(--green); }
+
+      /* Scene 4 — solved */
+      #s4 .center { gap: 26px; }
+      .solved { font-size: 176px; line-height: 1; font-weight: 700; color: var(--green); letter-spacing: -3px;
+        text-shadow: 0 0 34px rgba(61,220,151,0.55); }
+      .defeated { font-size: 34px; color: var(--dim); }
+      .defeated .n { color: var(--red); }
+      .elo { width: 1000px; box-sizing: border-box; padding: 34px 40px; background: var(--surface); border: 2px solid rgba(61,220,151,0.6);
+        border-radius: 26px; box-shadow: 0 0 44px rgba(61,220,151,0.18); display: flex; flex-direction: column; gap: 24px; }
+      .elo .top { display: flex; align-items: center; justify-content: space-between; }
+      .elo .tier { display: flex; align-items: center; gap: 16px; font-size: 32px; }
+      .elo .delta { font-size: 54px; font-weight: 700; color: var(--green); }
+      .track { width: 100%; height: 16px; border-radius: 8px; background: var(--elev); overflow: hidden; }
+      .fill { display: block; width: 100%; height: 100%; border-radius: 8px; background: var(--green); transform-origin: left center; }
+      .elo .chips { display: flex; justify-content: space-between; font-size: 30px; }
+      .wordcard { width: 1000px; box-sizing: border-box; padding: 22px 0 26px; border-radius: 22px; background: var(--surface); border: 2px solid var(--border);
+        display: flex; flex-direction: column; align-items: center; gap: 6px; }
+      .wordcard .k { font-size: 22px; letter-spacing: 5px; color: var(--dim); }
+      .wordcard .w { font-size: 72px; font-weight: 700; letter-spacing: 20px; margin-right: -20px; }
+
+      /* Scene 5 — ladder + wordmark */
+      .ladder { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 16px; }
+      .rtier { width: 188px; height: 84px; box-sizing: border-box; border-radius: 18px; border: 2px solid; background: var(--surface);
+        display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 22px; font-weight: 700; letter-spacing: 2px; }
+      .rtier .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; }
+      .lockup { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; }
+      .mark { display: flex; align-items: center; gap: 40px; }
+      .mark img { width: 170px; height: 170px; border-radius: 38px; box-shadow: 0 0 60px rgba(61,220,151,0.35); }
+      .wordmark { font-size: 168px; font-weight: 700; letter-spacing: -4px; line-height: 1; }
+      .wordmark .war { color: var(--green); text-shadow: 0 0 18px rgba(61,220,151,0.7); }
+      .tagline { font-size: 34px; letter-spacing: 10px; color: var(--dim); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="22">
+      <div id="bg"></div>
+      <div id="aura"></div>
+
+      <!-- Scene 1 — Hook -->
+      <section id="s1" class="clip" data-start="0" data-duration="3.7" data-track-index="1">
+        <div class="center"><div class="stack" id="hook"></div></div>
+      </section>
+
+      <!-- Scene 2 — VS splash (from VsSplash.tsx) -->
+      <section id="s2" class="clip" data-start="3.7" data-duration="2.6" data-track-index="1">
+        <div class="center" id="s2wrap">
+          <div class="label mono" id="s2label">RANKED 1V1</div>
+          <div class="vsrow">
+            <div class="pcard me" id="cardMe">
+              <div class="avatar">L</div>
+              <div class="pinfo">
+                <div class="ptag mono">YOU</div>
+                <div class="pname">lexi_blitz</div>
+                <div class="prank mono"><span class="badge" style="color:#f4b940;border-color:#f4b940">GOLD</span><span>142W · 61L · 70%</span></div>
+              </div>
+            </div>
+            <div class="vs" id="vs">VS</div>
+            <div class="pcard opp" id="cardOpp">
+              <div class="avatar">Q</div>
+              <div class="pinfo">
+                <div class="ptag mono">NEMESIS</div>
+                <div class="pname">QuillReaper</div>
+                <div class="prank mono"><span class="badge" style="color:#a1f0e1;border-color:#a1f0e1">PLATINUM</span><span>188W · 70L · 73%</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 3 — The race (match screen) -->
+      <section id="s3" class="clip" data-start="6.3" data-duration="6.35" data-track-index="1">
+        <div class="wrap" id="s3wrap">
+          <div class="topbar">
+            <div class="side mono" style="color:var(--green)">YOU · lexi_blitz</div>
+            <div class="timer mono" id="timer">01:12</div>
+            <div class="side r mono" style="color:var(--red)">QuillReaper · NEMESIS</div>
+          </div>
+          <div class="arena">
+            <div class="grid" id="grid"></div>
+            <div class="opanel" id="opanel">
+              <div class="title mono">NEMESIS’S BOARD</div>
+              <div class="mgrid" id="mgrid"></div>
+              <div class="ostatus mono" id="ostatus">4/5 GREEN · CLOSING IN</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption" id="caption">You see their <span class="hl">colors</span>. Never their letters.</div>
+      </section>
+
+      <!-- Scene 4 — SOLVED! (post-game.tsx) -->
+      <section id="s4" class="clip" data-start="12.65" data-duration="5.25" data-track-index="1">
+        <div class="center" id="s4wrap">
+          <svg id="trophy" width="76" height="76" viewBox="0 0 24 24" fill="#3ddc97" aria-hidden="true"><path d="M7 2h10v2h4v3a5 5 0 0 1-4.6 5 5 5 0 0 1-3.4 3.4V18h3v2H8v-2h3v-2.6A5 5 0 0 1 7.6 12 5 5 0 0 1 3 7V4h4V2zm0 4H5v1a3 3 0 0 0 2 2.8V6zm12 0h-2v3.8A3 3 0 0 0 19 7V6z"/></svg>
+          <div class="solved" id="solved">SOLVED!</div>
+          <div class="defeated mono" id="defeated">You defeated <span class="n">QuillReaper</span></div>
+          <div class="elo" id="elo">
+            <div class="top">
+              <div class="tier mono"><span class="badge" style="color:#f4b940;border-color:#f4b940">GOLD</span>GOLD · 1560 RP</div>
+              <div class="delta mono" id="delta">+0 Elo</div>
+            </div>
+            <div class="track"><span class="fill" id="fill"></span></div>
+            <div class="chips mono">
+              <span id="c1" style="color:var(--amber)">+5 coins</span>
+              <span id="c2" style="color:var(--blue)">+60 XP</span>
+              <span id="c3" style="color:var(--dim)">2m 14s</span>
+            </div>
+          </div>
+          <div class="wordcard" id="wordcard">
+            <div class="k mono">THE WORD WAS</div>
+            <div class="w mono">BLAZE</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 5 — Rank ladder + wordmark -->
+      <section id="s5" class="clip" data-start="17.9" data-duration="4.1" data-track-index="1">
+        <div class="ladder" id="ladder"></div>
+        <div class="lockup">
+          <div class="mark" id="mark">
+            <img src="assets/img/icon.png" alt="WordWar icon" id="icon" />
+            <div class="wordmark">Word<span class="war" id="war">War</span></div>
+          </div>
+          <div class="tagline mono" id="tagline">REAL-TIME 1V1 WORD DUELS</div>
+        </div>
+      </section>
+
+      <div id="flash"></div>
+
+      <!-- Music bed: 0.36, dip under the race, fade out over the last 1.2s -->
+      <audio id="music" data-start="0" data-duration="22" data-track-index="10" data-volume="1"
+        data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0.36},{"t":6.2,"v":0.36},{"t":6.6,"v":0.28},{"t":12.4,"v":0.28},{"t":12.65,"v":0.38},{"t":20.8,"v":0.36},{"t":22,"v":0}]}]}'
+        src="assets/music/happy-beats-business-moves-vol-11-by-ende-dot-app.mp3"></audio>
+      <!-- SFX -->
+      <audio id="sfx-1" data-start="0.30" data-duration="0.05" data-track-index="11" data-volume="0.6" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-2" data-start="1.50" data-duration="0.05" data-track-index="12" data-volume="0.6" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-3" data-start="2.55" data-duration="0.05" data-track-index="13" data-volume="0.6" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-4" data-start="2.62" data-duration="0.18" data-track-index="14" data-volume="0.7" src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+      <audio id="sfx-5" data-start="3.72" data-duration="0.60" data-track-index="15" data-volume="0.55" src="assets/sfx/casino/card-slide-1.ogg"></audio>
+      <audio id="sfx-6" data-start="4.20" data-duration="0.43" data-track-index="16" data-volume="0.75" src="assets/sfx/impact/impactPunch_medium_000.ogg"></audio>
+      <audio id="sfx-7" data-start="6.25" data-duration="0.15" data-track-index="17" data-volume="0.55" src="assets/sfx/impact/impactSoft_medium_004.ogg"></audio>
+      <audio id="sfx-8" data-start="6.62" data-duration="0.25" data-track-index="18" data-volume="0.45" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="sfx-9" data-start="6.72" data-duration="0.25" data-track-index="19" data-volume="0.45" src="assets/sfx/keyboard/keypress-007.wav"></audio>
+      <audio id="sfx-10" data-start="6.82" data-duration="0.25" data-track-index="20" data-volume="0.45" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="sfx-11" data-start="6.92" data-duration="0.25" data-track-index="21" data-volume="0.45" src="assets/sfx/keyboard/keypress-015.wav"></audio>
+      <audio id="sfx-12" data-start="7.02" data-duration="0.25" data-track-index="22" data-volume="0.45" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="sfx-13" data-start="7.15" data-duration="0.05" data-track-index="23" data-volume="0.5" src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-14" data-start="8.00" data-duration="0.06" data-track-index="24" data-volume="0.5" src="assets/sfx/ui/rollover2.ogg"></audio>
+      <audio id="sfx-15" data-start="8.35" data-duration="0.25" data-track-index="25" data-volume="0.45" src="assets/sfx/keyboard/keypress-023.wav"></audio>
+      <audio id="sfx-16" data-start="8.45" data-duration="0.25" data-track-index="26" data-volume="0.45" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="sfx-17" data-start="8.55" data-duration="0.25" data-track-index="27" data-volume="0.45" src="assets/sfx/keyboard/keypress-007.wav"></audio>
+      <audio id="sfx-18" data-start="8.65" data-duration="0.25" data-track-index="28" data-volume="0.45" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="sfx-19" data-start="8.75" data-duration="0.25" data-track-index="29" data-volume="0.45" src="assets/sfx/keyboard/keypress-015.wav"></audio>
+      <audio id="sfx-20" data-start="8.90" data-duration="0.05" data-track-index="30" data-volume="0.5" src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-21" data-start="9.75" data-duration="0.06" data-track-index="31" data-volume="0.5" src="assets/sfx/ui/rollover2.ogg"></audio>
+      <audio id="sfx-22" data-start="10.30" data-duration="0.24" data-track-index="32" data-volume="0.6" src="assets/sfx/impact/impactMetal_light_002.ogg"></audio>
+      <audio id="sfx-23" data-start="10.55" data-duration="0.25" data-track-index="33" data-volume="0.45" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="sfx-24" data-start="10.65" data-duration="0.25" data-track-index="34" data-volume="0.45" src="assets/sfx/keyboard/keypress-023.wav"></audio>
+      <audio id="sfx-25" data-start="10.75" data-duration="0.25" data-track-index="35" data-volume="0.45" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="sfx-26" data-start="10.85" data-duration="0.25" data-track-index="36" data-volume="0.45" src="assets/sfx/keyboard/keypress-007.wav"></audio>
+      <audio id="sfx-27" data-start="10.95" data-duration="0.25" data-track-index="37" data-volume="0.45" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="sfx-28" data-start="11.05" data-duration="0.05" data-track-index="38" data-volume="0.5" src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-29" data-start="11.85" data-duration="0.15" data-track-index="39" data-volume="0.65" src="assets/sfx/impact/impactSoft_medium_004.ogg"></audio>
+      <audio id="sfx-30" data-start="12.65" data-duration="1.48" data-track-index="40" data-volume="0.75" src="assets/sfx/impact/impactBell_heavy_000.ogg"></audio>
+      <audio id="sfx-31" data-start="13.60" data-duration="0.29" data-track-index="41" data-volume="0.5" src="assets/sfx/casino/chips-stack-1.ogg"></audio>
+      <audio id="sfx-32" data-start="14.22" data-duration="0.17" data-track-index="42" data-volume="0.45" src="assets/sfx/casino/chip-lay-1.ogg"></audio>
+      <audio id="sfx-33" data-start="15.20" data-duration="0.11" data-track-index="43" data-volume="0.6" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="sfx-34" data-start="17.95" data-duration="0.05" data-track-index="44" data-volume="0.4" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-35" data-start="18.15" data-duration="0.05" data-track-index="45" data-volume="0.4" src="assets/sfx/interface/click_005.ogg"></audio>
+      <audio id="sfx-36" data-start="18.35" data-duration="0.05" data-track-index="46" data-volume="0.4" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-37" data-start="18.55" data-duration="0.05" data-track-index="47" data-volume="0.4" src="assets/sfx/interface/click_005.ogg"></audio>
+      <audio id="sfx-38" data-start="18.75" data-duration="0.05" data-track-index="48" data-volume="0.4" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-39" data-start="18.95" data-duration="0.05" data-track-index="49" data-volume="0.4" src="assets/sfx/interface/click_005.ogg"></audio>
+      <audio id="sfx-40" data-start="19.15" data-duration="0.05" data-track-index="50" data-volume="0.4" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-41" data-start="19.35" data-duration="0.05" data-track-index="51" data-volume="0.4" src="assets/sfx/interface/click_005.ogg"></audio>
+      <audio id="sfx-42" data-start="20.02" data-duration="0.65" data-track-index="52" data-volume="0.7" src="assets/sfx/impact/impactBell_heavy_003.ogg"></audio>
+    </div>
+
+    <script>
+      (function () {
+        var C = { green: "#3ddc97", amber: "#f4b940", wrong: "#3a3d44", text: "#f2f4f7", bg: "#0f1115", red: "#ef4444" };
+        var fill = { g: C.green, y: C.amber, x: C.wrong };
+
+
+        function tileEl(ch) { var d = document.createElement("div"); d.className = "tile"; if (ch) { var s = document.createElement("span"); s.className = "ch"; s.textContent = ch; d.appendChild(s); } return d; }
+
+        // ── Scene 1 DOM: hook rows ──
+        var hookRows = [
+          { text: "FIVE LETTERS", color: "x" },
+          { text: "TWO PLAYERS", color: "y" },
+          { text: "ONE CLOCK", color: "g" },
+        ];
+        var hook = document.getElementById("hook");
+        var hookTiles = hookRows.map(function (r) {
+          var row = document.createElement("div"); row.className = "hrow";
+          var tiles = [];
+          r.text.split("").forEach(function (ch) {
+            if (ch === " ") { var s = document.createElement("div"); s.className = "sp"; row.appendChild(s); return; }
+            var t = tileEl(ch); row.appendChild(t); tiles.push(t);
+          });
+          hook.appendChild(row);
+          return tiles;
+        });
+
+        // ── Scene 3 DOM: grids ──
+        var grid = document.getElementById("grid");
+        var guesses = ["CRANE", "GLAZE", "BLAZE"];
+        var guessColors = ["xxgxg", "xgggg", "ggggg"];
+        var rows = [];
+        for (var r = 0; r < 6; r++) {
+          var rowTiles = [];
+          for (var c = 0; c < 5; c++) {
+            var t = tileEl(r < 3 ? guesses[r][c] : ""); grid.appendChild(t); rowTiles.push(t);
+          }
+          rows.push(rowTiles);
+        }
+        var mgrid = document.getElementById("mgrid");
+        var oppColors = ["xyxgx", "yxggg", "xgggg"];
+        var mrows = [];
+        for (var r2 = 0; r2 < 6; r2++) {
+          var mr = [];
+          for (var c2 = 0; c2 < 5; c2++) { var m = tileEl(""); mgrid.appendChild(m); mr.push(m); }
+          mrows.push(mr);
+        }
+
+        // ── Scene 5 DOM: ladder ──
+        var tiers = [
+          ["STONE", "#7a8290"], ["BRONZE", "#a97142"], ["SILVER", "#c5cfd8"], ["GOLD", "#f4b940"],
+          ["PLATINUM", "#a1f0e1"], ["DIAMOND", "#7cc8ff"], ["MASTER", "#c490ff"], ["LEGEND", "#ffd700"],
+        ];
+        var ladder = document.getElementById("ladder");
+        var tierEls = tiers.map(function (tr) {
+          var d = document.createElement("div"); d.className = "rtier";
+          d.style.borderColor = tr[1]; d.style.color = tr[1];
+          var dot = document.createElement("span"); dot.className = "dot"; dot.style.background = tr[1];
+          d.appendChild(dot); d.appendChild(document.createTextNode(tr[0]));
+          ladder.appendChild(d); return d;
+        });
+
+        var tl = gsap.timeline({ paused: true });
+        tl.set("#flash", { opacity: 0 }, 0);
+
+        // Flip a tile: squash to 0, recolor, open back up.
+        function flip(el, at, bg, dark) {
+          tl.to(el, { scaleY: 0, duration: 0.09, ease: "power1.in" }, at);
+          tl.set(el, { backgroundColor: bg, borderColor: bg, color: dark ? C.bg : C.text }, at + 0.09);
+          if (el.firstChild) tl.set(el.firstChild, { opacity: 1 }, at + 0.09);
+          tl.to(el, { scaleY: 1, duration: 0.13, ease: "power1.out" }, at + 0.09);
+        }
+
+        // ═════ Scene 1 — Hook (0 – 3.7) ═════
+        // Row 2 is beat-locked to the 1.60s strong cue; row 3 lands on the 2.65s beat.
+        var rowStarts = [0.3, 1.5, 2.55];
+        hookTiles.forEach(function (tiles, ri) {
+          var col = hookRows[ri].color;
+          tl.fromTo(tiles, { y: 26, opacity: 0 }, { y: 0, opacity: 1, duration: 0.22, stagger: 0.02, ease: "power2.out" }, rowStarts[ri] - 0.2);
+          tiles.forEach(function (el, i) { flip(el, rowStarts[ri] + i * 0.04, fill[col], col !== "x"); });
+        });
+        // beat-locked: 1.60s (row 2 settles) · 2.65s (row 3 in green)
+        tl.to(hookTiles[2], { boxShadow: "0 0 36px rgba(61,220,151,0.75)", duration: 0.3, ease: "power2.out" }, 2.95);
+        tl.to("#hook", { scale: 1.08, opacity: 0, duration: 0.25, ease: "power2.in" }, 3.45);
+        tl.fromTo("#flash", { opacity: 0 }, { opacity: 0.35, duration: 0.08 }, 3.62);
+        tl.to("#flash", { opacity: 0, duration: 0.3, ease: "power2.out" }, 3.7);
+
+        // ═════ Scene 2 — VS (3.7 – 6.3) ═════
+        tl.fromTo("#s2label", { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 3.8);
+        tl.fromTo("#cardMe", { x: -760 }, { x: 0, duration: 0.4, ease: "power3.out" }, 3.72);
+        tl.fromTo("#cardOpp", { x: 760 }, { x: 0, duration: 0.4, ease: "power3.out" }, 3.72);
+        // beat-grid: VS punch on the 4.23s beat
+        tl.fromTo("#vs", { scale: 0, rotation: -20 }, { scale: 1, rotation: 0, duration: 0.45, ease: "back.out(2.6)" }, 4.2);
+        tl.to("#vs", { scale: 1.08, duration: 0.9, ease: "sine.inOut" }, 4.7);
+        // zoom through the VS into the match
+        tl.to("#s2wrap", { scale: 2.2, opacity: 0, duration: 0.35, ease: "power3.in" }, 5.95);
+
+        // ═════ Scene 3 — The race (6.3 – 12.65) ═════
+        tl.fromTo("#s3wrap", { scale: 1.12, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: "power3.out" }, 6.3);
+        var timerEl = document.getElementById("timer"), clock = { v: 72 };
+        tl.to(clock, {
+          v: 66, duration: 6.3, ease: "none",
+          onUpdate: function () { var s = Math.ceil(clock.v); timerEl.textContent = "01:" + (s - 60 < 10 ? "0" : "") + (s - 60); },
+        }, 6.3);
+
+        var typeAt = [6.62, 8.35, 10.55], flipAt = [7.15, 8.9, 11.05], oppAt = [8.0, 9.75, 10.3];
+        for (var g = 0; g < 3; g++) {
+          rows[g].forEach(function (el, i) {
+            var at = typeAt[g] + i * 0.1;
+            tl.set(el, { borderColor: "#6b7280" }, at);
+            tl.set(el.firstChild, { opacity: 1 }, at);
+            tl.fromTo(el, { scale: 1.12 }, { scale: 1, duration: 0.12, ease: "power2.out" }, at);
+          });
+          (function (gi) {
+            rows[gi].forEach(function (el, i) { flip(el, flipAt[gi] + i * 0.13, fill[guessColors[gi][i]], guessColors[gi][i] !== "x"); });
+          })(g);
+          // opponent's colors-only row
+          mrows[g].forEach(function (el, i) {
+            tl.set(el, { backgroundColor: fill[oppColors[g][i]] }, oppAt[g] + i * 0.06);
+            tl.fromTo(el, { scale: 0.5 }, { scale: 1, duration: 0.2, ease: "back.out(2)" }, oppAt[g] + i * 0.06);
+          });
+        }
+        // nemesis closing in
+        tl.fromTo("#ostatus", { opacity: 0 }, { opacity: 1, duration: 0.2 }, 10.4);
+        tl.to("#opanel", { borderColor: C.red, boxShadow: "0 0 44px rgba(239,68,68,0.35)", duration: 0.25 }, 10.35);
+        // all green — the win
+        tl.to(rows[2], { y: -22, duration: 0.14, ease: "power2.out", stagger: 0.05 }, 11.85);
+        tl.to(rows[2], { y: 0, duration: 0.2, ease: "power2.in", stagger: 0.05 }, 11.99);
+        tl.to(rows[2], { boxShadow: "0 0 40px rgba(61,220,151,0.8)", duration: 0.3, stagger: 0.05 }, 11.85);
+        // caption: 7 words, held ~5s
+        tl.fromTo("#caption", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 7.25);
+
+        // ═════ Scene 4 — SOLVED! (12.65 – 17.9) ═════
+        tl.fromTo("#flash", { opacity: 0.3 }, { opacity: 0, duration: 0.35, ease: "power2.out" }, 12.65);
+        // beat-locked: 12.65s strong cue
+        tl.fromTo("#solved", { scale: 1.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: "expo.out" }, 12.65);
+        tl.fromTo("#trophy", { y: -30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, ease: "back.out(2)" }, 12.8);
+        tl.fromTo("#defeated", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 13.05);
+        tl.fromTo("#elo", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 13.35);
+        var deltaEl = document.getElementById("delta"), elo = { v: 0 };
+        tl.to(elo, { v: 25, duration: 0.7, ease: "power2.out", onUpdate: function () { deltaEl.textContent = "+" + Math.round(elo.v) + " Elo"; } }, 13.6);
+        tl.fromTo("#fill", { scaleX: 0 }, { scaleX: 0.62, duration: 0.8, ease: "power2.out" }, 13.6);
+        // beat-grid: reward chips at 14.22 / 14.49 / 14.76 (accents; set holds 3s+)
+        ["#c1", "#c2", "#c3"].forEach(function (id, i) {
+          tl.fromTo(id, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.25, ease: "power2.out" }, 14.22 + i * 0.27);
+        });
+        tl.fromTo("#wordcard", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 15.2);
+        tl.to("#s4wrap", { opacity: 0, scale: 0.96, duration: 0.3, ease: "power2.in" }, 17.6);
+
+        // ═════ Scene 5 — Ladder + wordmark (17.9 – 22) ═════
+        // beat-locked: 17.91s strong cue starts the climb
+        tl.set(tierEls, { opacity: 0.18 }, 17.9);
+        tl.fromTo(ladder, { opacity: 0 }, { opacity: 1, duration: 0.2 }, 17.9);
+        tierEls.forEach(function (el, i) {
+          var at = 17.95 + i * 0.2;
+          tl.to(el, { opacity: 1, boxShadow: "0 0 28px " + tiers[i][1] + "66", duration: 0.18, ease: "power2.out" }, at);
+          tl.fromTo(el, { scale: 0.9 }, { scale: i === 7 ? 1.12 : 1, duration: 0.25, ease: "back.out(2.4)" }, at);
+        });
+        tl.to(ladder, { y: -140, opacity: 0, duration: 0.35, ease: "power2.in" }, 19.75);
+        // beat-grid: wordmark on the 20.02s beat
+        tl.fromTo("#mark", { scale: 1.25, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "expo.out" }, 20.02);
+        tl.fromTo("#tagline", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 20.4);
+
+        // ═════ Audio-reactive: bass breathes the aura + the "War" glow ═════
+        var aura = document.getElementById("aura"), war = document.getElementById("war");
+        var E = window.AUDIO_ENERGY, clockAR = { t: 0 };
+        tl.to(clockAR, {
+          t: 22, duration: 22, ease: "none",
+          onUpdate: function () {
+            var f = Math.min(E.bass.length - 1, Math.max(0, Math.floor(clockAR.t * E.fps)));
+            var b = E.bass[f];
+            aura.style.opacity = (0.5 + 0.5 * b).toFixed(3);
+            war.style.textShadow = "0 0 " + (14 + 26 * b).toFixed(1) + "px rgba(61,220,151," + (0.55 + 0.35 * b).toFixed(2) + ")";
+          },
+        }, 0);
+
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

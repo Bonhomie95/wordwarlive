@@ -198,8 +198,10 @@ add a product whenever you add one. Free cosmetics need no product.)
 
 ### Coin economy (no store products needed — these are coin sinks)
 
-Coins come from wins (5), the daily streak (10/day + milestones), the Daily
-Bonus ad (30), the **Free coins** rewarded ad (25 × 3/day) and coin packs.
+Coins come from every match played (win 10 / tie 5 / loss 3 — nothing for
+quitting or for a match with zero guesses), solving the Daily challenge (15,
+once a day), the daily streak (10/day + milestones), the Daily Bonus ad (30),
+the **Free coins** rewarded ad (25 × 3/day) and coin packs.
 They are spent on: hints (50), **every paid cosmetic** (250–1,100 coins as an
 alternative to cash), **Streak Shield** (150, hold 2 — each covers one missed
 day), **XP Booster** (250 — 2× battle-pass XP from matches for 24h), and

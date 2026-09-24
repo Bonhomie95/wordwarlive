@@ -151,7 +151,9 @@ export default function DailyChallengeScreen() {
                 guessCount: r.guessCount,
                 durationMs: prev?.durationMs ?? 0,
                 startedAt: prev?.startedAt ?? Date.now(),
+                coinsAwarded: r.coinsAwarded ?? 0,
             }));
+            if (r.solved) refreshMe().catch(() => {}); // coin balance in the top bar
             // Reset input row.
             setBoard(new Array(meta.wordLength).fill(null));
             setCursor(0);
@@ -305,6 +307,11 @@ export default function DailyChallengeScreen() {
                             {attempt.guessCount === 1 ? '' : 'es'} ·{' '}
                             {Math.round((attempt.durationMs ?? 0) / 1000)}s
                         </Text>
+                        {attempt.coinsAwarded > 0 ? (
+                            <Text style={styles.solvedCoins} allowFontScaling={false}>
+                                +{attempt.coinsAwarded} coins
+                            </Text>
+                        ) : null}
 
                         <Pressable
                             style={styles.shareBtn}
@@ -454,6 +461,12 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: colors.primary,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
+    },
+    solvedCoins: {
+        color: colors.warning,
+        fontSize: typography.sizes.md,
+        fontWeight: typography.weights.bold,
+        fontFamily: typography.familyMono,
     },
     solvedStats: {
         fontFamily: typography.family,

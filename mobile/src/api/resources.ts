@@ -171,6 +171,8 @@ export interface DailyAttempt {
     guessCount: number;
     durationMs: number;
     startedAt: number;
+    /** Coins granted for solving (0 until solved). */
+    coinsAwarded: number;
 }
 /** Server-tracked hint state for today's challenge. Cap is word-length
  *  aware: 1 hint for 4–7 letter words, 2 for 8+ (very long words). */
@@ -204,6 +206,7 @@ export const dailyApi = {
             tiles: ('correct' | 'misplaced' | 'wrong')[];
             solved: boolean;
             guessCount: number;
+            coinsAwarded?: number;
             error?: string;
             errorCode?: string;
         }>('/api/daily/guess', { method: 'POST', body: { guess } }),

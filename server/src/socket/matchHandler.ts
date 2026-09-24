@@ -22,7 +22,7 @@ import {
 import { computeRankDelta } from '../game/ranks.js';
 import { persistMatch } from '../services/matchService.js';
 import { awardMatchXp } from '../services/battlePassService.js';
-import { grantCoins } from '../services/coinsService.js';
+import { grantCoins, matchCoins } from '../services/coinsService.js';
 import { advanceStreakOnMatchComplete } from '../services/streakService.js';
 import { redeemHint } from '../services/hintService.js';
 import { recordMatchResult } from '../services/leaderboardService.js';
@@ -35,7 +35,6 @@ import type { GuessAck, HintAck, MatchOver, PublicUser } from '../types/index.js
 /** Coins awarded to the winner of a match. Bot games still pay out — the
  *  human earns them, the bot doesn't because we skip applyMatchResult / grants
  *  for the bot side. */
-const COINS_PER_WIN = 5;
 
 interface ActiveMatch {
     id: string;
@@ -982,14 +981,18 @@ class MatchRegistry {
         // and independent across categories (XP / coins / streak /
         // leaderboard), so we fan them out concurrently instead of running
         // a long sequential await chain — the match-end path was the main
-        // per-match DB-latency cost. Coins for the winner only; bots earn
-        // nothing and never touch the leaderboards.
-        let p1CoinsAwarded = 0;
-        let p2CoinsAwarded = 0;
+        // per-match DB-latency cost. Every human who played earns a few coins
+        // (see matchCoins); bots earn nothing and never touch the leaderboards.
+        const resultFor = (slot: 'p1' | 'p2'): 'win' | 'loss' | 'tie' =>
+            winner === 'tie' ? 'tie' : winner === slot ? 'win' : 'loss';
+        let p1CoinsAwarded = match.p1IsBot
+            ? 0
+            : matchCoins({ result: resultFor('p1'), forfeited: opts.forfeitedSlot === 1, guessed: match.p1Guesses.length > 0 });
+        let p2CoinsAwarded = match.p2IsBot
+            ? 0
+            : matchCoins({ result: resultFor('p2'), forfeited: opts.forfeitedSlot === 2, guessed: match.p2Guesses.length > 0 });
         let p1CoinsTotal = updatedP1.coins;
         let p2CoinsTotal = updatedP2.coins;
-        if (winner === 'p1' && !match.p1IsBot) p1CoinsAwarded = COINS_PER_WIN;
-        if (winner === 'p2' && !match.p2IsBot) p2CoinsAwarded = COINS_PER_WIN;
 
         const noXp = { xpAwarded: 0, newXp: 0, newTier: 0 };
         const [
@@ -1024,8 +1027,8 @@ class MatchRegistry {
                 ? safe(
                       grantCoins({
                           userId: p1.id,
-                          amount: COINS_PER_WIN,
-                          source: 'match_win',
+                          amount: p1CoinsAwarded,
+                          source: winner === 'p1' ? 'match_win' : 'match_play',
                           metadata: { matchId: match.id },
                       }),
                       null as number | null,
@@ -1036,8 +1039,8 @@ class MatchRegistry {
                 ? safe(
                       grantCoins({
                           userId: p2.id,
-                          amount: COINS_PER_WIN,
-                          source: 'match_win',
+                          amount: p2CoinsAwarded,
+                          source: winner === 'p2' ? 'match_win' : 'match_play',
                           metadata: { matchId: match.id },
                       }),
                       null as number | null,

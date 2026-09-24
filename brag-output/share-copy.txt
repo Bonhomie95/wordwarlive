@@ -1,0 +1,2 @@
+Wordle, but someone's racing you for the same word in real time. You see their colors, never their letters.
+WordWar: real-time 1v1 word duels.
