@@ -21,6 +21,10 @@ import { colors, makeThemedStyles } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { glow } from '../../src/theme/effects';
 
+/** How long each pro tip stays on screen. 5s measured as too quick to
+ *  finish a 15-word tip while the bot fills the queue. */
+const TIP_MS = 8000;
+
 const PRO_TIPS = [
     'Save your Scramble power-up for the final 30 seconds when the board is nearly full.',
     'Your first guess should pack in common letters — think S, T, A, R, E.',
@@ -103,8 +107,24 @@ export default function Matchmaking() {
         }
     }, [phase, router]);
 
-    const waited = Math.floor((queueStatus?.waitedMs ?? 0) / 1000);
     const finalizing = queueStatus?.state === 'finalizing';
+    // Headline blinks while we search; solid once an opponent is found.
+    const blink = useSharedValue(1);
+    useEffect(() => {
+        if (finalizing) {
+            cancelAnimation(blink);
+            blink.value = withTiming(1, { duration: 200 });
+            return;
+        }
+        blink.value = withRepeat(
+            withTiming(0.3, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+            -1,
+            true
+        );
+        return () => cancelAnimation(blink);
+    }, [finalizing, blink]);
+    const blinkStyle = useAnimatedStyle(() => ({ opacity: blink.value }));
+
     const headline = finalizing
         ? 'OPPONENT FOUND!'
         : mode === 'mystery'
@@ -116,15 +136,21 @@ export default function Matchmaking() {
     // tip. Instead: pick a fresh random tip each time the screen gains focus,
     // then rotate through the rest every 5s while the player waits.
     const [tipIdx, setTipIdx] = useState(0);
+    // Single timer held in a ref: a focus effect that fires twice (nested
+    // navigators do this) must never stack a second interval, or tips
+    // would flip every couple of seconds.
+    const tipTimer = useRef<ReturnType<typeof setInterval> | null>(null);
     useFocusEffect(
         useCallback(() => {
-            let idx = Math.floor(Math.random() * PRO_TIPS.length);
-            setTipIdx(idx);
-            const id = setInterval(() => {
-                idx = (idx + 1) % PRO_TIPS.length;
-                setTipIdx(idx);
-            }, 5000);
-            return () => clearInterval(id);
+            setTipIdx(Math.floor(Math.random() * PRO_TIPS.length));
+            if (tipTimer.current) clearInterval(tipTimer.current);
+            tipTimer.current = setInterval(() => {
+                setTipIdx((i) => (i + 1) % PRO_TIPS.length);
+            }, TIP_MS);
+            return () => {
+                if (tipTimer.current) clearInterval(tipTimer.current);
+                tipTimer.current = null;
+            };
         }, [])
     );
     const tip = PRO_TIPS[tipIdx]!;
@@ -150,12 +176,12 @@ export default function Matchmaking() {
                     </View>
                 </View>
 
-                <HeroTitle size={typography.sizes.xl} style={styles.headline}>
-                    {headline}
-                </HeroTitle>
-                <MonoLabel size={12}>
-                    {finalizing ? 'Get ready…' : `Estimated wait · ${formatWait(waited)}`}
-                </MonoLabel>
+                <Animated.View style={blinkStyle}>
+                    <HeroTitle size={typography.sizes.xl} style={styles.headline}>
+                        {headline}
+                    </HeroTitle>
+                </Animated.View>
+                {finalizing ? <MonoLabel size={12}>Get ready…</MonoLabel> : null}
             </View>
 
             <View style={styles.footer}>
@@ -186,11 +212,6 @@ export default function Matchmaking() {
     );
 }
 
-function formatWait(seconds: number): string {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-}
 
 const RADAR = 170;
 const styles = makeThemedStyles(() =>

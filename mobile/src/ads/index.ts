@@ -110,6 +110,7 @@ async function requestTrackingIfNeeded(): Promise<void> {
         };
         const { granted } = await att.requestTrackingPermissionsAsync();
         nonPersonalizedOnly = !granted;
+        log(`ATT granted=${granted}`);
     } catch {
         nonPersonalizedOnly = true;
     }
@@ -123,10 +124,12 @@ async function requestTrackingIfNeeded(): Promise<void> {
 async function gatherConsentIfNeeded(m: AdsModule): Promise<void> {
     try {
         const info = await m.AdsConsent.gatherConsent();
+        log(`UMP status=${info.status} canRequestAds=${info.canRequestAds} privacyOptions=${info.privacyOptionsRequirementStatus}`);
         privacyOptionsRequired = info.privacyOptionsRequirementStatus === 'REQUIRED';
         if (Platform.OS === 'android') nonPersonalizedOnly = false; // UMP decides
-    } catch {
+    } catch (err) {
         // Ads still load (non-personalized where consent is unknown).
+        log(`UMP gatherConsent failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 }
 
