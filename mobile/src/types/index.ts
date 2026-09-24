@@ -81,7 +81,19 @@ export interface MeResponse {
         /** XP-boost ads watched today (resets at UTC midnight). */
         xpBoostAdsToday: number;
         xpBoostDailyLimit: number;
+        /** "Watch an ad for coins" uses today (resets at UTC midnight). */
+        coinAdsToday: number;
+        coinAdsDailyLimit: number;
     };
+    boosts: {
+        streakShields: number;
+        streakShieldMax: number;
+        /** ISO time until which match XP is doubled, or null. */
+        xpBoostUntil: string | null;
+    };
+    bundles: { starterOwned: boolean };
+    /** Coins the next rename costs (0 = free). */
+    usernameChangeCost: number;
     powerups: {
         reveal: number;
         scramble: number;
@@ -111,9 +123,20 @@ export interface CoinPack {
     bonusPct?: number;
 }
 
+export interface StarterBundle {
+    id: string;
+    name: string;
+    description: string;
+    coins: number;
+    cosmeticIds: readonly string[];
+    priceUsd: number;
+    productId: string;
+}
+
 export interface CoinPacksResponse {
     packs: CoinPack[];
     hintCost: number;
+    starterBundle: StarterBundle;
 }
 
 export type LeaderboardPeriod = 'daily' | 'weekly' | 'monthly' | 'all_time';
@@ -151,6 +174,8 @@ export interface Cosmetic {
     name: string;
     description: string | null;
     priceCents: number;
+    /** Coin price, or 0 when cash-only. */
+    priceCoins: number;
     rarity: 'common' | 'rare' | 'epic' | 'legendary';
     renderData: Record<string, unknown>;
     availableInShop: boolean;

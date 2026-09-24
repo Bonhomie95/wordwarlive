@@ -32,6 +32,7 @@ import { Keyboard, deriveLetterStates } from '../../src/components/game/Keyboard
 import { buildDailyShareMessage, shareText } from '../../src/share/shareResult';
 import { makeThemedStyles, colors, useThemeStore } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 type Cell = string | null;
 
@@ -389,7 +390,7 @@ export default function DailyChallengeScreen() {
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
+    safe: { ...contentColumn, backgroundColor: colors.bg },
     scroll: { padding: spacing.md, paddingBottom: spacing.xxl },
     header: {
         flexDirection: 'row',

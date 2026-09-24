@@ -77,6 +77,19 @@ export const COIN_PACKS: readonly CoinPack[] = [
 
 export const HINT_COIN_COST = 50;
 
+/** One-time starter bundle: a cheap, high-value first purchase. Store product
+ *  is NON-consumable (one per Apple/Google account) and the server also caps it
+ *  to one per WordWar account (users.starter_bundle_at). */
+export const STARTER_BUNDLE = {
+    id: 'starter',
+    name: 'Starter Bundle',
+    description: '500 coins + Fox avatar + Neon Pulse board theme. One time only.',
+    coins: 500,
+    cosmeticIds: ['avatar_fox_01', 'theme_neon'],
+    priceUsd: 2.99,
+    productId: 'dev.bonhomieinc.wordwar.bundle.starter',
+} as const;
+
 // ─── Grant / spend ──────────────────────────────────────────────────────────
 
 export type CoinSource =
@@ -86,7 +99,11 @@ export type CoinSource =
     | 'iap'
     | 'hint_spend'
     | 'ad_reward'
-    | 'admin_grant';
+    | 'admin_grant'
+    | 'cosmetic_spend'
+    | 'boost_spend'
+    | 'username_spend'
+    | 'bundle';
 
 /**
  * Grant coins to a user. amount must be positive. Source is recorded for

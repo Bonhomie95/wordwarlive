@@ -7,6 +7,7 @@ import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { makeThemedStyles, colors, useThemeStore } from '../../theme/colors';
+import { contentColumn } from '../../theme/layout';
 
 interface Props {
     children: React.ReactNode;
@@ -61,6 +62,7 @@ const styles = makeThemedStyles(() =>
             right: 0,
             height: 260,
         },
-        safe: { flex: 1 },
+        // Capped + centered content column for iPad / foldables.
+        safe: { ...contentColumn },
     })
 );

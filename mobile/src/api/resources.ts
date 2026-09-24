@@ -22,6 +22,24 @@ export const usersApi = {
         }),
     deleteAccount: () =>
         apiRequest<{ ok: boolean }>('/api/me', { method: 'DELETE' }),
+    changeUsername: (username: string) =>
+        apiRequest<MeResponse>('/api/me/username', {
+            method: 'PATCH',
+            body: { username },
+        }),
+};
+
+export const boostsApi = {
+    buyStreakShield: () =>
+        apiRequest<{ ok: boolean; shields: number; coins: number }>('/api/boosts/streak-shield', {
+            method: 'POST',
+            body: {},
+        }),
+    buyXpBoost: () =>
+        apiRequest<{ ok: boolean; xpBoostUntil: string; coins: number }>('/api/boosts/xp', {
+            method: 'POST',
+            body: {},
+        }),
 };
 
 export const matchesApi = {
@@ -45,6 +63,11 @@ export const cosmeticsApi = {
         apiRequest<{ ok: boolean; cosmeticId: string }>(
             `/api/cosmetics/${id}/purchase`,
             { method: 'POST', body: payload }
+        ),
+    purchaseWithCoins: (id: string) =>
+        apiRequest<{ ok: boolean; cosmeticId: string; coins: number }>(
+            `/api/cosmetics/${id}/purchase-coins`,
+            { method: 'POST', body: {} }
         ),
 };
 
@@ -74,7 +97,7 @@ export const adsApi = {
      * AdMob's SSV (which can't reach localhost). Server gates this on
      * NODE_ENV !== 'production'.
      */
-    devClaimReward: (rewardKind: 'daily_bonus' | 'bp_xp_boost') =>
+    devClaimReward: (rewardKind: 'daily_bonus' | 'bp_xp_boost' | 'coin_boost') =>
         apiRequest<{ ok: boolean; rewardKind: string }>(
             '/api/ads/dev-claim-reward',
             {
@@ -97,6 +120,11 @@ export const coinsApi = {
             pack: { id: string; name: string; coins: number };
             newBalance: number;
         }>(`/api/coins/packs/${packId}/purchase`, {
+            method: 'POST',
+            body: payload,
+        }),
+    purchaseStarterBundle: (payload: IapPayload = {}) =>
+        apiRequest<{ ok: boolean; newBalance: number }>('/api/coins/bundles/starter/purchase', {
             method: 'POST',
             body: payload,
         }),

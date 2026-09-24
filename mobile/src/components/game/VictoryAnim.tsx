@@ -4,6 +4,11 @@
 //   lightning → flashes striking from the corners
 // Rendered over the post-game screen on a win. Purely decorative; pointer
 // events pass through.
+//
+// Every loop here is FINITE (a few seconds), not infinite: expo-router keeps
+// the post-game screen mounted, and 26 confetti pieces animating forever at
+// 60fps while the player reads their result is exactly the kind of GPU load
+// that makes phones warm.
 
 import React, { useEffect } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -46,7 +51,7 @@ function Ring({ delay }: { delay: number }) {
     useEffect(() => {
         p.value = withDelay(
             delay,
-            withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.ease) }), -1, false)
+            withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.ease) }), 3, false)
         );
         return () => cancelAnimation(p);
     }, [p, delay]);
@@ -67,7 +72,7 @@ const CONFETTI_COLORS = ['#3DDC97', '#F4B940', '#FF4FCB', '#7CC8FF', '#C490FF'];
 function Confetti() {
     const { width } = useWindowDimensions();
     // Deterministic-ish spread across the width.
-    const pieces = Array.from({ length: 26 }, (_, i) => i);
+    const pieces = Array.from({ length: 18 }, (_, i) => i);
     return (
         <View style={styles.fill} pointerEvents="none">
             {pieces.map((i) => (
@@ -88,7 +93,7 @@ function ConfettiPiece({ x, delay, color, drift }: { x: number; delay: number; c
     useEffect(() => {
         p.value = withDelay(
             delay,
-            withRepeat(withTiming(1, { duration: 2600, easing: Easing.in(Easing.quad) }), -1, false)
+            withRepeat(withTiming(1, { duration: 2600, easing: Easing.in(Easing.quad) }), 2, false)
         );
         return () => cancelAnimation(p);
     }, [p, delay]);
@@ -113,7 +118,7 @@ function Lightning() {
                 withTiming(0, { duration: 160 }),
                 withDelay(700, withTiming(0, { duration: 1 }))
             ),
-            -1,
+            4,
             false
         );
         return () => cancelAnimation(flash);

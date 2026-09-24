@@ -6,6 +6,7 @@ import {
     grantCosmetic,
     listOwnedCosmetics,
     listShopCosmetics,
+    purchaseCosmeticWithCoins,
 } from '../services/cosmeticsService.js';
 import { cosmeticProductId, verifyIapPurchase } from '../iap/verify.js';
 
@@ -18,6 +19,7 @@ function shape(c: Awaited<ReturnType<typeof listShopCosmetics>>[number], owned: 
         name: c.name,
         description: c.description,
         priceCents: c.price_cents,
+        priceCoins: c.price_coins,
         rarity: c.rarity,
         renderData: c.render_data,
         availableInShop: c.available_in_shop,
@@ -77,4 +79,21 @@ cosmeticsRouter.post('/cosmetics/:id/purchase', requireAuth, async (req, res) =>
     // grantCosmetic is ON CONFLICT DO NOTHING, so a same-user replay is safe.
     await grantCosmetic(req.session!.userId, cosmeticId, 'purchase');
     res.json({ ok: true, cosmeticId });
+});
+
+/** Buy with coins instead of cash. */
+cosmeticsRouter.post('/cosmetics/:id/purchase-coins', requireAuth, async (req, res) => {
+    const cosmeticId = String(req.params.id ?? '');
+    const r = await purchaseCosmeticWithCoins(req.session!.userId, cosmeticId);
+    if (!r.ok) {
+        const status = { NOT_FOUND: 404, NOT_FOR_COINS: 400, ALREADY_OWNED: 409, NOT_AFFORDABLE: 402 }[r.error];
+        const message = {
+            NOT_FOUND: 'Cosmetic not found',
+            NOT_FOR_COINS: 'This item can only be bought with real money.',
+            ALREADY_OWNED: 'You already own this.',
+            NOT_AFFORDABLE: 'Not enough coins.',
+        }[r.error];
+        return res.status(status).json({ error: message, code: r.error });
+    }
+    res.json({ ok: true, cosmeticId, coins: r.coins });
 });

@@ -40,6 +40,7 @@ import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 const HINT_COIN_COST = 50;
 
@@ -409,7 +410,7 @@ export default function Match() {
 void Alert;
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg, paddingTop: 4 },
+    safe: { ...contentColumn, backgroundColor: colors.bg, paddingTop: 4 },
     backBtn: {
         position: 'absolute',
         top: -2,

@@ -26,6 +26,7 @@ import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { appleSignIn, useAppleAvailable } from '../../src/auth/appleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 export default function LinkAccount() {
     const router = useRouter();
@@ -249,7 +250,7 @@ function Header({ onBack }: { onBack: () => void }) {
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
+    safe: { ...contentColumn, backgroundColor: colors.bg },
     flex: { flex: 1 },
     scroll: {
         padding: spacing.xl,

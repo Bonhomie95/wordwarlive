@@ -174,6 +174,7 @@ accounts/keys.
 |---|---|---|---|
 | `dev.bonhomieinc.wordwar.remove_ads` | Non-consumable | $4.99 | Removes banner + interstitial ads |
 | `dev.bonhomieinc.wordwar.battlepass.premium` | **Consumable** | $3.99 | Premium track for the current season (re-buyable next season) |
+| `dev.bonhomieinc.wordwar.bundle.starter` | Non-consumable | $2.99 | Starter Bundle: 500 coins + Fox avatar + Neon Pulse theme (one per account) |
 | `dev.bonhomieinc.wordwar.coins.pebble` | Consumable | $0.99 | 100 coins |
 | `dev.bonhomieinc.wordwar.coins.pocket` | Consumable | $4.99 | 550 coins |
 | `dev.bonhomieinc.wordwar.coins.treasure` | Consumable | $9.99 | 1,200 coins |
@@ -191,6 +192,16 @@ accounts/keys.
 
 (Paid cosmetics = every row in the `cosmetics` table with `price_cents > 0`;
 add a product whenever you add one. Free cosmetics need no product.)
+
+### Coin economy (no store products needed — these are coin sinks)
+
+Coins come from wins (5), the daily streak (10/day + milestones), the Daily
+Bonus ad (30), the **Free coins** rewarded ad (25 × 3/day) and coin packs.
+They are spent on: hints (50), **every paid cosmetic** (250–1,100 coins as an
+alternative to cash), **Streak Shield** (150, hold 2 — each covers one missed
+day), **XP Booster** (250 — 2× battle-pass XP from matches for 24h), and
+**username changes** (first free, then 300). Nothing that affects match
+fairness is sold: power-ups stay earn-only.
 
 ### Data collected (App Privacy label / Play Data Safety)
 

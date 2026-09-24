@@ -33,6 +33,7 @@ import type {
 } from '../../src/types/index';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 const PERIODS: readonly { key: LeaderboardPeriod; label: string }[] = [
     { key: 'daily', label: 'Daily' },
@@ -407,7 +408,7 @@ function Row({
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
+    safe: { ...contentColumn, backgroundColor: colors.bg },
     header: {
         paddingHorizontal: spacing.lg,
         paddingTop: spacing.md,

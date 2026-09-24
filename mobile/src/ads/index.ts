@@ -15,7 +15,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-export type RewardedSlot = 'daily_bonus' | 'bp_xp_boost';
+export type RewardedSlot = 'daily_bonus' | 'bp_xp_boost' | 'coin_boost';
 
 interface AdsModule {
     default: {

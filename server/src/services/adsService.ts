@@ -24,13 +24,16 @@ import { awardMatchXp } from './battlePassService.js';
 //
 //   daily_bonus   — once per local day, +30 coins + 75 BP XP + 1 power-up
 //   bp_xp_boost   — up to 5 per UTC day, +50 BP XP each
+//   coin_boost    — up to 3 per UTC day, +25 coins each
 
-export type RewardKind = 'daily_bonus' | 'bp_xp_boost';
+export type RewardKind = 'daily_bonus' | 'bp_xp_boost' | 'coin_boost';
 
 const DAILY_BONUS_XP = 75;
 const DAILY_BONUS_COINS = 30;
 const XP_BOOST_AMOUNT = 50;
 const XP_BOOST_DAILY_LIMIT = 5;
+export const COIN_AD_AMOUNT = 25;
+export const COIN_AD_DAILY_LIMIT = 3;
 
 // ─── Public keys cache ──────────────────────────────────────────────────────
 
@@ -139,7 +142,7 @@ export async function processSsvReward(p: SsvParams): Promise<GrantResult> {
         return { granted: false, error: 'Bad custom_data' };
     }
     const rewardKind = rewardKindRaw as RewardKind;
-    if (!['daily_bonus', 'bp_xp_boost'].includes(rewardKind)) {
+    if (!['daily_bonus', 'bp_xp_boost', 'coin_boost'].includes(rewardKind)) {
         return { granted: false, error: `Unknown reward kind: ${rewardKind}` };
     }
 
@@ -265,6 +268,46 @@ export async function processSsvReward(p: SsvParams): Promise<GrantResult> {
             );
             await client.query('COMMIT');
             await bumpBattlePassXp(userId, XP_BOOST_AMOUNT);
+            return { granted: true, rewardKind };
+        }
+
+        if (rewardKind === 'coin_boost') {
+            const today = new Date().toISOString().slice(0, 10);
+            const userRes = await client.query<{
+                coin_ads_today: number;
+                coin_ads_day: string | null;
+            }>(
+                `SELECT coin_ads_today, to_char(coin_ads_day, 'YYYY-MM-DD') AS coin_ads_day
+                 FROM users WHERE id = $1 FOR UPDATE`,
+                [userId]
+            );
+            const u = userRes.rows[0];
+            if (!u) {
+                await client.query('ROLLBACK');
+                return { granted: false, error: 'User not found' };
+            }
+            const watchedToday = u.coin_ads_day === today ? u.coin_ads_today : 0;
+            if (watchedToday >= COIN_AD_DAILY_LIMIT) {
+                await client.query('ROLLBACK');
+                return { granted: false, error: 'Daily coin ad limit reached' };
+            }
+            await client.query(
+                `UPDATE users SET coin_ads_today = $1, coin_ads_day = $2::date,
+                                  coins = coins + $3, updated_at = now()
+                 WHERE id = $4`,
+                [watchedToday + 1, today, COIN_AD_AMOUNT, userId]
+            );
+            await client.query(
+                `INSERT INTO coin_grants (user_id, amount, source, metadata)
+                 VALUES ($1, $2, 'ad_reward', $3)`,
+                [userId, COIN_AD_AMOUNT, { kind: 'coin_boost' }]
+            );
+            await client.query(
+                `UPDATE ad_rewards SET granted = TRUE, granted_at = now()
+                 WHERE transaction_id = $1`,
+                [p.transaction_id]
+            );
+            await client.query('COMMIT');
             return { granted: true, rewardKind };
         }
 

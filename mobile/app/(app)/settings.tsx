@@ -33,6 +33,7 @@ import { makeThemedStyles,
     type ThemeId,
 } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
 const COLOR_BLIND_STORAGE_KEY = 'wordwar.colorblind';
@@ -489,7 +490,7 @@ const ToggleRow: React.FC<{
 );
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
+    safe: { ...contentColumn, backgroundColor: colors.bg },
     scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
     header: {
         flexDirection: 'row',

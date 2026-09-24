@@ -34,6 +34,8 @@ export const REMOVE_ADS_PRODUCT_ID = `${PRODUCT_PREFIX}.remove_ads`;
 //   cosmetic.<id>        non-consumable, one per paid cosmetic
 //   coins.<pack>         consumable
 export const BATTLE_PASS_PRODUCT_ID = `${PRODUCT_PREFIX}.battlepass.premium`;
+//   bundle.starter       non-consumable (one per account; also capped server-side)
+export const STARTER_BUNDLE_PRODUCT_ID = `${PRODUCT_PREFIX}.bundle.starter`;
 export function cosmeticProductId(cosmeticId: string): string {
     return `${PRODUCT_PREFIX}.cosmetic.${cosmeticId}`;
 }

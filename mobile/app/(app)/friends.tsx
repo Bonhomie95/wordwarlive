@@ -32,6 +32,7 @@ import { RankBadge } from '../../src/components/ui/RankBadge';
 import { useGameStore } from '../../src/store/gameStore';
 import { colors, makeThemedStyles, type RankTier } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 export default function FriendsScreen() {
     const router = useRouter();
@@ -389,7 +390,7 @@ export default function FriendsScreen() {
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
+    safe: { ...contentColumn, backgroundColor: colors.bg },
     scroll: { padding: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
     header: {
         flexDirection: 'row',

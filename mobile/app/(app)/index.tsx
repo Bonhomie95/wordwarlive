@@ -99,8 +99,9 @@ export default function Home() {
             ? new Date(user.ads.lastDailyAdAt)
             : null;
     const dailyAlreadyClaimed = !!lastDaily && sameLocalDay(lastDaily, new Date());
-    const showDailyBonus =
-        !adsRemoved && adsAvailable() && !dailyAlreadyClaimed && !dailyLocallyClaimed;
+    // Rewarded ads are opt-in, so the daily bonus stays after Remove Ads.
+    void adsRemoved;
+    const showDailyBonus = adsAvailable() && !dailyAlreadyClaimed && !dailyLocallyClaimed;
 
     async function onDailyBonus() {
         if (!user) return;

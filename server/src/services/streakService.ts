@@ -37,6 +37,32 @@ export interface StreakUpdate {
     dailyCoins: number;
     /** Milestone the user hit on this match, or null. */
     milestone: Milestone | null;
+    /** Streak Shields consumed to bridge missed days (0 when none). */
+    shieldsUsed: number;
+}
+
+/** Whole days between two YYYY-MM-DD strings (b - a). */
+function daysBetween(a: string, b: string): number {
+    return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+
+/**
+ * Pure streak transition. A Streak Shield covers exactly one missed day, so a
+ * player with N shields who missed N (or fewer) days keeps their streak and
+ * burns that many shields. Missing more days than shields held breaks it.
+ */
+export function nextStreak(args: {
+    lastPlayDate: string | null;
+    today: string;
+    streak: number;
+    shields: number;
+}): { streak: number; shieldsUsed: number } {
+    if (!args.lastPlayDate) return { streak: 1, shieldsUsed: 0 };
+    const gap = daysBetween(args.lastPlayDate, args.today); // 1 = played yesterday
+    if (gap <= 1) return { streak: args.streak + 1, shieldsUsed: 0 };
+    const missed = gap - 1;
+    if (missed <= args.shields) return { streak: args.streak + 1, shieldsUsed: missed };
+    return { streak: 1, shieldsUsed: 0 };
 }
 
 function todayUtcDateString(): string {
@@ -66,8 +92,9 @@ export async function advanceStreakOnMatchComplete(
             play_streak: number;
             play_streak_best: number;
             last_play_date: string | null;
+            streak_shields: number;
         }>(
-            `SELECT play_streak, play_streak_best,
+            `SELECT play_streak, play_streak_best, streak_shields,
                     to_char(last_play_date, 'YYYY-MM-DD') AS last_play_date
              FROM users WHERE id = $1 FOR UPDATE`,
             [userId]
@@ -75,7 +102,7 @@ export async function advanceStreakOnMatchComplete(
         const u = r.rows[0];
         if (!u) {
             await client.query('ROLLBACK');
-            return { playStreak: 0, advanced: false, dailyCoins: 0, milestone: null };
+            return { playStreak: 0, advanced: false, dailyCoins: 0, milestone: null, shieldsUsed: 0 };
         }
 
         // Already counted today.
@@ -86,16 +113,25 @@ export async function advanceStreakOnMatchComplete(
                 advanced: false,
                 dailyCoins: 0,
                 milestone: null,
+                shieldsUsed: 0,
             };
         }
 
-        const newStreak = u.last_play_date === yesterday ? u.play_streak + 1 : 1;
+        const { streak: newStreak, shieldsUsed } = nextStreak({
+            lastPlayDate: u.last_play_date,
+            today,
+            streak: u.play_streak,
+            shields: u.streak_shields,
+        });
+        void yesterday;
         const newBest = Math.max(u.play_streak_best, newStreak);
         await client.query(
             `UPDATE users SET play_streak = $1, play_streak_best = $2,
-                              last_play_date = $3::date, updated_at = now()
+                              last_play_date = $3::date,
+                              streak_shields = streak_shields - $5,
+                              updated_at = now()
              WHERE id = $4`,
-            [newStreak, newBest, today, userId]
+            [newStreak, newBest, today, userId, shieldsUsed]
         );
         await client.query('COMMIT');
 
@@ -129,6 +165,7 @@ export async function advanceStreakOnMatchComplete(
             advanced: true,
             dailyCoins: DAILY_COIN_REWARD,
             milestone,
+            shieldsUsed,
         };
     } catch (err) {
         await client.query('ROLLBACK');

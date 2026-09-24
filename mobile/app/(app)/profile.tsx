@@ -6,8 +6,11 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
     Alert,
     FlatList,
+    Modal,
+    Pressable,
     StyleSheet,
     Text,
+    TextInput,
     View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +21,7 @@ import { TopBar } from '../../src/components/ui/TopBar';
 import { Avatar } from '../../src/components/ui/Avatar';
 import { PlayerName } from '../../src/components/ui/PlayerName';
 import { useAuthStore } from '../../src/store/authStore';
-import { matchesApi } from '../../src/api/resources';
+import { matchesApi, usersApi } from '../../src/api/resources';
 import type { RecentMatch } from '../../src/types/index';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
@@ -30,6 +33,9 @@ export default function Profile() {
     const refreshMe = useAuthStore((s) => s.refreshMe);
     const [matches, setMatches] = useState<RecentMatch[]>([]);
     const [loading, setLoading] = useState(true);
+    const [renaming, setRenaming] = useState(false);
+    const [newName, setNewName] = useState('');
+    const [renameBusy, setRenameBusy] = useState(false);
 
     // Re-fetch on every focus: the tab stays mounted, so a mount-only effect
     // left "Recent matches" stale after a game was played.
@@ -51,6 +57,25 @@ export default function Profile() {
     const winRate = totalGames === 0 ? 0 : Math.round((user.wins / totalGames) * 100);
 
     const isGuest = user.provider === 'anonymous';
+    const renameCost = 'usernameChangeCost' in user ? user.usernameChangeCost : 0;
+
+    async function submitRename() {
+        const name = newName.trim();
+        if (!/^[a-zA-Z0-9_]{3,16}$/.test(name)) {
+            Alert.alert('Invalid username', 'Letters, numbers, and underscores only — 3 to 16 characters.');
+            return;
+        }
+        setRenameBusy(true);
+        try {
+            await usersApi.changeUsername(name);
+            await refreshMe();
+            setRenaming(false);
+        } catch (err) {
+            Alert.alert('Could not rename', err instanceof Error ? err.message : 'Try again.');
+        } finally {
+            setRenameBusy(false);
+        }
+    }
 
     function onSignOut() {
         // Guests have no way to sign back into this account from another
@@ -82,6 +107,35 @@ export default function Profile() {
 
     return (
         <Screen edges={['top']}>
+            <Modal visible={renaming} transparent animationType="fade" onRequestClose={() => setRenaming(false)}>
+                <View style={styles.modalBackdrop}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle} allowFontScaling={false}>
+                            Change username
+                        </Text>
+                        <Text style={styles.modalSub} allowFontScaling={false}>
+                            {renameCost > 0
+                                ? `Costs ${renameCost} coins. Letters, numbers, underscores · 3–16 chars.`
+                                : 'Your first change is free. Letters, numbers, underscores · 3–16 chars.'}
+                        </Text>
+                        <TextInput
+                            value={newName}
+                            onChangeText={setNewName}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            maxLength={16}
+                            autoFocus
+                            style={styles.modalInput}
+                            placeholderTextColor={colors.textMuted}
+                            accessibilityLabel="New username"
+                        />
+                        <View style={styles.modalActions}>
+                            <Button label="Cancel" variant="ghost" onPress={() => setRenaming(false)} style={{ flex: 1 }} />
+                            <Button label="Save" onPress={submitRename} busy={renameBusy} style={{ flex: 1 }} />
+                        </View>
+                    </View>
+                </View>
+            </Modal>
             <TopBar title="Profile" />
             <FlatList
                 ListHeaderComponent={
@@ -93,12 +147,24 @@ export default function Profile() {
                                 size={64}
                             />
                             <View style={{ flex: 1 }}>
-                                <PlayerName
-                                    username={user.username}
-                                    nameplateId={'equipped' in user ? user.equipped?.nameplate : null}
-                                    style={styles.username}
-                                    numberOfLines={1}
-                                />
+                                <Pressable
+                                    onPress={() => {
+                                        setNewName(user.username);
+                                        setRenaming(true);
+                                    }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Change username"
+                                    style={styles.nameRow}
+                                    hitSlop={6}
+                                >
+                                    <PlayerName
+                                        username={user.username}
+                                        nameplateId={'equipped' in user ? user.equipped?.nameplate : null}
+                                        style={styles.username}
+                                        numberOfLines={1}
+                                    />
+                                    <Ionicons name="pencil" size={14} color={colors.textMuted} />
+                                </Pressable>
                                 <Text style={styles.provider} allowFontScaling={false}>
                                     {isGuest ? 'Guest · not linked' : `Signed in via ${user.provider}`}
                                 </Text>
@@ -236,7 +302,45 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontFamily: typography.familyDisplay,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
+        flexShrink: 1,
     },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: spacing.lg,
+    },
+    modalCard: {
+        width: '100%',
+        maxWidth: 380,
+        backgroundColor: colors.surface,
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: spacing.lg,
+        gap: spacing.sm,
+    },
+    modalTitle: {
+        color: colors.text,
+        fontFamily: typography.familyDisplay,
+        fontSize: typography.sizes.lg,
+        fontWeight: typography.weights.bold,
+    },
+    modalSub: { color: colors.textDim, fontFamily: typography.family, fontSize: typography.sizes.xs, lineHeight: 17 },
+    modalInput: {
+        backgroundColor: colors.surfaceElevated,
+        color: colors.text,
+        height: 48,
+        paddingHorizontal: spacing.md,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        fontFamily: typography.familyDisplay,
+        fontSize: typography.sizes.md,
+    },
+    modalActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
     provider: {
         color: colors.textDim,
         fontFamily: typography.familyMono,

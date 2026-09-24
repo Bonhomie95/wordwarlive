@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { blocksApi, type BlockedUser } from '../../src/api/resources';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 export default function BlockedScreen() {
     const router = useRouter();
@@ -134,7 +135,7 @@ export default function BlockedScreen() {
 
 const styles = makeThemedStyles(() =>
     StyleSheet.create({
-        safe: { flex: 1, backgroundColor: colors.bg },
+        safe: { ...contentColumn, backgroundColor: colors.bg },
         header: {
             flexDirection: 'row',
             alignItems: 'center',

@@ -175,11 +175,13 @@ export default function Pass() {
         }
     }
 
-    const adsRemoved = user && 'ads' in user ? user.ads.removed : false;
     const xpBoostsToday = user && 'ads' in user ? user.ads.xpBoostAdsToday : 0;
     const xpBoostLimit = user && 'ads' in user ? user.ads.xpBoostDailyLimit : 5;
     const xpBoostsRemaining = Math.max(0, xpBoostLimit - xpBoostsToday);
-    const showXpBoost = !adsRemoved && adsAvailable() && xpBoostsRemaining > 0;
+    // Rewarded ads are opt-in, so they stay available after Remove Ads.
+    const showXpBoost = adsAvailable() && xpBoostsRemaining > 0;
+    const boostUntil = user && 'boosts' in user ? user.boosts.xpBoostUntil : null;
+    const boosterActive = !!boostUntil && new Date(boostUntil).getTime() > Date.now();
 
     return (
         <Screen edges={['top']}>
@@ -235,6 +237,16 @@ export default function Pass() {
                                 </Text>
                             </View>
                         )}
+
+                        {boosterActive ? (
+                            <View style={styles.premiumBadge}>
+                                <Ionicons name="flash" size={14} color={colors.warning} />
+                                <Text style={styles.premiumBadgeText} allowFontScaling={false}>
+                                    XP Booster active — 2× match XP until{' '}
+                                    {new Date(boostUntil!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                </Text>
+                            </View>
+                        ) : null}
 
                         {showXpBoost ? (
                             <View style={styles.xpBoostCard}>

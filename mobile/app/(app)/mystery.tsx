@@ -22,6 +22,7 @@ import { mysteryApi, type MysterySubmission } from '../../src/api/resources';
 import { Button } from '../../src/components/ui/Button';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 export default function MysteryScreen() {
     const router = useRouter();
@@ -206,7 +207,7 @@ export default function MysteryScreen() {
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
+    safe: { ...contentColumn, backgroundColor: colors.bg },
     scroll: { padding: spacing.md, paddingBottom: spacing.xxl },
     header: {
         flexDirection: 'row',

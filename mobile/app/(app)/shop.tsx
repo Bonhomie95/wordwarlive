@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { EquipTransition, type EquipTarget } from '../../src/components/ui/EquipTransition';
 import { useAuthStore } from '../../src/store/authStore';
-import { coinsApi, cosmeticsApi, usersApi } from '../../src/api/resources';
+import { adsApi, boostsApi, coinsApi, cosmeticsApi, usersApi } from '../../src/api/resources';
 import {
     cosmeticProductId,
     iapAvailable,
@@ -31,13 +31,18 @@ import {
     purchaseCoinPack,
     purchaseCosmetic,
     purchaseRemoveAds,
+    purchaseStarterBundle,
     REMOVE_ADS_PRODUCT_ID,
     restorePurchases,
+    STARTER_BUNDLE_PRODUCT_ID,
     storePrice,
 } from '../../src/iap';
-import type { CoinPack, Cosmetic, CosmeticCategory } from '../../src/types/index';
+import { adsAvailable, showRewarded } from '../../src/ads';
+import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
+import type { CoinPack, Cosmetic, CosmeticCategory, StarterBundle } from '../../src/types/index';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { contentColumn } from '../../src/theme/layout';
 
 const CATEGORY_ORDER: CosmeticCategory[] = [
     'board_theme',
@@ -75,10 +80,14 @@ export default function Shop() {
     const refreshMe = useAuthStore((s) => s.refreshMe);
     const [items, setItems] = useState<Cosmetic[]>([]);
     const [packs, setPacks] = useState<CoinPack[]>([]);
+    const [bundle, setBundle] = useState<StarterBundle | null>(null);
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState<string | null>(null);
     const [packBusyId, setPackBusyId] = useState<string | null>(null);
     const [removeAdsBusy, setRemoveAdsBusy] = useState(false);
+    const [bundleBusy, setBundleBusy] = useState(false);
+    const [boostBusy, setBoostBusy] = useState<'shield' | 'xp' | null>(null);
+    const [adBusy, setAdBusy] = useState(false);
     // Bumped once the store catalog (localized prices) has loaded.
     const [, setPricesLoaded] = useState(0);
     // Drives the "before → after" equip reveal overlay.
@@ -96,9 +105,11 @@ export default function Shop() {
             ]);
             setItems(shopRes.cosmetics);
             setPacks(packsRes.packs);
+            setBundle(packsRes.starterBundle ?? null);
             // Localized prices from the store for everything on this screen.
             const skus = [
                 REMOVE_ADS_PRODUCT_ID,
+                STARTER_BUNDLE_PRODUCT_ID,
                 ...packsRes.packs.map((p) => p.productId),
                 ...shopRes.cosmetics
                     .filter((c) => c.priceCents > 0)
@@ -193,6 +204,109 @@ export default function Shop() {
         }
     }
 
+    /** Buy a cosmetic with coins (the no-cash path). */
+    async function onPurchaseCoins(c: Cosmetic) {
+        const coins = user && 'coins' in user ? user.coins : 0;
+        if (coins < c.priceCoins) {
+            Alert.alert(
+                'Not enough coins',
+                `${c.name} costs ${c.priceCoins.toLocaleString()} coins and you have ${coins.toLocaleString()}. Win matches, watch a coin ad, or grab a coin pack.`
+            );
+            return;
+        }
+        Alert.alert(c.name, `Buy for ${c.priceCoins.toLocaleString()} coins?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Buy',
+                onPress: async () => {
+                    const fromId = equippedIdFor(c.category);
+                    setBusyId(c.id);
+                    try {
+                        await cosmeticsApi.purchaseWithCoins(c.id);
+                        let equipOk = false;
+                        try {
+                            await usersApi.equip(c.category, c.id);
+                            equipOk = true;
+                        } catch {
+                            /* purchased; user can equip manually */
+                        }
+                        await Promise.all([load(), refreshMe()]);
+                        if (equipOk) showEquipReveal(c, fromId);
+                    } catch (err) {
+                        Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
+                    } finally {
+                        setBusyId(null);
+                    }
+                },
+            },
+        ]);
+    }
+
+    async function onStarterBundle() {
+        if (!bundle) return;
+        setBundleBusy(true);
+        try {
+            await purchaseStarterBundle();
+            await Promise.all([load(), refreshMe()]);
+            Alert.alert('Welcome aboard!', `+${bundle.coins} coins, Fox avatar and Neon Pulse theme are yours.`);
+        } catch (err) {
+            if (!(err instanceof IapCancelled)) {
+                Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
+            }
+        } finally {
+            setBundleBusy(false);
+        }
+    }
+
+    async function onBuyShield() {
+        setBoostBusy('shield');
+        try {
+            await boostsApi.buyStreakShield();
+            await refreshMe();
+        } catch (err) {
+            Alert.alert('Could not buy shield', err instanceof Error ? err.message : 'Try again.');
+        } finally {
+            setBoostBusy(null);
+        }
+    }
+
+    async function onBuyXpBoost() {
+        setBoostBusy('xp');
+        try {
+            await boostsApi.buyXpBoost();
+            await refreshMe();
+        } catch (err) {
+            Alert.alert('Could not buy booster', err instanceof Error ? err.message : 'Try again.');
+        } finally {
+            setBoostBusy(null);
+        }
+    }
+
+    async function onWatchCoinAd() {
+        if (!user) return;
+        setAdBusy(true);
+        try {
+            const r = await showRewarded('coin_boost', user.id);
+            if (r.unavailable) {
+                Alert.alert('Ads not available', 'Coin ads need the production / dev-client build (not Expo Go).');
+                return;
+            }
+            if (r.earned) {
+                try {
+                    await adsApi.devClaimReward('coin_boost');
+                } catch {
+                    /* prod 404 / cap 409 — SSV grants it */
+                }
+                setTimeout(() => refreshMe().catch(() => {}), 1200);
+                Alert.alert('+25 coins incoming', 'Updating your balance…');
+            } else if (r.error) {
+                Alert.alert('Ad error', r.error);
+            }
+        } finally {
+            setAdBusy(false);
+        }
+    }
+
     async function onEquip(c: Cosmetic) {
         const fromId = equippedIdFor(c.category);
         setBusyId(c.id);
@@ -246,6 +360,17 @@ export default function Shop() {
     }
 
     const adsRemoved = user && 'ads' in user ? user.ads.removed : false;
+    const coins = user && 'coins' in user ? user.coins : 0;
+    const shields = user && 'boosts' in user ? user.boosts.streakShields : 0;
+    const shieldMax = user && 'boosts' in user ? user.boosts.streakShieldMax : 2;
+    const xpBoostUntil = user && 'boosts' in user ? user.boosts.xpBoostUntil : null;
+    const xpBoostActive = !!xpBoostUntil && new Date(xpBoostUntil).getTime() > Date.now();
+    const starterOwned = user && 'bundles' in user ? user.bundles.starterOwned : true;
+    const coinAdsLeft =
+        user && 'ads' in user ? Math.max(0, user.ads.coinAdsDailyLimit - user.ads.coinAdsToday) : 0;
+    // Rewarded ads are opt-in, so they stay available even after Remove Ads.
+    const showCoinAd = adsAvailable() && coinAdsLeft > 0;
+    const bundlePrice = bundle ? storePrice(STARTER_BUNDLE_PRODUCT_ID) ?? `$${bundle.priceUsd.toFixed(2)}` : '';
 
     async function onPackPurchase(pack: CoinPack) {
         Alert.alert(
@@ -315,6 +440,7 @@ export default function Shop() {
 
     return (
         <SafeAreaView style={styles.safe}>
+            <AdLoadingOverlay visible={adBusy} label="Loading coin ad…" />
             <EquipTransition
                 visible={!!equipReveal}
                 category={equipReveal?.category ?? null}
@@ -334,6 +460,31 @@ export default function Shop() {
                 contentContainerStyle={styles.listContent}
                 ListHeaderComponent={
                     <View>
+                        {bundle && !starterOwned ? (
+                            <View style={styles.bundleCard}>
+                                <View style={styles.bundleHead}>
+                                    <Ionicons name="gift" size={22} color={colors.primary} />
+                                    <Text style={styles.bundleTitle} allowFontScaling={false}>
+                                        {bundle.name}
+                                    </Text>
+                                    <View style={styles.bestValueBadge}>
+                                        <Text style={styles.bestValueText} allowFontScaling={false}>
+                                            ONE TIME
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.bundleSub} allowFontScaling={false}>
+                                    {bundle.description}
+                                </Text>
+                                <Button
+                                    label={`Get it for ${bundlePrice}`}
+                                    onPress={onStarterBundle}
+                                    busy={bundleBusy}
+                                    style={{ height: 44, marginTop: spacing.sm }}
+                                />
+                            </View>
+                        ) : null}
+
                         <View style={styles.removeAdsCard}>
                             <View style={styles.removeAdsLeft}>
                                 <Ionicons
@@ -382,6 +533,26 @@ export default function Shop() {
                                     consumables. Earned by playing too — no need
                                     to buy.
                                 </Text>
+                                {showCoinAd ? (
+                                    <View style={styles.boostCard}>
+                                        <Ionicons name="play-circle" size={22} color={colors.warning} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.boostTitle} allowFontScaling={false}>
+                                                Free coins
+                                            </Text>
+                                            <Text style={styles.boostSub} allowFontScaling={false}>
+                                                Watch a short ad → +25 coins · {coinAdsLeft} left today
+                                            </Text>
+                                        </View>
+                                        <Button
+                                            label="Watch"
+                                            onPress={onWatchCoinAd}
+                                            busy={adBusy}
+                                            variant="secondary"
+                                            style={{ height: 40, paddingHorizontal: spacing.md }}
+                                        />
+                                    </View>
+                                ) : null}
                                 {packs.map((pack) => (
                                     <CoinPackCard
                                         key={pack.id}
@@ -392,6 +563,58 @@ export default function Shop() {
                                 ))}
                             </View>
                         ) : null}
+
+                        {/* Boosts — coin sinks that never touch match fairness. */}
+                        <View style={styles.coinSection}>
+                            <View style={styles.coinHeader}>
+                                <Ionicons name="rocket" size={18} color={colors.info} />
+                                <Text style={styles.coinHeaderTitle} allowFontScaling={false}>
+                                    Boosts
+                                </Text>
+                                <Text style={styles.balance} allowFontScaling={false}>
+                                    {coins.toLocaleString()} coins
+                                </Text>
+                            </View>
+                            <View style={styles.boostCard}>
+                                <Ionicons name="shield-half" size={22} color={colors.primary} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.boostTitle} allowFontScaling={false}>
+                                        Streak Shield · {shields}/{shieldMax} held
+                                    </Text>
+                                    <Text style={styles.boostSub} allowFontScaling={false}>
+                                        Miss a day and keep your play streak. One shield covers one day.
+                                    </Text>
+                                </View>
+                                <Button
+                                    label={shields >= shieldMax ? 'Max' : '150 coins'}
+                                    onPress={onBuyShield}
+                                    busy={boostBusy === 'shield'}
+                                    disabled={shields >= shieldMax}
+                                    variant="secondary"
+                                    style={{ height: 40, paddingHorizontal: spacing.md }}
+                                />
+                            </View>
+                            <View style={styles.boostCard}>
+                                <Ionicons name="flash" size={22} color={colors.warning} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.boostTitle} allowFontScaling={false}>
+                                        XP Booster
+                                    </Text>
+                                    <Text style={styles.boostSub} allowFontScaling={false}>
+                                        {xpBoostActive
+                                            ? `2× match XP active · ends in ${timeLeft(xpBoostUntil!)}`
+                                            : '2× battle-pass XP from matches for 24 hours.'}
+                                    </Text>
+                                </View>
+                                <Button
+                                    label={xpBoostActive ? '+24h · 250' : '250 coins'}
+                                    onPress={onBuyXpBoost}
+                                    busy={boostBusy === 'xp'}
+                                    variant="secondary"
+                                    style={{ height: 40, paddingHorizontal: spacing.md }}
+                                />
+                            </View>
+                        </View>
                     </View>
                 }
                 renderItem={({ item: group }) => (
@@ -407,6 +630,7 @@ export default function Shop() {
                                     equipped={isEquipped(c)}
                                     busy={busyId === c.id}
                                     onPurchase={() => onPurchase(c)}
+                                    onPurchaseCoins={() => onPurchaseCoins(c)}
                                     onEquip={() => onEquip(c)}
                                 />
                             ))}
@@ -450,17 +674,27 @@ function packPrice(pack: CoinPack): string {
     return storePrice(pack.productId) ?? `$${pack.priceUsd.toFixed(2)}`;
 }
 
+/** "5h 12m" style countdown to an ISO time. */
+function timeLeft(iso: string): string {
+    const ms = Math.max(0, new Date(iso).getTime() - Date.now());
+    const h = Math.floor(ms / 3_600_000);
+    const m = Math.floor((ms % 3_600_000) / 60_000);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 function ShopItem({
     cosmetic,
     equipped,
     busy,
     onPurchase,
+    onPurchaseCoins,
     onEquip,
 }: {
     cosmetic: Cosmetic;
     equipped: boolean;
     busy: boolean;
     onPurchase: () => void;
+    onPurchaseCoins: () => void;
     onEquip: () => void;
 }) {
     const priceLabel =
@@ -498,9 +732,24 @@ function ShopItem({
                     </Text>
                 ) : null}
                 <View style={styles.itemFooter}>
-                    <Text style={styles.price} allowFontScaling={false}>
-                        {cosmetic.owned ? '' : priceLabel}
-                    </Text>
+                    {!cosmetic.owned && cosmetic.priceCoins > 0 ? (
+                        <Pressable
+                            onPress={onPurchaseCoins}
+                            disabled={busy}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Buy ${cosmetic.name} for ${cosmetic.priceCoins} coins`}
+                            style={({ pressed }) => [styles.coinBtn, pressed ? { opacity: 0.85 } : null]}
+                        >
+                            <Ionicons name="ellipse" size={11} color={colors.warning} />
+                            <Text style={styles.coinBtnText} allowFontScaling={false}>
+                                {cosmetic.priceCoins.toLocaleString()}
+                            </Text>
+                        </Pressable>
+                    ) : (
+                        <Text style={styles.price} allowFontScaling={false}>
+                            {cosmetic.owned ? '' : priceLabel}
+                        </Text>
+                    )}
                     <Pressable
                         onPress={onPress}
                         disabled={busy || equipped}
@@ -529,7 +778,7 @@ function ShopItem({
                                 ]}
                                 allowFontScaling={false}
                             >
-                                {action}
+                                {action === 'BUY' ? `BUY ${priceLabel}` : action}
                             </Text>
                         )}
                     </Pressable>
@@ -638,7 +887,7 @@ function swatchStyle(c: Cosmetic): { backgroundColor: string } {
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
+    safe: { ...contentColumn, backgroundColor: colors.bg },
     listContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
     header: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.md },
     title: {
@@ -748,6 +997,73 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: colors.textDim,
         fontSize: typography.sizes.sm,
         textDecorationLine: 'underline',
+    },
+    bundleCard: {
+        backgroundColor: colors.surface,
+        borderRadius: radius.md,
+        padding: spacing.md,
+        borderWidth: 1,
+        borderColor: colors.primary,
+        marginTop: spacing.lg,
+        gap: spacing.xs,
+    },
+    bundleHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    bundleTitle: {
+        fontFamily: typography.familyDisplay,
+        color: colors.text,
+        fontSize: typography.sizes.md,
+        fontWeight: typography.weights.bold,
+        flex: 1,
+    },
+    bundleSub: {
+        fontFamily: typography.family,
+        color: colors.textDim,
+        fontSize: typography.sizes.xs,
+        lineHeight: 17,
+    },
+    boostCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+        backgroundColor: colors.surface,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: spacing.md,
+    },
+    boostTitle: {
+        fontFamily: typography.familyDisplay,
+        color: colors.text,
+        fontSize: typography.sizes.sm,
+        fontWeight: typography.weights.bold,
+    },
+    boostSub: {
+        fontFamily: typography.family,
+        color: colors.textDim,
+        fontSize: typography.sizes.xs,
+        marginTop: 2,
+    },
+    balance: {
+        marginLeft: 'auto',
+        fontFamily: typography.familyMono,
+        color: colors.warning,
+        fontSize: typography.sizes.xs,
+    },
+    coinBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 6,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: colors.warning,
+    },
+    coinBtnText: {
+        fontFamily: typography.familyMonoBold,
+        color: colors.warning,
+        fontSize: typography.sizes.xs,
+        fontWeight: typography.weights.bold,
     },
     removeAdsCard: {
         flexDirection: 'row',

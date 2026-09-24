@@ -35,6 +35,7 @@ import {
 const PRODUCT_PREFIX = 'dev.bonhomieinc.wordwar';
 export const REMOVE_ADS_PRODUCT_ID = `${PRODUCT_PREFIX}.remove_ads`;
 export const BATTLE_PASS_PRODUCT_ID = `${PRODUCT_PREFIX}.battlepass.premium`;
+export const STARTER_BUNDLE_PRODUCT_ID = `${PRODUCT_PREFIX}.bundle.starter`;
 export const cosmeticProductId = (id: string): string =>
     `${PRODUCT_PREFIX}.cosmetic.${id}`;
 export const coinPackProductId = (packId: string): string =>
@@ -277,6 +278,15 @@ export function purchaseCosmetic(cosmeticId: string) {
     });
 }
 
+/** One per account: non-consumable, and the server refuses a second one. */
+export function purchaseStarterBundle() {
+    return runPurchase({
+        productId: STARTER_BUNDLE_PRODUCT_ID,
+        consumable: false,
+        call: (payload) => coinsApi.purchaseStarterBundle(payload),
+    });
+}
+
 /** Coin packs are consumables (can be re-bought). */
 export function purchaseCoinPack(packId: string) {
     return runPurchase({
@@ -296,6 +306,8 @@ function endpointForProduct(
         return { consumable: false, call: (p) => adsApi.removeAdsPurchase(p) };
     if (productId === BATTLE_PASS_PRODUCT_ID)
         return { consumable: true, call: (p) => battlePassApi.upgradePremium(p) };
+    if (productId === STARTER_BUNDLE_PRODUCT_ID)
+        return { consumable: false, call: (p) => coinsApi.purchaseStarterBundle(p) };
     if (productId.startsWith(`${PRODUCT_PREFIX}.cosmetic.`)) {
         const id = productId.slice(`${PRODUCT_PREFIX}.cosmetic.`.length);
         return { consumable: false, call: (p) => cosmeticsApi.purchase(id, p) };

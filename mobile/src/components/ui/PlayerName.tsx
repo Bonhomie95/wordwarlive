@@ -37,7 +37,9 @@ export const PlayerName: React.FC<Props> = ({
     useEffect(() => {
         if (np.effect === 'shimmer') {
             t.value = withRepeat(
-                withTiming(1, { duration: 3000, easing: Easing.linear }),
+                // Slow cycle: this runs continuously wherever the nameplate is
+                // shown, so keep the per-frame work low.
+                withTiming(1, { duration: 4500, easing: Easing.linear }),
                 -1,
                 false
             );

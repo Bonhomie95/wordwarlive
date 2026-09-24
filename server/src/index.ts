@@ -40,6 +40,7 @@ import { pushRouter } from './routes/push.js';
 import { adminRouter } from './routes/admin.js';
 import { blocksRouter } from './routes/blocks.js';
 import { legalRouter } from './routes/legal.js';
+import { boostsRouter } from './routes/boosts.js';
 import { createSocketServer } from './socket/server.js';
 import { matchRegistry } from './socket/matchHandler.js';
 import { resetMatchmakingQueue } from './socket/matchmaking.js';
@@ -146,6 +147,7 @@ async function main() {
     app.use('/api', pushRouter);
     app.use('/api', adminRouter);
     app.use('/api', blocksRouter);
+    app.use('/api', boostsRouter);
 
     // Public legal pages (privacy / terms / delete-account). Outside /api so the
     // API rate limiter and JSON-only assumptions don't apply.

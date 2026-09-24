@@ -36,6 +36,12 @@ export interface UserRow {
     last_play_date: string | null;
     lifetime_hints_used: number;
     token_version: number;
+    streak_shields: number;
+    xp_boost_until: Date | null;
+    starter_bundle_at: Date | null;
+    coin_ads_today: number;
+    coin_ads_day: string | null;
+    username_changed_at: Date | null;
 }
 
 const SAFE_USER_FIELDS = `
@@ -50,7 +56,10 @@ const SAFE_USER_FIELDS = `
     to_char(xp_boost_ads_day, 'YYYY-MM-DD') AS xp_boost_ads_day,
     coins, hint_credits, play_streak, play_streak_best,
     to_char(last_play_date, 'YYYY-MM-DD') AS last_play_date,
-    lifetime_hints_used, token_version
+    lifetime_hints_used, token_version,
+    streak_shields, xp_boost_until, starter_bundle_at,
+    coin_ads_today, to_char(coin_ads_day, 'YYYY-MM-DD') AS coin_ads_day,
+    username_changed_at
 `;
 
 export async function findUserById(id: string): Promise<UserRow | null> {
@@ -249,6 +258,70 @@ const USERNAME_RE = /^[a-zA-Z0-9_]{3,16}$/;
 
 export function isValidUsername(name: string): boolean {
     return USERNAME_RE.test(name);
+}
+
+/** Coins charged for a rename. The first rename is free (guests get an
+ *  auto-generated name), every later one costs this. */
+export const USERNAME_CHANGE_COST = 300;
+
+export function usernameChangeCost(u: Pick<UserRow, 'username_changed_at'>): number {
+    return u.username_changed_at ? USERNAME_CHANGE_COST : 0;
+}
+
+/**
+ * Rename the account. Validation (format + profanity) is the route's job;
+ * this handles uniqueness, the coin charge, and the timestamp atomically.
+ */
+export async function changeUsername(
+    userId: string,
+    username: string
+): Promise<{ ok: true; coinsSpent: number } | { ok: false; error: 'TAKEN' | 'NOT_AFFORDABLE' | 'NOT_FOUND' }> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const cur = await client.query<{ username_changed_at: Date | null; coins: number; username: string }>(
+            'SELECT username_changed_at, coins, username FROM users WHERE id = $1 FOR UPDATE',
+            [userId]
+        );
+        const u = cur.rows[0];
+        if (!u) {
+            await client.query('ROLLBACK');
+            return { ok: false, error: 'NOT_FOUND' };
+        }
+        const taken = await client.query(
+            'SELECT 1 FROM users WHERE lower(username) = lower($1) AND id <> $2',
+            [username, userId]
+        );
+        if ((taken.rowCount ?? 0) > 0) {
+            await client.query('ROLLBACK');
+            return { ok: false, error: 'TAKEN' };
+        }
+        const cost = usernameChangeCost(u);
+        if (u.coins < cost) {
+            await client.query('ROLLBACK');
+            return { ok: false, error: 'NOT_AFFORDABLE' };
+        }
+        await client.query(
+            `UPDATE users SET username = $1, coins = coins - $2,
+                              username_changed_at = now(), updated_at = now()
+             WHERE id = $3`,
+            [username, cost, userId]
+        );
+        if (cost > 0) {
+            await client.query(
+                `INSERT INTO coin_grants (user_id, amount, source, metadata)
+                 VALUES ($1, $2, 'username_spend', $3)`,
+                [userId, -cost, { from: u.username, to: username }]
+            );
+        }
+        await client.query('COMMIT');
+        return { ok: true, coinsSpent: cost };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 }
 
 /** Persist the Apple refresh token captured at sign-in (see auth/apple.ts). */

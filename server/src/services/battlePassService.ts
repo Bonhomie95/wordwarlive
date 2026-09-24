@@ -39,11 +39,11 @@ export async function getCurrentSeason(): Promise<SeasonRow | null> {
 export async function awardMatchXp(args: {
     userId: string;
     result: 'win' | 'loss' | 'tie';
-}): Promise<{ xpAwarded: number; newXp: number; newTier: number }> {
-    const xpAwarded = xpForMatch(args.result);
+}): Promise<{ xpAwarded: number; newXp: number; newTier: number; boosted: boolean }> {
+    const baseAward = xpForMatch(args.result);
     const season = await getCurrentSeason();
     if (!season) {
-        return { xpAwarded: 0, newXp: 0, newTier: 0 };
+        return { xpAwarded: 0, newXp: 0, newTier: 0, boosted: false };
     }
     const client = await pool.connect();
     try {
@@ -53,12 +53,17 @@ export async function awardMatchXp(args: {
         const cur = await client.query<{
             battle_pass_xp: number;
             battle_pass_season: number;
+            boosted: boolean;
         }>(
-            `SELECT battle_pass_xp, battle_pass_season FROM users WHERE id = $1 FOR UPDATE`,
+            `SELECT battle_pass_xp, battle_pass_season,
+                    (xp_boost_until IS NOT NULL AND xp_boost_until > now()) AS boosted
+             FROM users WHERE id = $1 FOR UPDATE`,
             [args.userId]
         );
         const u = cur.rows[0];
         if (!u) throw new Error('User not found');
+        // XP Booster (coin purchase): double match XP while active.
+        const xpAwarded = u.boosted ? baseAward * 2 : baseAward;
 
         let baseXp = u.battle_pass_xp;
         if (u.battle_pass_season !== season.season_number) {
@@ -78,7 +83,7 @@ export async function awardMatchXp(args: {
         );
 
         await client.query('COMMIT');
-        return { xpAwarded, newXp, newTier };
+        return { xpAwarded, newXp, newTier, boosted: u.boosted };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;

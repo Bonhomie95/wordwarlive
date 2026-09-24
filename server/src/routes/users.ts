@@ -1,7 +1,17 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
-import { deleteAccount, findUserById, updateEquippedCosmetic } from '../services/userService.js';
+import {
+    changeUsername,
+    deleteAccount,
+    findUserById,
+    isValidUsername,
+    updateEquippedCosmetic,
+    usernameChangeCost,
+} from '../services/userService.js';
+import { containsProfanity } from '../moderation/blocklist.js';
+import { COIN_AD_DAILY_LIMIT } from '../services/adsService.js';
+import { STREAK_SHIELD_MAX } from '../services/boostsService.js';
 import { getCosmetic } from '../services/cosmeticsService.js';
 import { applyResetIfNeeded } from '../services/rankSeasonService.js';
 import { effectiveStreak } from '../services/streakService.js';
@@ -59,7 +69,19 @@ async function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>)
                     ? u.xp_boost_ads_today
                     : 0,
             xpBoostDailyLimit: 5,
+            coinAdsToday: u.coin_ads_day === todayUtcDate() ? u.coin_ads_today : 0,
+            coinAdsDailyLimit: COIN_AD_DAILY_LIMIT,
         },
+        boosts: {
+            streakShields: u.streak_shields,
+            streakShieldMax: STREAK_SHIELD_MAX,
+            xpBoostUntil:
+                u.xp_boost_until && new Date(u.xp_boost_until).getTime() > Date.now()
+                    ? new Date(u.xp_boost_until).toISOString()
+                    : null,
+        },
+        bundles: { starterOwned: !!u.starter_bundle_at },
+        usernameChangeCost: usernameChangeCost(u),
         powerups: {
             reveal: u.powerup_reveal,
             scramble: u.powerup_scramble,
@@ -119,6 +141,33 @@ usersRouter.get('/users/:id', async (req, res) => {
 usersRouter.delete('/me', requireAuth, async (req, res) => {
     await deleteAccount(req.session!.userId);
     res.json({ ok: true });
+});
+
+const usernameSchema = z.object({ username: z.string().min(3).max(16) });
+
+/** Rename. First change is free; later ones cost coins (see userService). */
+usersRouter.patch('/me/username', requireAuth, async (req, res) => {
+    const parsed = usernameSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+    const username = parsed.data.username.trim();
+    if (!isValidUsername(username)) {
+        return res.status(400).json({ error: 'Username must be 3–16 chars, letters/numbers/underscores only' });
+    }
+    if (containsProfanity(username)) {
+        return res.status(400).json({ error: 'That username contains blocked content.' });
+    }
+    const r = await changeUsername(req.session!.userId, username);
+    if (!r.ok) {
+        const status = { TAKEN: 409, NOT_AFFORDABLE: 402, NOT_FOUND: 404 }[r.error];
+        const message = {
+            TAKEN: 'Username taken',
+            NOT_AFFORDABLE: 'Not enough coins.',
+            NOT_FOUND: 'User not found',
+        }[r.error];
+        return res.status(status).json({ error: message, code: r.error });
+    }
+    const user = await findUserById(req.session!.userId);
+    res.json(await shapeMe(user!));
 });
 
 const equipSchema = z.object({

@@ -123,7 +123,7 @@ adsRouter.post('/ads/dev-claim-reward', requireAuth, async (req, res) => {
     }
     const userId = req.session!.userId;
     const { rewardKind, tzOffsetMinutes = 0 } = req.body ?? {};
-    if (rewardKind !== 'daily_bonus' && rewardKind !== 'bp_xp_boost') {
+    if (rewardKind !== 'daily_bonus' && rewardKind !== 'bp_xp_boost' && rewardKind !== 'coin_boost') {
         return res.status(400).json({ error: 'Invalid rewardKind' });
     }
 

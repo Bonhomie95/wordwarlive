@@ -25,6 +25,7 @@ export const TopBar: React.FC<Props> = ({ title, onBack, compact }) => {
     const coins = user && 'coins' in user ? user.coins : 0;
     const streak =
         user && 'streak' in user ? user.streak.playStreak : 0;
+    const shields = user && 'boosts' in user ? user.boosts.streakShields : 0;
 
     return (
         <View style={styles.bar}>
@@ -63,6 +64,14 @@ export const TopBar: React.FC<Props> = ({ title, onBack, compact }) => {
                             <Text style={styles.pillText} allowFontScaling={false}>
                                 {streak}
                             </Text>
+                            {shields > 0 ? (
+                                <>
+                                    <Ionicons name="shield-half" size={12} color={colors.textDim} />
+                                    <Text style={styles.pillText} allowFontScaling={false}>
+                                        {shields}
+                                    </Text>
+                                </>
+                            ) : null}
                         </View>
                     </>
                 ) : null}

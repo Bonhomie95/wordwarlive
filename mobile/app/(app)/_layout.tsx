@@ -108,6 +108,9 @@ export default function AppTabsLayout() {
                 <Tabs
                     screenOptions={{
                         headerShown: false,
+                        // Screens that cap their content width expose the scene
+                        // background at the sides on wide screens.
+                        sceneStyle: { backgroundColor: colors.bg },
                         tabBarStyle: {
                             backgroundColor: colors.surface,
                             borderTopColor: colors.border,
