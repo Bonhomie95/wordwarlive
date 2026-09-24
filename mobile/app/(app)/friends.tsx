@@ -26,6 +26,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { friendsApi, type FriendInfo } from '../../src/api/resources';
+import { registerForPush } from '../../src/lib/notifications';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { useGameStore } from '../../src/store/gameStore';
@@ -53,7 +54,14 @@ export default function FriendsScreen() {
         }
     }, []);
 
-    useFocusEffect(useCallback(() => { load(); }, [load]));
+    useFocusEffect(
+        useCallback(() => {
+            load();
+            // Friend challenges reach a backgrounded app via push — this is
+            // the moment the permission prompt makes sense to the player.
+            registerForPush({ prompt: true }).catch(() => {});
+        }, [load])
+    );
 
     async function onGenerateCode() {
         setBusy(true);
@@ -177,6 +185,8 @@ export default function FriendsScreen() {
                         onPress={() => router.back()}
                         hitSlop={12}
                         style={styles.backBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Go back"
                     >
                         <Ionicons name="chevron-back" size={24} color={colors.text} />
                     </Pressable>
@@ -330,6 +340,8 @@ export default function FriendsScreen() {
                                     <Pressable
                                         onPress={() => onRemoveFriend(f)}
                                         hitSlop={12}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Remove ${f.username} from friends`}
                                     >
                                         <Ionicons
                                             name="close-circle"

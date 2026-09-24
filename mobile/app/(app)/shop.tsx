@@ -1,6 +1,7 @@
 // Cosmetics shop. Items are grouped by category. Purchase grants the
-// cosmetic; "Equip" calls PATCH /me/equip. Prices show in USD; in production
-// this would route through StoreKit / Play Billing.
+// cosmetic; "Equip" calls PATCH /me/equip. Prices come from the store
+// (localized) once the product catalog loads, falling back to the server's
+// USD reference price until then. Purchases go through StoreKit / Play Billing.
 //
 // Note: the brief is explicit that power-ups are NEVER sold here. Power-ups
 // are earned through play. This screen is cosmetics only.
@@ -21,7 +22,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { EquipTransition, type EquipTarget } from '../../src/components/ui/EquipTransition';
 import { useAuthStore } from '../../src/store/authStore';
-import { adsApi, coinsApi, cosmeticsApi, usersApi } from '../../src/api/resources';
+import { coinsApi, cosmeticsApi, usersApi } from '../../src/api/resources';
+import {
+    cosmeticProductId,
+    iapAvailable,
+    IapCancelled,
+    loadProducts,
+    purchaseCoinPack,
+    purchaseCosmetic,
+    purchaseRemoveAds,
+    REMOVE_ADS_PRODUCT_ID,
+    restorePurchases,
+    storePrice,
+} from '../../src/iap';
 import type { CoinPack, Cosmetic, CosmeticCategory } from '../../src/types/index';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
@@ -66,6 +79,8 @@ export default function Shop() {
     const [busyId, setBusyId] = useState<string | null>(null);
     const [packBusyId, setPackBusyId] = useState<string | null>(null);
     const [removeAdsBusy, setRemoveAdsBusy] = useState(false);
+    // Bumped once the store catalog (localized prices) has loaded.
+    const [, setPricesLoaded] = useState(0);
     // Drives the "before → after" equip reveal overlay.
     const [equipReveal, setEquipReveal] = useState<{
         category: CosmeticCategory;
@@ -81,6 +96,15 @@ export default function Shop() {
             ]);
             setItems(shopRes.cosmetics);
             setPacks(packsRes.packs);
+            // Localized prices from the store for everything on this screen.
+            const skus = [
+                REMOVE_ADS_PRODUCT_ID,
+                ...packsRes.packs.map((p) => p.productId),
+                ...shopRes.cosmetics
+                    .filter((c) => c.priceCents > 0)
+                    .map((c) => cosmeticProductId(c.id)),
+            ];
+            loadProducts(skus).then(() => setPricesLoaded((n) => n + 1));
         } catch (err) {
             Alert.alert('Could not load shop', err instanceof Error ? err.message : 'Try again.');
         } finally {
@@ -144,7 +168,7 @@ export default function Shop() {
         setBusyId(c.id);
         let equipOk = false;
         try {
-            await cosmeticsApi.purchase(c.id);
+            await purchaseCosmetic(c.id);
             // Auto-equip the just-purchased cosmetic. UX: you bought it,
             // you almost certainly want to use it right away. Players were
             // confused that "Buy" didn't visually do anything.
@@ -161,7 +185,9 @@ export default function Shop() {
             await Promise.all([load(), refreshMe()]);
             if (equipOk) showEquipReveal(c, fromId);
         } catch (err) {
-            Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
+            if (!(err instanceof IapCancelled)) {
+                Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
+            }
         } finally {
             setBusyId(null);
         }
@@ -183,10 +209,20 @@ export default function Shop() {
         }
     }
 
+    // In a real build the native store sheet handles confirmation + price, so we
+    // trigger it directly. In Expo Go / simulator (no native store) we keep an
+    // explicit confirm since the server grants directly in dev.
+    const devNote = iapAvailable()
+        ? ''
+        : '\n\n(Dev build: no native store — the server grants directly.)';
+
+    const removeAdsPrice = storePrice(REMOVE_ADS_PRODUCT_ID) ?? '$4.99';
+
     async function onRemoveAds() {
         Alert.alert(
             'Remove Ads',
-            'One-time $4.99 — removes all interstitial ads forever. Rewarded ads (Daily Bonus, XP Boost) stay available since they\'re opt-in.\n\n(Receipt verification is stubbed in dev — production routes through StoreKit / Play Billing.)',
+            `One-time ${removeAdsPrice} — removes all interstitial and banner ads forever. Rewarded ads (Daily Bonus, XP Boost) stay available since they're opt-in.` +
+                devNote,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -194,10 +230,12 @@ export default function Shop() {
                     onPress: async () => {
                         setRemoveAdsBusy(true);
                         try {
-                            await adsApi.removeAdsPurchase();
+                            await purchaseRemoveAds();
                             await refreshMe();
                         } catch (err) {
-                            Alert.alert('Purchase failed', err instanceof Error ? err.message : '');
+                            if (!(err instanceof IapCancelled)) {
+                                Alert.alert('Purchase failed', err instanceof Error ? err.message : '');
+                            }
                         } finally {
                             setRemoveAdsBusy(false);
                         }
@@ -212,7 +250,7 @@ export default function Shop() {
     async function onPackPurchase(pack: CoinPack) {
         Alert.alert(
             pack.name,
-            `${pack.coins.toLocaleString()} coins for $${pack.priceUsd.toFixed(2)}.\n\n(Receipt verification is stubbed in dev — production routes through StoreKit / Play Billing.)`,
+            `${pack.coins.toLocaleString()} coins for ${packPrice(pack)}.` + devNote,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -220,14 +258,16 @@ export default function Shop() {
                     onPress: async () => {
                         setPackBusyId(pack.id);
                         try {
-                            await coinsApi.purchase(pack.id);
+                            await purchaseCoinPack(pack.id);
                             await refreshMe();
                             Alert.alert('Coins added', `+${pack.coins.toLocaleString()} coins`);
                         } catch (err) {
-                            Alert.alert(
-                                'Purchase failed',
-                                err instanceof Error ? err.message : 'Try again.'
-                            );
+                            if (!(err instanceof IapCancelled)) {
+                                Alert.alert(
+                                    'Purchase failed',
+                                    err instanceof Error ? err.message : 'Try again.'
+                                );
+                            }
                         } finally {
                             setPackBusyId(null);
                         }
@@ -235,6 +275,25 @@ export default function Shop() {
                 },
             ]
         );
+    }
+
+    const [restoring, setRestoring] = useState(false);
+    async function onRestore() {
+        setRestoring(true);
+        try {
+            const n = await restorePurchases();
+            await Promise.all([load(), refreshMe()]);
+            Alert.alert(
+                'Restore complete',
+                n > 0
+                    ? `Restored ${n} purchase${n === 1 ? '' : 's'}.`
+                    : 'No previous purchases to restore.'
+            );
+        } catch (err) {
+            Alert.alert('Restore failed', err instanceof Error ? err.message : 'Try again.');
+        } finally {
+            setRestoring(false);
+        }
     }
 
     function isEquipped(c: Cosmetic): boolean {
@@ -289,13 +348,13 @@ export default function Shop() {
                                     <Text style={styles.removeAdsSub} allowFontScaling={false}>
                                         {adsRemoved
                                             ? 'No interstitials. Thanks for supporting the game!'
-                                            : '$4.99 one-time. No more interstitial ads, ever.'}
+                                            : `${removeAdsPrice} one-time. No more interstitial or banner ads, ever.`}
                                     </Text>
                                 </View>
                             </View>
                             {!adsRemoved ? (
                                 <Button
-                                    label="Buy"
+                                    label={`Buy ${removeAdsPrice}`}
                                     onPress={onRemoveAds}
                                     busy={removeAdsBusy}
                                     style={{ height: 40, paddingHorizontal: spacing.lg }}
@@ -361,9 +420,34 @@ export default function Shop() {
                         </Text>
                     ) : null
                 }
+                ListFooterComponent={
+                    <Pressable
+                        onPress={onRestore}
+                        disabled={restoring}
+                        accessibilityRole="button"
+                        accessibilityLabel="Restore purchases"
+                        style={({ pressed }) => [
+                            styles.restoreBtn,
+                            pressed ? { opacity: 0.7 } : null,
+                        ]}
+                    >
+                        {restoring ? (
+                            <ActivityIndicator size="small" color={colors.textDim} />
+                        ) : (
+                            <Text style={styles.restoreText} allowFontScaling={false}>
+                                Restore Purchases
+                            </Text>
+                        )}
+                    </Pressable>
+                }
             />
         </SafeAreaView>
     );
+}
+
+/** Store-localized price for a coin pack, else the server's USD reference. */
+function packPrice(pack: CoinPack): string {
+    return storePrice(pack.productId) ?? `$${pack.priceUsd.toFixed(2)}`;
 }
 
 function ShopItem({
@@ -382,7 +466,8 @@ function ShopItem({
     const priceLabel =
         cosmetic.priceCents === 0
             ? 'Free'
-            : `$${(cosmetic.priceCents / 100).toFixed(2)}`;
+            : storePrice(cosmeticProductId(cosmetic.id)) ??
+              `$${(cosmetic.priceCents / 100).toFixed(2)}`;
     const action = cosmetic.owned
         ? equipped
             ? 'EQUIPPED'
@@ -419,6 +504,9 @@ function ShopItem({
                     <Pressable
                         onPress={onPress}
                         disabled={busy || equipped}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${action.toLowerCase()} ${cosmetic.name}`}
+                        accessibilityState={{ disabled: busy || equipped, busy }}
                         style={({ pressed }) => [
                             styles.actionBtn,
                             equipped ? styles.actionEquipped : null,
@@ -464,6 +552,9 @@ function CoinPackCard({
         <Pressable
             onPress={onPress}
             disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={`Buy ${pack.name}, ${pack.coins} coins for ${packPrice(pack)}`}
+            accessibilityState={{ disabled: busy, busy }}
             style={({ pressed }) => [
                 styles.packCard,
                 pack.featured ? styles.packCardFeatured : null,
@@ -518,7 +609,7 @@ function CoinPackCard({
             </View>
             <View style={styles.packPriceWrap}>
                 <Text style={styles.packPrice} allowFontScaling={false}>
-                    ${pack.priceUsd.toFixed(2)}
+                    {packPrice(pack)}
                 </Text>
                 <Text style={styles.packBuyHint} allowFontScaling={false}>
                     TAP TO BUY
@@ -646,6 +737,17 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         textAlign: 'center',
         color: colors.textDim,
         marginTop: spacing.xl,
+    },
+    restoreBtn: {
+        marginTop: spacing.xl,
+        paddingVertical: spacing.md,
+        alignItems: 'center',
+    },
+    restoreText: {
+        fontFamily: typography.familyMono,
+        color: colors.textDim,
+        fontSize: typography.sizes.sm,
+        textDecorationLine: 'underline',
     },
     removeAdsCard: {
         flexDirection: 'row',

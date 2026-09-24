@@ -16,7 +16,6 @@ import crypto from 'node:crypto';
 import { pool, query } from '../db/pool.js';
 import { logger } from '../utils/logger.js';
 import { awardMatchXp } from './battlePassService.js';
-import { grantCoins } from './coinsService.js';
 
 // ─── Reward kinds ───────────────────────────────────────────────────────────
 //
@@ -187,13 +186,39 @@ export async function processSsvReward(p: SsvParams): Promise<GrantResult> {
             // Pick a random power-up.
             const powerups = ['reveal', 'scramble', 'lock'] as const;
             const pick = powerups[Math.floor(Math.random() * powerups.length)]!;
+
+            // Grant the power-up, coins, and battle-pass XP as ONE atomic unit
+            // with the completion flag. Previously coins/XP were granted AFTER
+            // commit (via helpers that each open their own connection — they'd
+            // otherwise deadlock on the row we lock here). But that lost the
+            // coins permanently on any transient failure: ad_rewards was already
+            // granted=TRUE, so AdMob's retry was deduped away. Inlining them
+            // (safe — same already-locked row, one connection) means a failure
+            // rolls the whole reward back and the retry re-grants cleanly.
+            const seasonRes = await client.query<{ season_number: number }>(
+                `SELECT season_number FROM battle_pass_seasons
+                 WHERE now() BETWEEN starts_at AND ends_at
+                 ORDER BY season_number DESC LIMIT 1`
+            );
+            const seasonNo = seasonRes.rows[0]?.season_number ?? null;
             await client.query(
                 `UPDATE users SET
                     last_daily_ad_at = now(),
                     powerup_${pick} = powerup_${pick} + 1,
+                    coins = coins + $2,
+                    battle_pass_xp = CASE
+                        WHEN $3::int IS NULL THEN battle_pass_xp
+                        WHEN battle_pass_season = $3 THEN battle_pass_xp + $4
+                        ELSE $4 END,
+                    battle_pass_season = COALESCE($3::int, battle_pass_season),
                     updated_at = now()
                  WHERE id = $1`,
-                [userId]
+                [userId, DAILY_BONUS_COINS, seasonNo, DAILY_BONUS_XP]
+            );
+            await client.query(
+                `INSERT INTO coin_grants (user_id, amount, source, metadata)
+                 VALUES ($1, $2, 'ad_reward', $3)`,
+                [userId, DAILY_BONUS_COINS, { kind: 'daily_bonus' }]
             );
             await client.query(
                 `UPDATE ad_rewards SET granted = TRUE, granted_at = now()
@@ -201,15 +226,6 @@ export async function processSsvReward(p: SsvParams): Promise<GrantResult> {
                 [p.transaction_id]
             );
             await client.query('COMMIT');
-
-            // XP + coins outside the txn since each opens its own.
-            await bumpBattlePassXp(userId, DAILY_BONUS_XP);
-            await grantCoins({
-                userId,
-                amount: DAILY_BONUS_COINS,
-                source: 'ad_reward',
-                metadata: { kind: 'daily_bonus' },
-            });
             return { granted: true, rewardKind };
         }
 

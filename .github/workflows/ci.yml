@@ -64,3 +64,7 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Lint
+        run: npx expo lint --max-warnings 0
+      - name: Resolve Expo config (catches app.config.ts errors)
+        run: npx expo config --type prebuild > /dev/null

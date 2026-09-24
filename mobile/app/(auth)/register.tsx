@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Button } from '../../src/components/ui/Button';
 import { Screen } from '../../src/components/ui/Screen';
+import { LegalConsent } from '../../src/components/ui/LegalConsent';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
@@ -122,6 +123,7 @@ export default function Register() {
                         </>
                     ) : null}
 
+                    <LegalConsent />
                     <Button label="Back" onPress={() => router.back()} variant="ghost" />
                 </View>
             </KeyboardAvoidingView>

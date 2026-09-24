@@ -46,6 +46,18 @@ const schema = z.object({
 
     GOOGLE_CLIENT_IDS: z.string().optional().default(''),
     APPLE_BUNDLE_ID: z.string().optional().default(''),
+    // Sign in with Apple server credentials (Apple Developer → Keys → "Sign in
+    // with Apple" key). Used to exchange the sign-in authorization code for a
+    // refresh token and to REVOKE it on account deletion, which Apple requires
+    // (guideline 5.1.1(v)). All three must be set together; otherwise revocation
+    // is skipped with a warning.
+    APPLE_TEAM_ID: z.string().optional().default(''),
+    APPLE_KEY_ID: z.string().optional().default(''),
+    // The .p8 contents. Newlines may be escaped as \n in the env value.
+    APPLE_PRIVATE_KEY: z.string().optional().default(''),
+
+    // Shown on the hosted legal pages and the account-deletion page.
+    SUPPORT_EMAIL: z.string().optional().default('adeyemibabatundejoseph@gmail.com'),
 
     GROQ_API_KEY: z.string().optional().default(''),
     GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
@@ -67,9 +79,11 @@ const schema = z.object({
     // When false (dev default), purchase endpoints grant items without
     // contacting the stores so the shop stays interactive locally. Turn ON
     // in production so receipts are verified before anything is granted.
+    // Defaults ON in production so a missing env can never ship unverified
+    // purchases; set IAP_ENFORCE=false explicitly to opt out (dev/staging).
     IAP_ENFORCE: z
         .enum(['true', 'false'])
-        .default('false')
+        .default(process.env.NODE_ENV === 'production' ? 'true' : 'false')
         .transform((v) => v === 'true'),
     // App Store shared secret (App Store Connect → App → App-Specific Shared
     // Secret). Required for iOS receipt verification when IAP_ENFORCE=true.
@@ -112,6 +126,13 @@ export const env = {
     adminEmails: parsed.data.ADMIN_EMAILS.split(',')
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean),
+    applePrivateKey: parsed.data.APPLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    appleRevokeConfigured: !!(
+        parsed.data.APPLE_BUNDLE_ID &&
+        parsed.data.APPLE_TEAM_ID &&
+        parsed.data.APPLE_KEY_ID &&
+        parsed.data.APPLE_PRIVATE_KEY
+    ),
 } as const;
 
 export type Env = typeof env;

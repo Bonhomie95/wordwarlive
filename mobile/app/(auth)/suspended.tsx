@@ -1,22 +1,19 @@
-import { Linking, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../src/components/ui/Screen';
 import { Button } from '../../src/components/ui/Button';
 import { MonoLabel } from '../../src/components/ui/primitives';
 import { useAuthStore } from '../../src/store/authStore';
+import { contactSupport as openSupport } from '../../src/lib/links';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
-
-const SUPPORT_EMAIL = 'support@wordwar.app';
 
 export default function Suspended() {
     const message = useAuthStore((s) => s.suspendedMessage);
     const signOut = useAuthStore((s) => s.signOut);
 
     function contactSupport() {
-        Linking.openURL(
-            `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('WordWar account appeal')}`
-        ).catch(() => {});
+        openSupport('WordWar account appeal');
     }
 
     return (
@@ -35,7 +32,7 @@ export default function Suspended() {
                     <MonoLabel size={12} style={styles.detail}>
                         Access to matches, the shop, and your profile is disabled while your
                         account is suspended. If you believe this was a mistake, contact
-                        support and we'll review it.
+                        support and we&apos;ll review it.
                     </MonoLabel>
                 </View>
 

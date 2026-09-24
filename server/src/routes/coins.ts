@@ -10,6 +10,7 @@ import {
     COIN_PACKS,
     HINT_COIN_COST,
     fulfillCoinPackPurchase,
+    getCoinBalance,
 } from '../services/coinsService.js';
 import { findUserById } from '../services/userService.js';
 import { effectiveStreak, MILESTONES, nextMilestone } from '../services/streakService.js';
@@ -48,6 +49,15 @@ coinsRouter.post('/coins/packs/:id/purchase', requireAuth, async (req, res) => {
     });
     if (!verified.ok) {
         return res.status(verified.status).json({ error: verified.error });
+    }
+    if (verified.alreadyGranted) {
+        // Consumable replay from the same account (e.g. a retry after a dropped
+        // response): never grant twice. Tell the client the current balance.
+        return res.json({
+            ok: true,
+            pack: { id: pack.id, name: pack.name, coins: pack.coins },
+            newBalance: await getCoinBalance(req.session!.userId),
+        });
     }
 
     const result = await fulfillCoinPackPurchase({

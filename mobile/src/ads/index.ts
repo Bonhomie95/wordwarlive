@@ -53,6 +53,20 @@ interface AdsModule {
         REWARDED: string;
         INTERSTITIAL: string;
     };
+    MaxAdContentRating: { T: string };
+    AdsConsent: {
+        gatherConsent: (opts?: unknown) => Promise<ConsentInfo>;
+        getConsentInfo: () => Promise<ConsentInfo>;
+        showPrivacyOptionsForm: () => Promise<ConsentInfo>;
+    };
+}
+
+interface ConsentInfo {
+    status: string;
+    canRequestAds: boolean;
+    /** 'REQUIRED' when regulations (GDPR/UK/US-state) entitle the user to
+     *  re-open the consent form from a settings entry point. */
+    privacyOptionsRequirementStatus: string;
 }
 
 interface RewardedAdInstance {
@@ -70,13 +84,17 @@ let mod: AdsModule | null = null;
 let initialized = false;
 let initPromise: Promise<void> | null = null;
 
-// App Tracking Transparency result. On iOS we must ask before using the IDFA
-// for personalized ads (Apple 5.1.2 / ATT). Until granted we serve
-// non-personalized ads. Defaults to false → non-personalized, the safe state
-// (also correct on Android, where ATT doesn't apply and Google handles consent
-// via UMP; non-personalized-until-init never serves a personalized ad we
-// shouldn't).
-let trackingAuthorized = false;
+// Personalization gate.
+//   iOS: App Tracking Transparency (Apple 5.1.2) — until the user grants ATT we
+//        request non-personalized ads only.
+//   Android: no ATT; the UMP consent form (below) is what governs
+//        personalization, and the SDK applies it on its own. Until consent has
+//        been gathered we stay non-personalized as the safe default.
+let nonPersonalizedOnly = true;
+
+// UMP (Google User Messaging Platform) — the EEA/UK GDPR + US-state consent
+// form Google requires before serving ads there. Users elsewhere never see it.
+let privacyOptionsRequired = false;
 
 /**
  * Ask for App Tracking Transparency (iOS only), once, before ads initialize.
@@ -91,16 +109,48 @@ async function requestTrackingIfNeeded(): Promise<void> {
             requestTrackingPermissionsAsync: () => Promise<{ granted: boolean }>;
         };
         const { granted } = await att.requestTrackingPermissionsAsync();
-        trackingAuthorized = granted;
+        nonPersonalizedOnly = !granted;
     } catch {
-        trackingAuthorized = false;
+        nonPersonalizedOnly = true;
     }
 }
 
-/** Request options applied to every ad load. When tracking isn't authorized we
- *  ask AdMob for non-personalized ads only. */
+/**
+ * Gather regulatory consent through UMP (shows Google's consent form where
+ * required). Never throws — if consent gathering fails Google's guidance is to
+ * still request ads.
+ */
+async function gatherConsentIfNeeded(m: AdsModule): Promise<void> {
+    try {
+        const info = await m.AdsConsent.gatherConsent();
+        privacyOptionsRequired = info.privacyOptionsRequirementStatus === 'REQUIRED';
+        if (Platform.OS === 'android') nonPersonalizedOnly = false; // UMP decides
+    } catch {
+        // Ads still load (non-personalized where consent is unknown).
+    }
+}
+
+/** Request options applied to every ad load. */
 export function adRequestOptions(): { requestNonPersonalizedAdsOnly: boolean } {
-    return { requestNonPersonalizedAdsOnly: !trackingAuthorized };
+    return { requestNonPersonalizedAdsOnly: nonPersonalizedOnly };
+}
+
+/** True when the user is entitled to re-open the ads consent form (GDPR/UK/
+ *  US-state). Settings shows a "Privacy options" row in that case. */
+export function adPrivacyOptionsRequired(): boolean {
+    return privacyOptionsRequired;
+}
+
+/** Re-open the UMP privacy-options form. No-op when the module is absent. */
+export async function showAdPrivacyOptions(): Promise<void> {
+    const m = loadModule();
+    if (!m) return;
+    try {
+        const info = await m.AdsConsent.showPrivacyOptionsForm();
+        privacyOptionsRequired = info.privacyOptionsRequirementStatus === 'REQUIRED';
+    } catch {
+        // form unavailable — nothing to do
+    }
 }
 
 /**
@@ -140,9 +190,16 @@ export async function initAds(): Promise<void> {
             return;
         }
         try {
-            // ATT must be resolved BEFORE the SDK initializes so the first ad
-            // requests already honor the user's choice.
+            // ATT + regulatory consent must be resolved BEFORE the SDK
+            // initializes so the first ad requests already honor the choice.
             await requestTrackingIfNeeded();
+            await gatherConsentIfNeeded(m);
+            // The app is rated 12+/Teen (user-generated names + words); never
+            // pull mature ad creatives regardless of the AdMob account setting.
+            await m
+                .default()
+                .setRequestConfiguration({ maxAdContentRating: m.MaxAdContentRating.T })
+                .catch(() => {});
             await m.default().initialize();
             initialized = true;
         } catch {

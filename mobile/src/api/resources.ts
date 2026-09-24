@@ -29,13 +29,22 @@ export const matchesApi = {
         apiRequest<{ matches: RecentMatch[] }>(`/api/matches/recent?limit=${limit}`),
 };
 
+/** Store receipt payload forwarded to the server for IAP verification. Empty
+ *  in dev / Expo Go (no native store), where the server grants directly when
+ *  IAP_ENFORCE is off. */
+export interface IapPayload {
+    platform?: 'ios' | 'android';
+    receipt?: string;
+    transactionId?: string;
+}
+
 export const cosmeticsApi = {
     list: () => apiRequest<{ cosmetics: Cosmetic[] }>('/api/cosmetics'),
     owned: () => apiRequest<{ owned: string[] }>('/api/me/cosmetics'),
-    purchase: (id: string) =>
+    purchase: (id: string, payload: IapPayload = {}) =>
         apiRequest<{ ok: boolean; cosmeticId: string }>(
             `/api/cosmetics/${id}/purchase`,
-            { method: 'POST', body: {} }
+            { method: 'POST', body: payload }
         ),
 };
 
@@ -46,19 +55,19 @@ export const battlePassApi = {
             '/api/battlepass/claim',
             { method: 'POST', body: { tier, track } }
         ),
-    upgradePremium: () =>
+    upgradePremium: (payload: IapPayload = {}) =>
         apiRequest<{ ok: boolean }>('/api/battlepass/upgrade-premium', {
             method: 'POST',
-            body: {},
+            body: payload,
         }),
 };
 
 export const adsApi = {
     /** Mark the user as ads-free after a successful Remove Ads IAP. */
-    removeAdsPurchase: () =>
+    removeAdsPurchase: (payload: IapPayload = {}) =>
         apiRequest<{ ok: boolean }>('/api/ads/remove-ads-purchase', {
             method: 'POST',
-            body: {},
+            body: payload,
         }),
     /**
      * Dev-only: directly claim a rewarded-ad reward without going through
@@ -82,14 +91,14 @@ export const adsApi = {
 
 export const coinsApi = {
     listPacks: () => apiRequest<CoinPacksResponse>('/api/coins/packs'),
-    purchase: (packId: string) =>
+    purchase: (packId: string, payload: IapPayload = {}) =>
         apiRequest<{
             ok: boolean;
             pack: { id: string; name: string; coins: number };
             newBalance: number;
         }>(`/api/coins/packs/${packId}/purchase`, {
             method: 'POST',
-            body: {},
+            body: payload,
         }),
 };
 
@@ -305,6 +314,27 @@ export const reportsApi = {
         apiRequest<{ ok: boolean }>('/api/reports', {
             method: 'POST',
             body: args,
+        }),
+};
+
+export interface BlockedUser {
+    userId: string;
+    username: string;
+    rankPoints: number;
+    rankTier: string;
+    createdAt: string;
+}
+
+export const blocksApi = {
+    list: () => apiRequest<{ blocked: BlockedUser[] }>('/api/blocks'),
+    block: (targetId: string) =>
+        apiRequest<{ ok: boolean }>('/api/blocks', {
+            method: 'POST',
+            body: { targetId },
+        }),
+    unblock: (targetId: string) =>
+        apiRequest<{ ok: boolean }>(`/api/blocks/${targetId}`, {
+            method: 'DELETE',
         }),
 };
 

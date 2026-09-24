@@ -35,13 +35,19 @@ function canUsePush(): boolean {
     );
 }
 
-/** Request permission, get the Expo token, and register it with the server. */
-export async function registerForPush(): Promise<void> {
+/**
+ * Register this device for push. With `prompt: false` (app launch) we only
+ * register when permission was ALREADY granted — the system permission dialog
+ * is shown in context instead (Friends screen), which is what Apple's HIG asks
+ * for and converts far better than a cold-start prompt.
+ */
+export async function registerForPush(opts: { prompt: boolean } = { prompt: true }): Promise<void> {
     if (!canUsePush()) return;
     try {
         const existing = await Notifications.getPermissionsAsync();
         let status = existing.status;
         if (status !== 'granted') {
+            if (!opts.prompt || !existing.canAskAgain) return;
             const req = await Notifications.requestPermissionsAsync();
             status = req.status;
         }

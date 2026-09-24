@@ -18,12 +18,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import { settingsApi, usersApi, authAccountApi, type UserSettings } from '../../src/api/resources';
 import { setHapticsEnabled } from '../../src/lib/haptics';
+import { contactSupport, openLegal, PRIVACY_URL, TERMS_URL } from '../../src/lib/links';
+import { adPrivacyOptionsRequired, showAdPrivacyOptions } from '../../src/ads';
 import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
 import { makeThemedStyles,
     colors,
@@ -35,17 +36,6 @@ import { typography, radius, spacing } from '../../src/theme/typography';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
 const COLOR_BLIND_STORAGE_KEY = 'wordwar.colorblind';
-
-// Legal document URLs. Both stores require a reachable privacy policy, and
-// Apple wants it linked in-app. Override per environment; these defaults must
-// resolve to the hosted PRIVACY.md / TERMS.md before submission.
-const PRIVACY_URL =
-    process.env.EXPO_PUBLIC_PRIVACY_URL ?? 'https://wordwar.app/privacy';
-const TERMS_URL = process.env.EXPO_PUBLIC_TERMS_URL ?? 'https://wordwar.app/terms';
-
-function openLegal(url: string) {
-    WebBrowser.openBrowserAsync(url).catch(() => {});
-}
 
 function persistColorBlind(enabled: boolean) {
     SecureStore.setItemAsync(COLOR_BLIND_STORAGE_KEY, enabled ? '1' : '0').catch(
@@ -90,6 +80,8 @@ export default function SettingsScreen() {
     const [settings, setSettings] = useState<UserSettings | null>(null);
     const [saving, setSaving] = useState(false);
     const [showHowToPlay, setShowHowToPlay] = useState(false);
+    // GDPR/UK/US-state users must be able to re-open the ads consent form.
+    const [adsPrivacyRow, setAdsPrivacyRow] = useState(adPrivacyOptionsRequired());
 
     const setColorBlind = useThemeStore((s) => s.setColorBlind);
 
@@ -249,6 +241,12 @@ export default function SettingsScreen() {
                     </View>
                     <Ionicons name="help-circle-outline" size={22} color={colors.textDim} />
                 </Pressable>
+                <LinkRow
+                    label="Contact support"
+                    description="Questions, bugs, purchase or account issues."
+                    icon="mail-outline"
+                    onPress={() => contactSupport('WordWar support')}
+                />
 
                 {/* ─── Legal ────────────────────────────────────────────── */}
                 <SectionHeader label="Legal" />
@@ -264,6 +262,18 @@ export default function SettingsScreen() {
                     icon="document-text-outline"
                     onPress={() => openLegal(TERMS_URL)}
                 />
+                {adsPrivacyRow ? (
+                    <LinkRow
+                        label="Privacy options"
+                        description="Change your ads consent choices."
+                        icon="options-outline"
+                        onPress={() =>
+                            showAdPrivacyOptions().then(() =>
+                                setAdsPrivacyRow(adPrivacyOptionsRequired())
+                            )
+                        }
+                    />
+                ) : null}
 
                 {/* ─── Themes ───────────────────────────────────────────── */}
                 <SectionHeader label="Theme" />
@@ -348,6 +358,12 @@ export default function SettingsScreen() {
 
                 {/* ─── Account ──────────────────────────────────────────── */}
                 <SectionHeader label="Account" />
+                <LinkRow
+                    label="Blocked users"
+                    description="Manage players you've blocked."
+                    icon="ban-outline"
+                    onPress={() => router.push('/(app)/blocked')}
+                />
                 <Pressable
                     onPress={onLogoutEverywhere}
                     disabled={loggingOutAll}

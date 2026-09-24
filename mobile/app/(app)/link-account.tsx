@@ -23,7 +23,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
-import { appleSignIn, isAppleAvailable } from '../../src/auth/appleSignIn';
+import { appleSignIn, useAppleAvailable } from '../../src/auth/appleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
@@ -35,6 +35,7 @@ export default function LinkAccount() {
     const linkApple = useAuthStore((s) => s.linkApple);
     const busy = useAuthStore((s) => s.busy);
     const google = useGoogleSignIn();
+    const appleAvailable = useAppleAvailable();
     const [oauthBusy, setOauthBusy] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -107,9 +108,9 @@ export default function LinkAccount() {
     async function onLinkApple() {
         setOauthBusy(true);
         try {
-            const idToken = await appleSignIn();
-            if (idToken) {
-                await linkApple(idToken);
+            const cred = await appleSignIn();
+            if (cred) {
+                await linkApple(cred);
                 done();
             }
         } catch (err) {
@@ -158,7 +159,7 @@ export default function LinkAccount() {
                             busy={oauthBusy || google.inProgress}
                         />
                     ) : null}
-                    {isAppleAvailable() ? (
+                    {appleAvailable ? (
                         <AppleAuthentication.AppleAuthenticationButton
                             buttonType={
                                 AppleAuthentication.AppleAuthenticationButtonType
@@ -226,7 +227,13 @@ export default function LinkAccount() {
 function Header({ onBack }: { onBack: () => void }) {
     return (
         <View style={styles.header}>
-            <Pressable onPress={onBack} hitSlop={12} style={styles.backBtn}>
+            <Pressable
+                onPress={onBack}
+                hitSlop={12}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+            >
                 <Ionicons name="chevron-back" size={24} color={colors.text} />
             </Pressable>
             <View>

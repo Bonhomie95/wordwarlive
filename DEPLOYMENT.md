@@ -18,11 +18,28 @@ not `/healthz` (liveness only).
 - `JWT_SECRET` (>= 32 chars — `openssl rand -hex 64`)
 - `CORS_ORIGINS` — lock to your real client origins (not `*`)
 - `TRUST_PROXY` — set to the number of proxy hops in front of the server (e.g. `1`)
-- `IAP_ENFORCE=true` + `APPLE_IAP_SHARED_SECRET` + `GOOGLE_PLAY_PACKAGE_NAME` +
-  `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` — **only after the mobile client sends
-  receipts** (see the IAP note in memory).
+- `IAP_ENFORCE=true` (the default when `NODE_ENV=production`) +
+  `APPLE_BUNDLE_ID` + `GOOGLE_PLAY_PACKAGE_NAME` +
+  `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`. iOS purchases are verified offline from
+  the StoreKit 2 signed transaction (Apple root pinned in
+  `src/iap/appleJws.ts`); `APPLE_IAP_SHARED_SECRET` is only a fallback for
+  legacy base64 receipts.
+- `APPLE_TEAM_ID` + `APPLE_KEY_ID` + `APPLE_PRIVATE_KEY` (Sign in with Apple
+  key) — required so account deletion revokes the user's Apple token, which
+  Apple mandates. The server warns at boot when they're missing.
+- `SUPPORT_EMAIL` — shown on the hosted legal pages.
+- `METRICS_TOKEN` — otherwise `/metrics` is public.
 - `SENTRY_DSN` (optional) + `npm i @sentry/node` to enable error reporting.
 - `GROQ_API_KEY` (optional — bots fall back to a heuristic without it).
+
+### Hosted legal pages
+The server renders `server/legal/PRIVACY.md` and `TERMS.md` at
+`GET /legal/privacy`, `GET /legal/terms`, plus a Play-required account-deletion
+page at `GET /legal/delete-account`. Use those URLs in App Store Connect, Play
+Console (Privacy Policy + "Delete account URL" in Data safety) and AdMob. The
+app links to them by default (`<EXPO_PUBLIC_API_URL>/legal/...`); override
+with `EXPO_PUBLIC_PRIVACY_URL` / `EXPO_PUBLIC_TERMS_URL` /
+`EXPO_PUBLIC_DELETE_ACCOUNT_URL` if you host them elsewhere.
 
 ### On deploy
 1. Run migrations: `npm run migrate` (idempotent; also seeds the word bank).
@@ -86,17 +103,33 @@ eas submit --profile production
 ```
 `eas.json` defines development / preview / production profiles with
 auto-incrementing build numbers and `appVersionSource: remote`.
-`runtimeVersion` uses the `appVersion` policy, so bump `expo.version` in
-`app.json` for each store release.
+`runtimeVersion` uses the `appVersion` policy, so bump `VERSION` in
+`app.config.ts` for each store release.
+
+### Build-time env (production)
+`app.config.ts` layers release-critical values onto `app.json` and **fails a
+production EAS build** when any of these are missing or still Google's samples:
+`EXPO_PUBLIC_API_URL` (https), `ADMOB_IOS_APP_ID`, `ADMOB_ANDROID_APP_ID`,
+`EXPO_PUBLIC_ADMOB_{BANNER,INTERSTITIAL,REWARDED}_{IOS,ANDROID}_ID`. Also set
+`EXPO_PUBLIC_GOOGLE_*_CLIENT_ID` (Google login is hidden when absent) and
+`EXPO_PUBLIC_SUPPORT_EMAIL`. Put them in `eas.json` → `build.production.env`
+or in EAS environment variables — **`.env` is not uploaded to EAS Build.**
+Replace the `https://api.wordwar.app` placeholder in `eas.json` with your real
+API host.
 
 ### Before first submission
-- [ ] Host `PRIVACY.md` **and `TERMS.md`** at public URLs; link them in App
-      Store Connect, Google Play, and AdMob.
-- [ ] Complete Apple privacy nutrition labels + Google Data Safety form.
-- [ ] Verify in-app **Delete account** (Settings → Account) — required by Apple.
-- [ ] Swap the placeholder `assets/` icon + splash for final artwork.
-- [ ] Replace AdMob test unit IDs with production IDs via the `EXPO_PUBLIC_ADMOB_*` env.
-- [ ] Wire a real StoreKit / Play Billing IAP flow, then set `IAP_ENFORCE=true`.
+See `store-assets/STORE-LISTING.md` §7–8 for the full, current checklist
+(products to create, data-safety table, per-store steps). In short:
+- [ ] Paid Apple team + App ID capabilities (Sign in with Apple, Push, IAP);
+      Sign in with Apple key on the server.
+- [ ] In-app products created on both stores (ids in STORE-LISTING §7).
+- [ ] Real AdMob app + unit ids in the build env; GDPR/US-state messages
+      configured in AdMob; rewarded SSV URL pointed at `/api/ads/ssv`.
+- [ ] Apple App Privacy + Play Data Safety filled from the table; Play
+      "Delete account URL" = `/legal/delete-account`.
+- [ ] FCM v1 credentials uploaded to EAS for Android push; `eas init` so the
+      project has an EAS `projectId`.
+- [ ] Test purchases with sandbox / license-tester accounts on real devices.
 
 ## CI
 `.github/workflows/ci.yml` runs on push/PR: server typecheck + tests (with

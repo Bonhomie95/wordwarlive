@@ -19,6 +19,7 @@ import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/spac
 import { useAuthStore } from '../src/store/authStore';
 import { useGameStore } from '../src/store/gameStore';
 import { initAds } from '../src/ads';
+import { initIap, reconcilePurchases } from '../src/iap';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { initObservability } from '../src/observability';
 import { restoreHapticsPref } from '../src/lib/haptics';
@@ -85,6 +86,9 @@ export default function RootLayout() {
             })
             .catch(() => {});
         initAds().catch(() => {});
+        // Open the billing connection so the store is ready by the time the
+        // user reaches the shop (no-op in Expo Go / on the simulator).
+        initIap().catch(() => {});
     }, [hydrate, applyTheme]);
 
     // Open the persistent socket as soon as we have a token. This keeps a
@@ -94,7 +98,12 @@ export default function RootLayout() {
     useEffect(() => {
         if (token) {
             connectPersistent(token);
-            registerForPush().catch(() => {});
+            // Silent: registers only if permission is already granted. The
+            // prompt itself is shown in context on the Friends screen.
+            registerForPush({ prompt: false }).catch(() => {});
+            // Fulfil anything the store still holds for this account (an
+            // interrupted purchase, a non-consumable to restore). Idempotent.
+            reconcilePurchases().catch(() => {});
         }
     }, [token, connectPersistent]);
 

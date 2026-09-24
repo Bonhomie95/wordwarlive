@@ -86,8 +86,8 @@ export async function getOverview(): Promise<Record<string, unknown>> {
             COUNT(*) FILTER (WHERE is_admin)                                              AS admins,
             COUNT(*) FILTER (WHERE NOT (${BOT_FILTER}) AND created_at >= now()-interval '1 day')  AS new_today,
             COUNT(*) FILTER (WHERE NOT (${BOT_FILTER}) AND created_at >= now()-interval '7 day')  AS new_7d,
-            COUNT(*) FILTER (WHERE last_play_date >= (now() at time zone 'utc')::date)    AS dau,
-            COUNT(*) FILTER (WHERE last_play_date >= ((now() at time zone 'utc')::date - 7)) AS wau,
+            COUNT(*) FILTER (WHERE NOT (${BOT_FILTER}) AND last_play_date >= (now() at time zone 'utc')::date)    AS dau,
+            COUNT(*) FILTER (WHERE NOT (${BOT_FILTER}) AND last_play_date >= ((now() at time zone 'utc')::date - 7)) AS wau,
             COALESCE(SUM(coins) FILTER (WHERE NOT (${BOT_FILTER})),0)                     AS total_coins,
             COUNT(*) FILTER (WHERE battle_pass_premium AND NOT (${BOT_FILTER}))           AS premium
          FROM users`
@@ -213,7 +213,11 @@ export async function getPlayerDetail(userId: string): Promise<Record<string, un
         `SELECT u.*, (${BOT_FILTER}) AS is_bot,
                 (SELECT count(*) FROM users t WHERE t.rank_points > u.rank_points AND NOT (t.auth_subject LIKE 'bot-%')) + 1 AS rank_position,
                 (SELECT count(*) FROM users WHERE NOT (auth_subject LIKE 'bot-%')) AS total_players,
-                percent_rank() OVER (ORDER BY u.play_streak_best) AS streak_percentile
+                -- Fraction of real players with a lower best streak. A window
+                -- function here would see only this one filtered row (→ always
+                -- 0), so compute it with correlated subqueries instead.
+                (SELECT count(*) FROM users t WHERE NOT (t.auth_subject LIKE 'bot-%') AND t.play_streak_best < u.play_streak_best)::float
+                    / NULLIF((SELECT count(*) FROM users WHERE NOT (auth_subject LIKE 'bot-%')), 0) AS streak_percentile
          FROM users u WHERE u.id = $1`,
         [userId]
     );
@@ -291,15 +295,34 @@ export async function adjustPlayer(args: {
             metadata: { reason: args.reason ?? 'admin adjust' },
         });
     } else if (args.coinsDelta && args.coinsDelta < 0) {
-        // Negative adjust: clamp at zero, record in the ledger.
-        await query(
-            `UPDATE users SET coins = GREATEST(0, coins + $1), updated_at=now() WHERE id=$2`,
-            [args.coinsDelta, args.userId]
-        );
-        await query(
-            `INSERT INTO coin_grants (user_id, amount, source, metadata) VALUES ($1,$2,'admin_grant',$3)`,
-            [args.userId, args.coinsDelta, { reason: args.reason ?? 'admin adjust' }]
-        );
+        // Negative adjust: clamp at zero and record the amount ACTUALLY removed
+        // (not the requested delta) so the ledger reconciles with the balance.
+        // Both statements run in one transaction so we never leave an unlogged
+        // deduction (or a logged one that didn't apply).
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const before = await client.query<{ coins: number }>(
+                'SELECT coins FROM users WHERE id = $1 FOR UPDATE',
+                [args.userId]
+            );
+            const cur = before.rows[0]?.coins ?? 0;
+            const applied = -Math.min(cur, -args.coinsDelta); // ≤ 0, clamped
+            await client.query(
+                'UPDATE users SET coins = coins + $1, updated_at=now() WHERE id=$2',
+                [applied, args.userId]
+            );
+            await client.query(
+                `INSERT INTO coin_grants (user_id, amount, source, metadata) VALUES ($1,$2,'admin_grant',$3)`,
+                [args.userId, applied, { reason: args.reason ?? 'admin adjust', requested: args.coinsDelta }]
+            );
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
     }
     if (typeof args.rankPoints === 'number') {
         const pts = Math.max(0, Math.floor(args.rankPoints));

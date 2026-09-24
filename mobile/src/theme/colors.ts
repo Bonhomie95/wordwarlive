@@ -9,7 +9,7 @@
 // Three themes:
 //   - 'classic-dark'  — the original dark scheme, free, default
 //   - 'classic-light' — bright/legible, free
-//   - 'neon-strike'   — the green-on-dark "design" theme, paid
+//   - 'neon-strike'   — the green-on-dark "design" theme, free
 
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
@@ -154,7 +154,7 @@ export const THEME_CATALOG: Record<ThemeId, ThemeMeta> = {
         id: 'neon-strike',
         name: 'Neon Strike',
         description: 'Acid green. Built to intimidate.',
-        isPremium: true,
+        isPremium: false,
         tokens: NEON_STRIKE,
     },
 };

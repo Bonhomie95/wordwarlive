@@ -233,6 +233,8 @@ export default function DailyChallengeScreen() {
                         onPress={() => router.back()}
                         hitSlop={12}
                         style={styles.backBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Go back"
                     >
                         <Ionicons name="chevron-back" size={24} color={colors.text} />
                     </Pressable>
@@ -305,6 +307,8 @@ export default function DailyChallengeScreen() {
 
                         <Pressable
                             style={styles.shareBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel="Share result"
                             onPress={() => {
                                 if (!meta) return;
                                 shareText(

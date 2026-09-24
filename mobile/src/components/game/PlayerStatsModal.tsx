@@ -13,16 +13,41 @@ import { typography, radius, spacing } from '../../theme/typography';
 import { RankBadge } from '../ui/RankBadge';
 import { Avatar } from '../ui/Avatar';
 import { PlayerName } from '../ui/PlayerName';
-import { reportsApi } from '../../api/resources';
+import { blocksApi, reportsApi } from '../../api/resources';
 import type { PublicUser, RankTier } from '../../types/index';
 
 interface Props {
     player: PublicUser | null;
     /** Label for the modal title — "Your Stats" vs "Opponent" etc. */
     title: string;
-    /** Show a "Report player" action (only for opponents, not yourself). */
+    /** Show "Report" / "Block" actions (only for opponents, not yourself). */
     reportable?: boolean;
+    /** Called after the player is successfully blocked. */
+    onBlocked?: () => void;
     onClose: () => void;
+}
+
+function confirmBlock(player: PublicUser, onDone: () => void) {
+    Alert.alert(
+        `Block ${player.username}?`,
+        "You won't be matched with this player again, and they can't challenge you. You can unblock them later in Settings.",
+        [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Block',
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        await blocksApi.block(player.id);
+                        Alert.alert('Blocked', `You've blocked ${player.username}.`);
+                        onDone();
+                    } catch {
+                        Alert.alert('Could not block', 'Please try again later.');
+                    }
+                },
+            },
+        ]
+    );
 }
 
 function reportPlayer(player: PublicUser) {
@@ -65,6 +90,7 @@ export const PlayerStatsModal: React.FC<Props> = ({
     player,
     title,
     reportable,
+    onBlocked,
     onClose,
 }) => {
     return (
@@ -83,7 +109,12 @@ export const PlayerStatsModal: React.FC<Props> = ({
                             <Text style={styles.title} allowFontScaling={false}>
                                 {title}
                             </Text>
-                            <Pressable onPress={onClose} hitSlop={12}>
+                            <Pressable
+                                onPress={onClose}
+                                hitSlop={12}
+                                accessibilityRole="button"
+                                accessibilityLabel="Close"
+                            >
                                 <Ionicons name="close" size={20} color={colors.textDim} />
                             </Pressable>
                         </View>
@@ -120,21 +151,44 @@ export const PlayerStatsModal: React.FC<Props> = ({
                         </View>
 
                         {reportable ? (
-                            <Pressable
-                                onPress={() => reportPlayer(player)}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Report ${player.username}`}
-                                style={({ pressed }) => [
-                                    styles.reportBtn,
-                                    pressed ? { opacity: 0.7 } : null,
-                                ]}
-                                hitSlop={6}
-                            >
-                                <Ionicons name="flag-outline" size={14} color={colors.textMuted} />
-                                <Text style={styles.reportText} allowFontScaling={false}>
-                                    Report player
-                                </Text>
-                            </Pressable>
+                            <View style={styles.actionRow}>
+                                <Pressable
+                                    onPress={() => reportPlayer(player)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Report ${player.username}`}
+                                    style={({ pressed }) => [
+                                        styles.reportBtn,
+                                        pressed ? { opacity: 0.7 } : null,
+                                    ]}
+                                    hitSlop={6}
+                                >
+                                    <Ionicons name="flag-outline" size={14} color={colors.textMuted} />
+                                    <Text style={styles.reportText} allowFontScaling={false}>
+                                        Report
+                                    </Text>
+                                </Pressable>
+                                <View style={styles.actionDivider} />
+                                <Pressable
+                                    onPress={() =>
+                                        confirmBlock(player, () => {
+                                            onBlocked?.();
+                                            onClose();
+                                        })
+                                    }
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Block ${player.username}`}
+                                    style={({ pressed }) => [
+                                        styles.reportBtn,
+                                        pressed ? { opacity: 0.7 } : null,
+                                    ]}
+                                    hitSlop={6}
+                                >
+                                    <Ionicons name="ban-outline" size={14} color={colors.danger} />
+                                    <Text style={[styles.reportText, { color: colors.danger }]} allowFontScaling={false}>
+                                        Block
+                                    </Text>
+                                </Pressable>
+                            </View>
                         ) : null}
                     </Pressable>
                 </Pressable>
@@ -244,12 +298,24 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginTop: 2,
         letterSpacing: 0.5,
     },
+    actionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    actionDivider: {
+        width: 1,
+        height: 16,
+        backgroundColor: colors.border,
+        marginHorizontal: spacing.md,
+    },
     reportBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 6,
         paddingVertical: spacing.xs,
+        paddingHorizontal: spacing.sm,
     },
     reportText: {
         color: colors.textMuted,

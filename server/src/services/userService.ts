@@ -1,5 +1,6 @@
 import { query, pool } from '../db/pool.js';
 import { tierFromPoints } from '../game/ranks.js';
+import { revokeAppleRefreshToken } from '../auth/apple.js';
 
 export interface UserRow {
     id: string;
@@ -250,6 +251,14 @@ export function isValidUsername(name: string): boolean {
     return USERNAME_RE.test(name);
 }
 
+/** Persist the Apple refresh token captured at sign-in (see auth/apple.ts). */
+export async function setAppleRefreshToken(userId: string, token: string): Promise<void> {
+    await query('UPDATE users SET apple_refresh_token = $1, updated_at = now() WHERE id = $2', [
+        token,
+        userId,
+    ]);
+}
+
 /**
  * Permanently delete a user and their data (GDPR / App Store "delete my
  * account" requirement). Most child tables cascade on the users FK; matches
@@ -259,6 +268,16 @@ export function isValidUsername(name: string): boolean {
  * denormalized and unaffected.
  */
 export async function deleteAccount(userId: string): Promise<void> {
+    // Apple requires revoking Sign in with Apple tokens when the account goes
+    // away. Best-effort and BEFORE the row is deleted (that's where the token
+    // lives); a revoke failure never blocks the deletion itself.
+    const tok = await query<{ apple_refresh_token: string | null }>(
+        'SELECT apple_refresh_token FROM users WHERE id = $1',
+        [userId]
+    );
+    const refresh = tok[0]?.apple_refresh_token;
+    if (refresh) await revokeAppleRefreshToken(refresh);
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');

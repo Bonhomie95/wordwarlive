@@ -40,10 +40,15 @@ export function loginWithGoogle(idToken: string) {
     });
 }
 
-export function loginWithApple(idToken: string) {
+export interface AppleLoginArgs {
+    identityToken: string;
+    authorizationCode: string | null;
+}
+
+export function loginWithApple(args: AppleLoginArgs) {
     return apiRequest<AuthResponse>('/api/auth/apple', {
         method: 'POST',
-        body: { idToken },
+        body: { idToken: args.identityToken, authorizationCode: args.authorizationCode ?? undefined },
         auth: false,
     });
 }
@@ -68,9 +73,9 @@ export function linkGoogle(idToken: string) {
     });
 }
 
-export function linkApple(idToken: string) {
+export function linkApple(args: AppleLoginArgs) {
     return apiRequest<AuthResponse>('/api/auth/link/apple', {
         method: 'POST',
-        body: { idToken },
+        body: { idToken: args.identityToken, authorizationCode: args.authorizationCode ?? undefined },
     });
 }

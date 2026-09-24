@@ -104,6 +104,10 @@ battlePassRouter.post('/battlepass/upgrade-premium', requireAuth, async (req, re
         return res.status(verified.status).json({ error: verified.error });
     }
 
-    await unlockPremium(req.session!.userId);
+    // Premium is per season, so the store product is a CONSUMABLE (the same
+    // Apple ID must be able to buy it again next season). A replayed
+    // transaction from this account only re-affirms the season it paid for —
+    // it must never unlock a later season.
+    if (!verified.alreadyGranted) await unlockPremium(req.session!.userId);
     res.json({ ok: true });
 });

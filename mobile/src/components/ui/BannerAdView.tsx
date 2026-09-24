@@ -9,7 +9,7 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuthStore } from '../../store/authStore';
-import { adsAvailable } from '../../ads';
+import { adsAvailable, adRequestOptions } from '../../ads';
 import { makeThemedStyles, colors } from '../../theme/colors';
 
 interface AdsModule {
@@ -64,7 +64,7 @@ export const BannerAdView: React.FC = () => {
             <m.BannerAd
                 unitId={unitId}
                 size={m.BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                requestOptions={{ requestNonPersonalizedAdsOnly: false }}
+                requestOptions={adRequestOptions()}
                 onAdFailedToLoad={() => {
                     // Quiet — banners failing to load is normal during dev
                     // and for users with no available ads.

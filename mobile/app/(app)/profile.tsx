@@ -1,8 +1,8 @@
 // Profile tab. Shows the player's current rank, win/loss stats, and their
 // most recent matches. Sign-out lives down here too.
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
     Alert,
     FlatList,
@@ -31,14 +31,18 @@ export default function Profile() {
     const [matches, setMatches] = useState<RecentMatch[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        refreshMe().catch(() => {});
-        matchesApi
-            .recent(20)
-            .then((r) => setMatches(r.matches))
-            .catch(() => setMatches([]))
-            .finally(() => setLoading(false));
-    }, [refreshMe]);
+    // Re-fetch on every focus: the tab stays mounted, so a mount-only effect
+    // left "Recent matches" stale after a game was played.
+    useFocusEffect(
+        useCallback(() => {
+            refreshMe().catch(() => {});
+            matchesApi
+                .recent(20)
+                .then((r) => setMatches(r.matches))
+                .catch(() => setMatches([]))
+                .finally(() => setLoading(false));
+        }, [refreshMe])
+    );
 
     if (!user) return null;
 
@@ -96,7 +100,7 @@ export default function Profile() {
                                     numberOfLines={1}
                                 />
                                 <Text style={styles.provider} allowFontScaling={false}>
-                                    Signed in via {user.provider}
+                                    {isGuest ? 'Guest · not linked' : `Signed in via ${user.provider}`}
                                 </Text>
                             </View>
                             <RankBadge tier={tier} points={user.rankPoints} />

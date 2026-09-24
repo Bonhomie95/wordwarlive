@@ -3,6 +3,7 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
+    Pressable,
     StyleSheet,
     Text,
     TextInput,
@@ -12,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Button } from '../../src/components/ui/Button';
 import { Screen } from '../../src/components/ui/Screen';
 import { useAuthStore } from '../../src/store/authStore';
+import { contactSupport } from '../../src/lib/links';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
@@ -62,6 +64,28 @@ export default function Login() {
                             secureTextEntry
                             autoComplete="password"
                         />
+                        <Pressable
+                            onPress={() =>
+                                Alert.alert(
+                                    'Forgot your password?',
+                                    'Email support from the address you signed up with and we will reset it for you.',
+                                    [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        {
+                                            text: 'Email support',
+                                            onPress: () => contactSupport('WordWar password reset'),
+                                        },
+                                    ]
+                                )
+                            }
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel="Forgot password"
+                        >
+                            <Text style={styles.forgot} allowFontScaling={false}>
+                                Forgot password?
+                            </Text>
+                        </Pressable>
                     </View>
                 </View>
 
@@ -148,5 +172,12 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     actions: {
         gap: spacing.sm,
         marginBottom: spacing.lg,
+    },
+    forgot: {
+        color: colors.textDim,
+        fontFamily: typography.familyMono,
+        fontSize: typography.sizes.xs,
+        textAlign: 'right',
+        textDecorationLine: 'underline',
     },
 }));

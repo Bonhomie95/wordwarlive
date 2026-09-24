@@ -43,6 +43,8 @@ export default function ReplaysScreen() {
                     onPress={() => router.back()}
                     hitSlop={12}
                     style={styles.backBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go back"
                 >
                     <Ionicons name="chevron-back" size={24} color={colors.text} />
                 </Pressable>

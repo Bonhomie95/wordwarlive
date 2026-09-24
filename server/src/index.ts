@@ -38,6 +38,8 @@ import { replaysRouter } from './routes/replays.js';
 import { reportsRouter } from './routes/reports.js';
 import { pushRouter } from './routes/push.js';
 import { adminRouter } from './routes/admin.js';
+import { blocksRouter } from './routes/blocks.js';
+import { legalRouter } from './routes/legal.js';
 import { createSocketServer } from './socket/server.js';
 import { matchRegistry } from './socket/matchHandler.js';
 import { resetMatchmakingQueue } from './socket/matchmaking.js';
@@ -58,6 +60,14 @@ async function main() {
             logger.warn(
                 'IAP_ENFORCE is off in production — purchases are granted WITHOUT verifying store receipts.'
             );
+        }
+        if (env.APPLE_BUNDLE_ID && !env.appleRevokeConfigured) {
+            logger.warn(
+                'APPLE_TEAM_ID / APPLE_KEY_ID / APPLE_PRIVATE_KEY not set — Sign in with Apple tokens will NOT be revoked on account deletion (Apple requires this).'
+            );
+        }
+        if (!env.METRICS_TOKEN) {
+            logger.warn('METRICS_TOKEN is empty — GET /metrics is publicly readable.');
         }
     }
 
@@ -135,6 +145,11 @@ async function main() {
     app.use('/api', reportsRouter);
     app.use('/api', pushRouter);
     app.use('/api', adminRouter);
+    app.use('/api', blocksRouter);
+
+    // Public legal pages (privacy / terms / delete-account). Outside /api so the
+    // API rate limiter and JSON-only assumptions don't apply.
+    app.use(legalRouter);
 
     // Operational metrics. Guarded by METRICS_TOKEN when set (send it as
     // `Authorization: Bearer <token>`); otherwise open for internal scraping.

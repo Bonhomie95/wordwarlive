@@ -14,6 +14,7 @@
 import { redis } from '../db/redis.js';
 import { env } from '../config/env.js';
 import { findUserById } from '../services/userService.js';
+import { getBlockedIdsFor } from '../services/blocksService.js';
 import { createBotUser, difficultyForRank, adaptiveDifficulty } from '../ai/bot.js';
 import { getRecentResultsSummary } from '../services/matchService.js';
 import { logger } from '../utils/logger.js';
@@ -73,6 +74,12 @@ class MatchmakingHub {
             return;
         }
         const session = socket.data.session;
+        // Already in a live match? Ignore a stray queue_join (a buggy or
+        // modified client) — otherwise startMatch would overwrite this user's
+        // byUserId pointer to a second match and desync cleanup of the first.
+        if (matchRegistry.isInMatch(session.userId)) {
+            return;
+        }
         const user = await findUserById(session.userId);
         if (!user) throw new Error('User not found');
 
@@ -113,9 +120,11 @@ class MatchmakingHub {
     ): Promise<void> {
         const lo = rankPoints - radius;
         const hi = rankPoints + radius;
-        // ZRANGEBYSCORE to find candidates; exclude self.
+        // ZRANGEBYSCORE to find candidates; exclude self and anyone blocked in
+        // either direction so a blocked pair is never matched.
+        const blocked = new Set(await getBlockedIdsFor(userId));
         const ids = (await redis.zrangebyscore(QUEUE_KEY, lo, hi)).filter(
-            (id: string) => id !== userId
+            (id: string) => id !== userId && !blocked.has(id)
         );
         if (ids.length === 0) return;
 
@@ -152,8 +161,25 @@ class MatchmakingHub {
 
         const opponentMetaRaw = await redis.get(META_KEY(bestId));
         const myMetaRaw = await redis.get(META_KEY(userId));
+        if (!opponentMetaRaw || !myMetaRaw) {
+            // One side's meta TTL expired while its (TTL-less) queue entry
+            // lingered. Both were just ZREM'd above — re-enqueue whichever side
+            // still has a live meta so an actively-waiting player isn't silently
+            // dropped from matchmaking; let the genuinely-stale side fall out.
+            if (myMetaRaw) {
+                await redis.zadd(QUEUE_KEY, rankPoints, userId);
+            } else {
+                await redis.del(META_KEY(userId));
+            }
+            if (opponentMetaRaw) {
+                const om: QueueMeta = JSON.parse(opponentMetaRaw);
+                await redis.zadd(QUEUE_KEY, om.rankPoints, bestId);
+            } else {
+                await redis.del(META_KEY(bestId));
+            }
+            return;
+        }
         await redis.del(META_KEY(userId), META_KEY(bestId));
-        if (!opponentMetaRaw || !myMetaRaw) return;
         const oppMeta: QueueMeta = JSON.parse(opponentMetaRaw);
         const myMeta: QueueMeta = JSON.parse(myMetaRaw);
 

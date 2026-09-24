@@ -15,6 +15,7 @@ import { matchRegistry } from './matchHandler.js';
 import { socketIdFor } from './presence.js';
 import { findUserById } from '../services/userService.js';
 import { areFriends } from '../services/friendsService.js';
+import { isBlockedEither } from '../services/blocksService.js';
 import { sendPushToUser } from '../services/pushService.js';
 import { pickRankAwareWord } from '../game/words.js';
 import type { AppIOServer, AppSocket } from './server.js';
@@ -44,6 +45,9 @@ class FriendChallengeHub {
         const fromId = socket.data.session.userId;
         if (!friendId || fromId === friendId) {
             return { ok: false, error: "You can't challenge yourself." };
+        }
+        if (await isBlockedEither(fromId, friendId)) {
+            return { ok: false, error: 'You cannot challenge this player.' };
         }
         if (!(await areFriends(fromId, friendId))) {
             return { ok: false, error: 'They are not in your friends list.' };

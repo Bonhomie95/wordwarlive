@@ -1,19 +1,21 @@
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Button } from '../../src/components/ui/Button';
 import { Screen } from '../../src/components/ui/Screen';
 import { Wordmark } from '../../src/components/ui/Wordmark';
+import { LegalConsent } from '../../src/components/ui/LegalConsent';
 import { MonoLabel } from '../../src/components/ui/primitives';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
-import { appleSignIn, isAppleAvailable } from '../../src/auth/appleSignIn';
+import { appleSignIn, useAppleAvailable } from '../../src/auth/appleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 
-const APP_VERSION = 'v0.1.0 · STABLE';
+const APP_VERSION = `v${Constants.expoConfig?.version ?? '1.0.0'}`;
 
 export default function Welcome() {
     const router = useRouter();
@@ -22,6 +24,7 @@ export default function Welcome() {
     const signInApple = useAuthStore((s) => s.signInApple);
     const busy = useAuthStore((s) => s.busy);
     const google = useGoogleSignIn();
+    const appleAvailable = useAppleAvailable();
     const [oauthBusy, setOauthBusy] = useState(false);
 
     async function onGuest() {
@@ -51,8 +54,8 @@ export default function Welcome() {
     async function onApple() {
         setOauthBusy(true);
         try {
-            const idToken = await appleSignIn();
-            if (idToken) await signInApple(idToken);
+            const cred = await appleSignIn();
+            if (cred) await signInApple(cred);
         } catch (err) {
             Alert.alert('Apple sign-in failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
@@ -84,7 +87,7 @@ export default function Welcome() {
                         <View style={styles.line} />
                     </View>
 
-                    {isAppleAvailable() ? (
+                    {appleAvailable ? (
                         <AppleAuthentication.AppleAuthenticationButton
                             buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
                             buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
@@ -112,12 +115,15 @@ export default function Welcome() {
                     <Pressable
                         onPress={() => router.push('/(auth)/register')}
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Create an account"
                     >
                         <Text style={styles.smallLink} allowFontScaling={false}>
                             New here?{' '}
                             <Text style={{ color: colors.primary }}>Create an account</Text>
                         </Text>
                     </Pressable>
+                    <LegalConsent />
                 </View>
 
                 {/* Footer */}
@@ -176,5 +182,3 @@ const styles = makeThemedStyles(() =>
         },
     })
 );
-
-void Link;

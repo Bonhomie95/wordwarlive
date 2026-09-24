@@ -888,23 +888,43 @@ class MatchRegistry {
             p2IsBot: match.p2IsBot,
         });
 
+        // A DB hiccup in ANY post-match write must not prevent `match_over` from
+        // reaching the players or the registry from being cleaned up — otherwise
+        // both clients are softlocked on a finished match with no result. Each
+        // post-match write is therefore made non-throwing: it degrades (log +
+        // fallback) instead of rejecting endMatch.
+        const safe = <T>(p: Promise<T>, fallback: T, label: string): Promise<T> =>
+            p.catch((err) => {
+                logger.error({ err, matchId: match.id }, label);
+                return fallback;
+            });
+
         // Apply rank/win/loss/streak updates. Bots' updates are harmless but
-        // we skip them to keep bot rows from drifting unnecessarily.
+        // we skip them to keep bot rows from drifting unnecessarily. On failure
+        // we fall back to the pre-match row so the client still gets a result.
         const [updatedP1, updatedP2] = await Promise.all([
             match.p1IsBot
                 ? Promise.resolve(p1)
-                : applyMatchResult({
-                      userId: p1.id,
-                      isWinner: winner === 'p1',
-                      rankDelta: p1Delta,
-                  }),
+                : safe(
+                      applyMatchResult({
+                          userId: p1.id,
+                          isWinner: winner === 'p1',
+                          rankDelta: p1Delta,
+                      }),
+                      p1,
+                      'applyMatchResult p1 failed at match end'
+                  ),
             match.p2IsBot
                 ? Promise.resolve(p2)
-                : applyMatchResult({
-                      userId: p2.id,
-                      isWinner: winner === 'p2',
-                      rankDelta: p2Delta,
-                  }),
+                : safe(
+                      applyMatchResult({
+                          userId: p2.id,
+                          isWinner: winner === 'p2',
+                          rankDelta: p2Delta,
+                      }),
+                      p2,
+                      'applyMatchResult p2 failed at match end'
+                  ),
         ]);
 
         // Persist the match + replay. Wrapped because any DB hiccup here
@@ -971,6 +991,7 @@ class MatchRegistry {
         if (winner === 'p1' && !match.p1IsBot) p1CoinsAwarded = COINS_PER_WIN;
         if (winner === 'p2' && !match.p2IsBot) p2CoinsAwarded = COINS_PER_WIN;
 
+        const noXp = { xpAwarded: 0, newXp: 0, newTier: 0 };
         const [
             p1XpResult,
             p2XpResult,
@@ -980,64 +1001,94 @@ class MatchRegistry {
             p2Streak,
         ] = await Promise.all([
             match.p1IsBot
-                ? Promise.resolve({ xpAwarded: 0, newXp: 0, newTier: 0 })
-                : awardMatchXp({
-                      userId: p1.id,
-                      result: winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
-                  }),
+                ? Promise.resolve(noXp)
+                : safe(
+                      awardMatchXp({
+                          userId: p1.id,
+                          result: winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
+                      }),
+                      noXp,
+                      'awardMatchXp p1 failed'
+                  ),
             match.p2IsBot
-                ? Promise.resolve({ xpAwarded: 0, newXp: 0, newTier: 0 })
-                : awardMatchXp({
-                      userId: p2.id,
-                      result: winner === 'p2' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
-                  }),
+                ? Promise.resolve(noXp)
+                : safe(
+                      awardMatchXp({
+                          userId: p2.id,
+                          result: winner === 'p2' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
+                      }),
+                      noXp,
+                      'awardMatchXp p2 failed'
+                  ),
             p1CoinsAwarded > 0
-                ? grantCoins({
-                      userId: p1.id,
-                      amount: COINS_PER_WIN,
-                      source: 'match_win',
-                      metadata: { matchId: match.id },
-                  })
+                ? safe(
+                      grantCoins({
+                          userId: p1.id,
+                          amount: COINS_PER_WIN,
+                          source: 'match_win',
+                          metadata: { matchId: match.id },
+                      }),
+                      null as number | null,
+                      'grantCoins p1 failed'
+                  )
                 : Promise.resolve<number | null>(null),
             p2CoinsAwarded > 0
-                ? grantCoins({
-                      userId: p2.id,
-                      amount: COINS_PER_WIN,
-                      source: 'match_win',
-                      metadata: { matchId: match.id },
-                  })
-                : Promise.resolve<number | null>(null),
-            match.p1IsBot ? Promise.resolve(null) : advanceStreakOnMatchComplete(p1.id),
-            match.p2IsBot ? Promise.resolve(null) : advanceStreakOnMatchComplete(p2.id),
-        ]);
-        if (p1CoinsTotalRes != null) p1CoinsTotal = p1CoinsTotalRes;
-        if (p2CoinsTotalRes != null) p2CoinsTotal = p2CoinsTotalRes;
-
-        // Leaderboards + season peak (skip bots). Independent between players.
-        await Promise.all([
-            match.p1IsBot
-                ? Promise.resolve()
-                : Promise.all([
-                      recordMatchResult({
-                          userId: p1.id,
-                          isWin: winner === 'p1',
-                          rankPoints: updatedP1.rank_points,
-                          mode: match.mode,
-                      }),
-                      updateSeasonPeak(p1.id, updatedP1.rank_points),
-                  ]).then(() => undefined),
-            match.p2IsBot
-                ? Promise.resolve()
-                : Promise.all([
-                      recordMatchResult({
+                ? safe(
+                      grantCoins({
                           userId: p2.id,
-                          isWin: winner === 'p2',
-                          rankPoints: updatedP2.rank_points,
-                          mode: match.mode,
+                          amount: COINS_PER_WIN,
+                          source: 'match_win',
+                          metadata: { matchId: match.id },
                       }),
-                      updateSeasonPeak(p2.id, updatedP2.rank_points),
-                  ]).then(() => undefined),
+                      null as number | null,
+                      'grantCoins p2 failed'
+                  )
+                : Promise.resolve<number | null>(null),
+            match.p1IsBot ? Promise.resolve(null) : safe(advanceStreakOnMatchComplete(p1.id), null, 'streak p1 failed'),
+            match.p2IsBot ? Promise.resolve(null) : safe(advanceStreakOnMatchComplete(p2.id), null, 'streak p2 failed'),
         ]);
+        // If a coin grant failed, don't tell the client they earned coins they
+        // didn't actually receive.
+        if (p1CoinsAwarded > 0) {
+            if (p1CoinsTotalRes != null) p1CoinsTotal = p1CoinsTotalRes;
+            else p1CoinsAwarded = 0;
+        }
+        if (p2CoinsAwarded > 0) {
+            if (p2CoinsTotalRes != null) p2CoinsTotal = p2CoinsTotalRes;
+            else p2CoinsAwarded = 0;
+        }
+
+        // Leaderboards + season peak (skip bots). Independent between players,
+        // and non-critical to the client result — wrapped so a failure can't
+        // block match_over.
+        await safe(
+            Promise.all([
+                match.p1IsBot
+                    ? Promise.resolve()
+                    : Promise.all([
+                          recordMatchResult({
+                              userId: p1.id,
+                              isWin: winner === 'p1',
+                              rankPoints: updatedP1.rank_points,
+                              mode: match.mode,
+                          }),
+                          updateSeasonPeak(p1.id, updatedP1.rank_points),
+                      ]).then(() => undefined),
+                match.p2IsBot
+                    ? Promise.resolve()
+                    : Promise.all([
+                          recordMatchResult({
+                              userId: p2.id,
+                              isWin: winner === 'p2',
+                              rankPoints: updatedP2.rank_points,
+                              mode: match.mode,
+                          }),
+                          updateSeasonPeak(p2.id, updatedP2.rank_points),
+                      ]).then(() => undefined),
+            ]).then(() => undefined),
+            undefined,
+            'leaderboard/season update failed at match end'
+        );
 
         const p1Result: 'win' | 'loss' | 'tie' =
             winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss';

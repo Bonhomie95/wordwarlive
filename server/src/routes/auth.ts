@@ -8,6 +8,7 @@ import {
     findUserByProviderSubject,
     getPasswordHash,
     isValidUsername,
+    setAppleRefreshToken,
     type UserRow,
 } from '../services/userService.js';
 import { requireAuth } from '../auth/middleware.js';
@@ -16,7 +17,7 @@ import { query } from '../db/pool.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
 import { verifyGoogleIdToken } from '../auth/google.js';
-import { verifyAppleIdToken } from '../auth/apple.js';
+import { exchangeAppleAuthCode, verifyAppleIdToken } from '../auth/apple.js';
 import { logger } from '../utils/logger.js';
 
 export const authRouter = Router();
@@ -212,7 +213,13 @@ authRouter.post('/google', async (req, res) => {
 
 // ─── Apple ──────────────────────────────────────────────────────────────────
 
-const appleSchema = z.object({ idToken: z.string().min(1) });
+const appleSchema = z.object({
+    idToken: z.string().min(1),
+    // One-time code from the native sheet; exchanged for a refresh token so we
+    // can revoke the sign-in when the account is deleted. Optional so older
+    // clients keep working.
+    authorizationCode: z.string().min(1).max(2048).optional(),
+});
 
 authRouter.post('/apple', async (req, res) => {
     const parsed = appleSchema.safeParse(req.body);
@@ -235,6 +242,10 @@ authRouter.post('/apple', async (req, res) => {
             subject: identity.sub,
             email: identity.email,
         });
+    }
+    if (parsed.data.authorizationCode) {
+        const refresh = await exchangeAppleAuthCode(parsed.data.authorizationCode);
+        if (refresh) await setAppleRefreshToken(user.id, refresh);
     }
     const token = signSession({
         userId: user.id,
@@ -390,6 +401,10 @@ authRouter.post('/link/apple', requireAuth, async (req, res) => {
         return res.status(409).json({ error: 'Account was already linked.' });
     }
 
+    if (parsed.data.authorizationCode) {
+        const refresh = await exchangeAppleAuthCode(parsed.data.authorizationCode);
+        if (refresh) await setAppleRefreshToken(check.user.id, refresh);
+    }
     logger.info({ userId: check.user.id }, 'Anonymous account linked to Apple');
     const token = signSession({
         userId: check.user.id,

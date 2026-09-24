@@ -127,52 +127,134 @@ Jump in and race your first opponent!
 
 ## 7. Privacy & compliance (both stores)
 
-- **Privacy Policy URL:** host `PRIVACY.md` publicly (e.g. GitHub Pages) and paste the URL. Required by both stores.
-- **Terms of Service URL:** host `TERMS.md` publicly. Required by Play for apps with purchases; recommended for App Store.
-- **Support URL / email:** `adeyemibabatundejoseph@gmail.com`.
-- **Account deletion:** in-app at **Settings → Account → Delete account** (Apple + Play both require this for apps with accounts) — already implemented.
-- **Data collected (for App Privacy label / Play Data Safety):**
-  - Identifiers: device ID (guest play), user ID.
-  - Contact: email (only if the user signs up with email/Google/Apple).
-  - Purchases: IAP transaction history.
-  - Usage/Diagnostics: crash + performance data (if Sentry enabled).
-  - **Not** collected: location, contacts, photos, health, browsing history.
-  - Data is used for app functionality, not tracking. Ads use AdMob — declare AdMob’s data collection per Google’s guidance and complete the **ATT** prompt on iOS (already configured).
-- **Ads:** app shows banner + rewarded + interstitial ads (AdMob). Declare ads in both stores. Provide a “remove ads” IAP (implemented).
-- **In-app purchases:** coins, cosmetics, battle-pass premium, remove-ads. List them in App Store Connect / Play Console and set `IAP_ENFORCE=true` server-side before going live (see `DEPLOYMENT.md`).
+Everything below is implemented in code; the bullets marked **you** need your
+accounts/keys.
+
+- **Privacy Policy / Terms URLs:** served by the API server at
+  `https://<your-api-host>/legal/privacy` and `/legal/terms` (rendered from
+  `server/legal/*.md`). Paste those URLs in App Store Connect, Play Console,
+  and the AdMob console. The app links both from Settings and from the
+  welcome/register "By continuing you agree…" line.
+- **Account deletion:** in-app at **Profile → Settings → Account → Delete
+  account** (Apple 5.1.1(v)) **and** a web page at
+  `https://<your-api-host>/legal/delete-account` (Play requires a web link —
+  paste it as the "Delete account URL" in the Data safety form). Deleting a
+  Sign in with Apple account also revokes the Apple token, as Apple requires —
+  **you:** set `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` on the
+  server (Sign in with Apple key from the developer portal).
+- **Support contact:** in-app (Settings → Contact support, login "Forgot
+  password?", suspended screen) → `adeyemibabatundejoseph@gmail.com`
+  (override with `EXPO_PUBLIC_SUPPORT_EMAIL` / server `SUPPORT_EMAIL`).
+- **Login services (Apple 4.8):** Google login is offered, so **Sign in with
+  Apple is enabled** (`usesAppleSignIn`, entitlement, runtime availability
+  check). **You:** the App ID in the developer portal must have the *Sign in
+  with Apple* capability (paid team required).
+- **UGC (Apple 1.2):** profanity filter on usernames + Mystery words, in-app
+  **Report** and **Block** from the opponent card, blocked-users management in
+  Settings, Terms agreement at sign-up, published contact email. ✔
+- **Ads:** AdMob banner + interstitial + rewarded. iOS **ATT** prompt before
+  init; **UMP consent form** (GDPR/UK + US states) via `AdsConsent.gatherConsent`
+  with a Settings → *Privacy options* entry point where required; ad content
+  rating capped at **T**. **You:** replace the sample AdMob app ids
+  (`ADMOB_IOS_APP_ID` / `ADMOB_ANDROID_APP_ID` at build time) and unit ids
+  (`EXPO_PUBLIC_ADMOB_*`) — a production EAS build **fails** if they're missing
+  or still Google's samples. Declare "Contains ads" in both stores and set up
+  the GDPR/US-state messages in AdMob → Privacy & messaging.
+- **In-app purchases:** through StoreKit / Play Billing (`expo-iap`, Play
+  Billing Library 8.x). Prices in the UI come from the store (localized). iOS
+  transactions are verified server-side from the StoreKit 2 signed JWS (Apple
+  root pinned); Android via the Play Developer API. "Restore Purchases" is in
+  the shop. Purchases still held by the store are reconciled at every launch.
+  **You:** create the products below, then set `IAP_ENFORCE=true` (default in
+  production) + `GOOGLE_PLAY_PACKAGE_NAME` + `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+
+### In-app products to create (ids must match exactly)
+
+| Product id | Type | Reference price | Grants |
+|---|---|---|---|
+| `dev.bonhomieinc.wordwar.remove_ads` | Non-consumable | $4.99 | Removes banner + interstitial ads |
+| `dev.bonhomieinc.wordwar.battlepass.premium` | **Consumable** | $3.99 | Premium track for the current season (re-buyable next season) |
+| `dev.bonhomieinc.wordwar.coins.pebble` | Consumable | $0.99 | 100 coins |
+| `dev.bonhomieinc.wordwar.coins.pocket` | Consumable | $4.99 | 550 coins |
+| `dev.bonhomieinc.wordwar.coins.treasure` | Consumable | $9.99 | 1,200 coins |
+| `dev.bonhomieinc.wordwar.coins.vault` | Consumable | $19.99 | 2,700 coins |
+| `dev.bonhomieinc.wordwar.coins.mega` | Consumable | $49.99 | 7,500 coins |
+| `dev.bonhomieinc.wordwar.cosmetic.avatar_owl_01` | Non-consumable | $1.99 | Owl avatar |
+| `dev.bonhomieinc.wordwar.cosmetic.avatar_fox_01` | Non-consumable | $1.99 | Fox avatar |
+| `dev.bonhomieinc.wordwar.cosmetic.theme_paper` | Non-consumable | $2.99 | Paperback board theme |
+| `dev.bonhomieinc.wordwar.cosmetic.theme_neon` | Non-consumable | $2.99 | Neon Pulse board theme |
+| `dev.bonhomieinc.wordwar.cosmetic.theme_obsidian` | Non-consumable | $4.99 | Obsidian board theme |
+| `dev.bonhomieinc.wordwar.cosmetic.nameplate_gold` | Non-consumable | $2.99 | Gold nameplate |
+| `dev.bonhomieinc.wordwar.cosmetic.nameplate_rainbow` | Non-consumable | $5.99 | Spectrum nameplate |
+| `dev.bonhomieinc.wordwar.cosmetic.victory_confetti` | Non-consumable | $3.99 | Confetti Storm victory animation |
+| `dev.bonhomieinc.wordwar.cosmetic.victory_lightning` | Non-consumable | $7.99 | Lightning victory animation |
+
+(Paid cosmetics = every row in the `cosmetics` table with `price_cents > 0`;
+add a product whenever you add one. Free cosmetics need no product.)
+
+### Data collected (App Privacy label / Play Data Safety)
+
+| Data | Collected | Linked to user | Used for tracking | Purpose |
+|---|---|---|---|---|
+| User ID | yes | yes | no | App functionality |
+| Email address | only email/Google/Apple sign-in | yes | no | App functionality (login) |
+| Device ID (guest id) | yes | yes | no | App functionality (guest login) |
+| Purchase history | yes | yes | no | App functionality (entitlements) |
+| Gameplay content (guesses, words, usernames) | yes | yes | no | App functionality |
+| Advertising identifier (IDFA / AD_ID) | via AdMob | — | **yes (iOS, after ATT)** | Third-party advertising |
+| Coarse location / IP | via AdMob + server logs | no | no | Advertising / analytics, security |
+| Crash data | only if Sentry is enabled | no | no | App functionality |
+
+Not collected: contacts, photos, precise location, health, browsing history.
+Data can be deleted by the user (in-app + web). Data is encrypted in transit.
+
+**Age rating:** answer the questionnaires honestly for user-generated
+usernames/words with moderation + reporting → typically **12+** (Apple,
+"Infrequent/Mild … user-generated content") / **Teen** (IARC). Do not select
+the Kids category (ads + UGC).
 
 ---
 
 ## 8. Submission checklist
 
-### Apple App Store
-- [ ] **Paid Apple Developer Program** membership active (required for release + Sign In with Apple).
-- [ ] Re-enable Sign In with Apple: set `ios.usesAppleSignIn: true` in `app.json` and restore the `com.apple.developer.applesignin` entitlement (removed for free-team local testing).
-- [ ] Bundle ID `dev.bonhomieinc.wordwar` registered to your team; App ID created with Sign In with Apple + Push (if used) + In-App Purchase capabilities.
-- [ ] Build & upload via EAS: `eas build --profile production --platform ios` → `eas submit --profile production --platform ios`.
-- [ ] App Store Connect: name, subtitle, promo text, description, keywords, category, age rating questionnaire.
-- [ ] Upload **6.9" screenshots** (`ios-screenshots-6.9/`) — the primary iPhone slot; 6.7" (`ios-screenshots/`) as the alternate. Icon is pulled from the build.
-- [ ] Upload **iPad 13" screenshots** (`ipad-screenshots/`). iPad support is now enabled (`supportsTablet: true`) — **test the app on an iPad** (it's portrait phone-first) before submitting so the review build matches the screenshots.
-- [ ] App Privacy questionnaire (section 7). ATT usage string is set.
-- [ ] Privacy Policy + Support URLs.
-- [ ] In-App Purchases created + submitted with the build.
-- [ ] Sign-in demo account for review (or note that guest “Play Now” needs no login).
+### Code / config (done in this repo)
+- [x] Sign in with Apple enabled (`usesAppleSignIn`, entitlement, runtime check).
+- [x] iPad: `requireFullScreen` (portrait-only; avoids ITMS-90474).
+- [x] Version `1.0.0`, build 1 (EAS auto-increments remotely).
+- [x] iOS privacy manifest (tracking flag + collected data types); ATT prompt.
+- [x] UMP consent form + Settings → Privacy options; ad content rating T.
+- [x] Terms/Privacy consent line at sign-up; Privacy + Terms + Support in Settings.
+- [x] Account deletion in-app + web page; Apple token revocation on delete.
+- [x] StoreKit 2 / Play Billing 8 purchases with server verification, restore, launch reconcile, localized prices.
+- [x] Unused Android permissions stripped (storage, overlay); AD_ID + BILLING present.
+- [x] Production build guard: fails on missing/sample AdMob ids or non-https API URL.
+- [x] Push permission asked in context (Friends), not at launch.
 
-### Google Play
-- [ ] Play Console developer account ($25 one-time) active.
-- [ ] Build & upload AAB: `eas build --profile production --platform android` → `eas submit --profile production --platform android`.
-- [ ] Store listing: name, short + full description, **app icon 512** (`icons/`), **feature graphic** (`feature-graphic/`), **phone screenshots** (`android-screenshots/`).
-- [ ] Content rating questionnaire (IARC).
-- [ ] Data Safety form (section 7).
-- [ ] Ads declaration = Yes. Target audience + content.
-- [ ] Privacy Policy URL.
-- [ ] In-app products created; closed testing track before production is recommended.
+### Apple App Store (you)
+- [ ] **Paid Apple Developer Program** membership; App ID `dev.bonhomieinc.wordwar` with *Sign in with Apple*, *Push Notifications*, *In-App Purchase* capabilities.
+- [ ] Sign in with Apple **key** (.p8) → server `APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY`.
+- [ ] Create the in-app products above in App Store Connect and attach them to the first version.
+- [ ] `eas build --profile production --platform ios` → `eas submit`. Set `EXPO_PUBLIC_API_URL` (real https host), `ADMOB_IOS_APP_ID`, `EXPO_PUBLIC_ADMOB_*_IOS_ID`, `EXPO_PUBLIC_GOOGLE_*` in `eas.json` production env or EAS env vars (`.env` is NOT uploaded).
+- [ ] App Store Connect: name, subtitle, promo text, description, keywords, category, **age rating**, App Privacy (table above), Privacy Policy URL (`/legal/privacy`), Support URL/email.
+- [ ] Screenshots: **6.9"** (`ios-screenshots-6.9/`), 6.7" alternate, **iPad 13"** (`ipad-screenshots/`). Test on an iPad simulator once (app is portrait full-screen).
+- [ ] Review notes: "Tap PLAY NOW to play as a guest — no login needed. Purchases can be tested with a sandbox account."
+
+### Google Play (you)
+- [ ] Play Console account; upload key / Play App Signing.
+- [ ] `eas build --profile production --platform android` (AAB) → `eas submit`. Same env vars as above (Android ids).
+- [ ] Store listing: icon 512 (`icons/`), feature graphic (`feature-graphic/`), phone screenshots (`android-screenshots/`).
+- [ ] **Content rating** (IARC) questionnaire; **Ads = Yes**; target audience 13+ (not designed for children).
+- [ ] **Data safety** form (table above) + **Delete account URL** = `https://<api-host>/legal/delete-account`; Privacy Policy URL.
+- [ ] Create the in-app products above; a Google Cloud service account with the *Android Publisher* role → server `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+- [ ] Push: upload FCM v1 credentials to EAS (`eas credentials`) so Expo push works on Android.
+- [ ] Closed testing track first (Play requires 12 testers × 14 days for new personal accounts before production).
 
 ### Server (before either store goes live)
-- [ ] `NODE_ENV=production`, locked `CORS_ORIGINS`, `TRUST_PROXY`, real `JWT_SECRET`.
-- [ ] `IAP_ENFORCE=true` + Apple shared secret + Google Play service account (see `DEPLOYMENT.md`).
-- [ ] Managed Postgres + Redis, backups/PITR, sticky-session LB if >1 node (see `deploy/`).
-- [ ] AdMob production ad-unit IDs in the mobile env (replace test IDs).
+- [ ] Host the API over **https** (the app refuses cleartext in production). Run migrations (`npm run migrate`) — includes `020_apple_refresh_token`.
+- [ ] `NODE_ENV=production`, real `JWT_SECRET`, locked `CORS_ORIGINS`, `TRUST_PROXY`, `METRICS_TOKEN`.
+- [ ] `IAP_ENFORCE=true` (default in production), `APPLE_BUNDLE_ID`, `GOOGLE_PLAY_PACKAGE_NAME`, `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, Apple sign-in key vars, `SUPPORT_EMAIL`.
+- [ ] AdMob rewarded **SSV callback URL** = `https://<api-host>/api/ads/ssv` on both rewarded units.
+- [ ] Managed Postgres + Redis with backups; sticky sessions if >1 node (see `deploy/`).
 
 ---
 

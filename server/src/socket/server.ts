@@ -25,6 +25,7 @@ import {
 } from '../services/friendsService.js';
 import { pickRankAwareWord, pickRandomWord } from '../game/words.js';
 import { findUserById, getSessionState } from '../services/userService.js';
+import { isBlockedEither } from '../services/blocksService.js';
 import {
     parse,
     guessSubmitSchema,
@@ -287,6 +288,9 @@ export function createSocketServer(http: HttpServer): AppIOServer {
                 }
                 if (resolved.hostId === socket.data.session.userId) {
                     return ack({ ok: false, error: "That's your own code." });
+                }
+                if (await isBlockedEither(resolved.hostId, socket.data.session.userId)) {
+                    return ack({ ok: false, error: 'You cannot join this match.' });
                 }
 
                 const hostSocketId = await socketIdFor(resolved.hostId);

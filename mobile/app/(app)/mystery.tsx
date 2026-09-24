@@ -105,6 +105,8 @@ export default function MysteryScreen() {
                             onPress={() => router.back()}
                             hitSlop={12}
                             style={styles.backBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel="Go back"
                         >
                             <Ionicons name="chevron-back" size={24} color={colors.text} />
                         </Pressable>
@@ -139,6 +141,8 @@ export default function MysteryScreen() {
                                 />
                                 <Pressable
                                     onPress={onWithdraw}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Withdraw word"
                                     style={({ pressed }) => [
                                         styles.withdrawBtn,
                                         pressed ? { opacity: 0.85 } : null,

@@ -19,6 +19,7 @@ import {
   linkEmail,
   linkGoogle,
   linkApple,
+  type AppleLoginArgs,
 } from "../api/auth";
 import { usersApi } from "../api/resources";
 import type { MeResponse, PublicUser } from "../types/index";
@@ -84,14 +85,14 @@ interface AuthState {
     username: string,
   ) => Promise<void>;
   signInGoogle: (idToken: string) => Promise<void>;
-  signInApple: (idToken: string) => Promise<void>;
+  signInApple: (cred: AppleLoginArgs) => Promise<void>;
   refreshMe: () => Promise<void>;
 
   /** Upgrade the current ANONYMOUS account in place — same user row, same
    *  rank/coins/history — protected by real credentials afterwards. */
   linkEmail: (email: string, password: string) => Promise<void>;
   linkGoogle: (idToken: string) => Promise<void>;
-  linkApple: (idToken: string) => Promise<void>;
+  linkApple: (cred: AppleLoginArgs) => Promise<void>;
 
   /** Adopt a freshly-rotated token for THIS device (e.g. after
    *  "log out everywhere"). Persists it, tears down the old socket so the
@@ -229,10 +230,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signInApple: async (idToken) => {
+  signInApple: async (cred) => {
     set({ busy: true, error: null });
     try {
-      const r = await loginWithApple(idToken);
+      const r = await loginWithApple(cred);
       await persistAndApply(r.token, r.user, set);
     } catch (err) {
       set({
@@ -274,10 +275,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  linkApple: async (idToken) => {
+  linkApple: async (cred) => {
     set({ busy: true, error: null });
     try {
-      const r = await linkApple(idToken);
+      const r = await linkApple(cred);
       await persistAndApply(r.token, r.user, set);
       get().refreshMe().catch(() => {});
     } catch (err) {

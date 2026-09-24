@@ -1,6 +1,6 @@
 # WordWar — Terms of Service
 
-_Last updated: 2026-08-21_
+_Last updated: 2026-09-24_
 
 These Terms of Service ("Terms") govern your use of the WordWar mobile game
 ("the App"), operated by Bonhomie Inc. ("we", "us"). By creating an account or
@@ -17,8 +17,8 @@ you may use the App only with the involvement of a parent or guardian.
   credentials secure. You can sign out of all devices from **Settings →
   Account → Log out of all devices**.
 - You may delete your account at any time from **Settings → Account → Delete
-  account**. Deletion is permanent and removes your rank, coins, cosmetics, and
-  match history.
+  account**, or via the web at /legal/delete-account. Deletion is permanent and
+  removes your rank, coins, cosmetics, and match history.
 
 ## 3. Acceptable use
 You agree not to:
@@ -29,7 +29,9 @@ You agree not to:
 - Attempt to access accounts, data, or systems that are not yours.
 
 We may suspend or terminate accounts that violate these Terms. You can report
-offensive content or behavior in-app (tap a player to report).
+offensive content or behavior in-app (tap a player to report) and block players
+you don't want to be matched with (Settings → Blocked users). Usernames and
+Mystery-mode words are filtered for offensive content and reviewed on report.
 
 ## 4. Matchmaking and bots
 To keep matches available at all times — especially at off-peak hours and for
@@ -61,4 +63,4 @@ the stores. Continued use after changes take effect constitutes acceptance.
 ## 9. Contact
 Questions about these Terms: **adeyemibabatundejoseph@gmail.com**
 
-See also our [Privacy Policy](PRIVACY.md).
+See also our [Privacy Policy](/legal/privacy).

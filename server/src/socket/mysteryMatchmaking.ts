@@ -18,6 +18,7 @@ import {
 } from '../services/mysteryService.js';
 import { getRecentResultsSummary } from '../services/matchService.js';
 import { findUserById } from '../services/userService.js';
+import { getBlockedIdsFor } from '../services/blocksService.js';
 import { createBotUser, adaptiveDifficulty } from '../ai/bot.js';
 import { pickRandomWord } from '../game/words.js';
 import { matchRegistry } from './matchHandler.js';
@@ -106,7 +107,10 @@ class MysteryHub {
             //    queue, so both sides are co-located (match runtime is
             //    node-local). Prevents a cross-node pairing from consuming
             //    both submissions without starting a match.
-            const localIds = [...this.queue.keys()];
+            // Exclude anyone blocked in either direction from this player's
+            // eligible opponents.
+            const blocked = new Set(await getBlockedIdsFor(entry.userId));
+            const localIds = [...this.queue.keys()].filter((id) => !blocked.has(id));
             const result = await tryMatch(entry.userId, localIds);
             if (result.matched) {
                 const oppEntry = this.queue.get(result.opponentUserId);

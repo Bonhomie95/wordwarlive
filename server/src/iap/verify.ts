@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
 import { pool } from '../db/pool.js';
 import { logger } from '../utils/logger.js';
+import { looksLikeJws, verifyAppleSignedTransaction } from './appleJws.js';
 
 export type IapPlatform = 'ios' | 'android';
 
@@ -26,6 +27,12 @@ export type IapPlatform = 'ios' | 'android';
 // their own productId in the catalog; the rest follow this convention.
 const PRODUCT_PREFIX = 'dev.bonhomieinc.wordwar';
 export const REMOVE_ADS_PRODUCT_ID = `${PRODUCT_PREFIX}.remove_ads`;
+// Store product types (create them EXACTLY like this in App Store Connect /
+// Play Console):
+//   remove_ads           non-consumable
+//   battlepass.premium   CONSUMABLE  (one unlock per season, re-buyable)
+//   cosmetic.<id>        non-consumable, one per paid cosmetic
+//   coins.<pack>         consumable
 export const BATTLE_PASS_PRODUCT_ID = `${PRODUCT_PREFIX}.battlepass.premium`;
 export function cosmeticProductId(cosmeticId: string): string {
     return `${PRODUCT_PREFIX}.cosmetic.${cosmeticId}`;
@@ -46,7 +53,11 @@ export interface VerifyArgs {
 }
 
 export type VerifyResult =
-    | { ok: true; transactionId: string }
+    /** First time we see this transaction — the caller should grant. */
+    | { ok: true; transactionId: string; alreadyGranted: false }
+    /** Same user re-sent a receipt we already fulfilled (restore / retry after
+     *  a dropped response). Idempotent: respond success, grant NOTHING again. */
+    | { ok: true; transactionId: string; alreadyGranted: true }
     | { ok: false; status: number; error: string };
 
 function isPlatform(v: string | undefined): v is IapPlatform {
@@ -64,17 +75,13 @@ export async function verifyIapPurchase(
     if (!env.IAP_ENFORCE) {
         const txnId = args.transactionId || `dev-${randomUUID()}`;
         const platform = isPlatform(args.platform) ? args.platform : 'ios';
-        const reserved = await reserveTransaction({
+        return reserveOrReplay({
             platform,
             transactionId: txnId,
             userId: args.userId,
             productId: args.productId,
             entitlement: args.entitlement,
         });
-        if (!reserved) {
-            return { ok: false, status: 409, error: 'Purchase already redeemed.' };
-        }
-        return { ok: true, transactionId: txnId };
     }
 
     // ─── Production / enforced ───────────────────────────────────────────────
@@ -99,17 +106,42 @@ export async function verifyIapPurchase(
         return { ok: false, status: 402, error: 'Could not verify purchase.' };
     }
 
-    const reserved = await reserveTransaction({
+    return reserveOrReplay({
         platform: args.platform,
         transactionId: storeTxnId,
         userId: args.userId,
         productId: args.productId,
         entitlement: args.entitlement,
     });
-    if (!reserved) {
-        return { ok: false, status: 409, error: 'Purchase already redeemed.' };
+}
+
+/**
+ * Reserve the transaction, or classify a replay: the SAME user re-sending a
+ * fulfilled receipt (app reinstall, "Restore Purchases", retry after a lost
+ * response) is a success with nothing more to grant; a DIFFERENT user is a 409.
+ */
+async function reserveOrReplay(row: {
+    platform: IapPlatform;
+    transactionId: string;
+    userId: string;
+    productId: string;
+    entitlement: string;
+}): Promise<VerifyResult> {
+    if (await reserveTransaction(row)) {
+        return { ok: true, transactionId: row.transactionId, alreadyGranted: false };
     }
-    return { ok: true, transactionId: storeTxnId };
+    const prior = await pool.query<{ user_id: string }>(
+        'SELECT user_id FROM iap_transactions WHERE platform = $1 AND transaction_id = $2',
+        [row.platform, row.transactionId]
+    );
+    if (prior.rows[0]?.user_id === row.userId) {
+        return { ok: true, transactionId: row.transactionId, alreadyGranted: true };
+    }
+    return {
+        ok: false,
+        status: 409,
+        error: 'This purchase was already redeemed by another account.',
+    };
 }
 
 /**
@@ -174,6 +206,27 @@ async function appleVerify(
 
 /** Returns the store transaction id for the matching product, or throws. */
 async function verifyApple(receipt: string, productId: string): Promise<string> {
+    // StoreKit 2 path: the client sends the transaction's JWS. Verified
+    // offline against Apple's pinned root — no shared secret needed.
+    if (looksLikeJws(receipt)) {
+        if (!env.APPLE_BUNDLE_ID) throw new Error('APPLE_BUNDLE_ID not configured');
+        const t = verifyAppleSignedTransaction(receipt);
+        if (t.bundleId !== env.APPLE_BUNDLE_ID) {
+            throw new Error(`JWS bundleId ${t.bundleId} is not ours`);
+        }
+        if (t.productId !== productId) {
+            throw new Error(`JWS is for ${t.productId}, expected ${productId}`);
+        }
+        if (t.revocationDate) throw new Error('Transaction was refunded/revoked');
+        // Sandbox transactions are accepted on purpose: App Review tests IAP
+        // against the sandbox environment with a production build.
+        if (t.environment === 'Sandbox') {
+            logger.info({ transactionId: t.transactionId }, 'Accepted SANDBOX Apple transaction');
+        }
+        return t.transactionId;
+    }
+    // Legacy path: base64 app receipt → /verifyReceipt (deprecated by Apple but
+    // still served). Only reached for very old clients.
     if (!env.APPLE_IAP_SHARED_SECRET) {
         throw new Error('APPLE_IAP_SHARED_SECRET not configured');
     }

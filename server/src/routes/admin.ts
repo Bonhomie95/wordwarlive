@@ -124,7 +124,9 @@ const banSchema = z.object({ reason: z.string().max(500).optional() });
 
 adminRouter.post('/admin/players/:id/ban', wrap(async (req, res) => {
     const id = String(req.params.id);
-    const { reason } = banSchema.parse(req.body ?? {});
+    const parsed = banSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+    const { reason } = parsed.data;
     const a = await actor(req);
     if (id === a.id) return res.status(400).json({ error: "You can't ban yourself." });
     await admin.banPlayer(id, a.id, reason ?? '');
@@ -148,7 +150,9 @@ const adjustSchema = z.object({
 
 adminRouter.post('/admin/players/:id/adjust', wrap(async (req, res) => {
     const id = String(req.params.id);
-    const body = adjustSchema.parse(req.body ?? {});
+    const parsed = adjustSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+    const body = parsed.data;
     const a = await actor(req);
     await admin.adjustPlayer({ userId: id, ...body });
     await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'adjust', targetType: 'user', targetId: id, detail: body });
@@ -159,7 +163,9 @@ const roleSchema = z.object({ admin: z.boolean() });
 
 adminRouter.post('/admin/players/:id/role', wrap(async (req, res) => {
     const id = String(req.params.id);
-    const { admin: makeAdmin } = roleSchema.parse(req.body ?? {});
+    const parsed = roleSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+    const { admin: makeAdmin } = parsed.data;
     const a = await actor(req);
     if (id === a.id && !makeAdmin) {
         return res.status(400).json({ error: "You can't remove your own admin access." });
@@ -194,7 +200,9 @@ const statusSchema = z.object({ status: z.enum(['open', 'reviewed', 'actioned', 
 
 adminRouter.post('/admin/reports/:id/status', wrap(async (req, res) => {
     const id = String(req.params.id);
-    const { status } = statusSchema.parse(req.body ?? {});
+    const parsed = statusSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid status' });
+    const { status } = parsed.data;
     const a = await actor(req);
     await admin.setReportStatus(id, status);
     await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'report_status', targetType: 'report', targetId: id, detail: { status } });

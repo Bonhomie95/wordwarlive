@@ -128,6 +128,9 @@ export default function LeaderboardScreen() {
                     <Pressable
                         key={p.key}
                         onPress={() => onPeriodChange(p.key)}
+                        accessibilityRole="tab"
+                        accessibilityLabel={p.label}
+                        accessibilityState={{ selected: p.key === period }}
                         style={({ pressed }) => [
                             styles.periodTab,
                             p.key === period ? styles.periodTabActive : null,
@@ -154,6 +157,9 @@ export default function LeaderboardScreen() {
                     <Pressable
                         key={m.key}
                         onPress={() => onModeChange(m.key)}
+                        accessibilityRole="tab"
+                        accessibilityLabel={`${m.label} mode`}
+                        accessibilityState={{ selected: m.key === mode }}
                         style={({ pressed }) => [
                             styles.modeTab,
                             m.key === mode ? styles.modeTabActive : null,
@@ -227,6 +233,8 @@ export default function LeaderboardScreen() {
                 <View style={styles.youPillWrap} pointerEvents="box-none">
                     <Pressable
                         onPress={scrollToMe}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Your rank ${data.you.rankInLeaderboard}, tap to find`}
                         style={({ pressed }) => [
                             styles.youPill,
                             pressed ? { opacity: 0.85 } : null,

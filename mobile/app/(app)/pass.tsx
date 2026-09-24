@@ -20,6 +20,14 @@ import { Screen } from '../../src/components/ui/Screen';
 import { TopBar } from '../../src/components/ui/TopBar';
 import { avatarVisual } from '../../src/lib/cosmetics';
 import { adsApi, battlePassApi } from '../../src/api/resources';
+import {
+    BATTLE_PASS_PRODUCT_ID,
+    iapAvailable,
+    IapCancelled,
+    loadProducts,
+    purchaseBattlePass,
+    storePrice,
+} from '../../src/iap';
 import { adsAvailable, showRewarded } from '../../src/ads';
 import { useAuthStore } from '../../src/store/authStore';
 import type { BattlePassResponse, BattlePassRewardView } from '../../src/types/index';
@@ -31,6 +39,7 @@ export default function Pass() {
     const [busy, setBusy] = useState(false);
     const [adBusy, setAdBusy] = useState(false);
     const [claimingKey, setClaimingKey] = useState<string | null>(null);
+    const [, setPricesLoaded] = useState(0);
     const user = useAuthStore((s) => s.user);
     const refreshMe = useAuthStore((s) => s.refreshMe);
 
@@ -46,8 +55,11 @@ export default function Pass() {
     useFocusEffect(
         useCallback(() => {
             load();
+            loadProducts([BATTLE_PASS_PRODUCT_ID]).then(() => setPricesLoaded((n) => n + 1));
         }, [load])
     );
+
+    const premiumPrice = storePrice(BATTLE_PASS_PRODUCT_ID) ?? '$3.99';
 
     if (!data) {
         return (
@@ -92,7 +104,10 @@ export default function Pass() {
     async function onUpgrade() {
         Alert.alert(
             'Unlock Premium',
-            'Premium track gives you access to all premium rewards this season for $3.99.\n\n(Receipt verification is stubbed in dev — production will go through StoreKit / Play Billing.)',
+            `Premium track gives you access to all premium rewards this season for ${premiumPrice}.` +
+                (iapAvailable()
+                    ? ''
+                    : '\n\n(Dev build: no native store — the server grants directly.)'),
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -100,10 +115,12 @@ export default function Pass() {
                     onPress: async () => {
                         setBusy(true);
                         try {
-                            await battlePassApi.upgradePremium();
+                            await purchaseBattlePass();
                             await load();
                         } catch (err) {
-                            Alert.alert('Upgrade failed', err instanceof Error ? err.message : '');
+                            if (!(err instanceof IapCancelled)) {
+                                Alert.alert('Upgrade failed', err instanceof Error ? err.message : '');
+                            }
                         } finally {
                             setBusy(false);
                         }
@@ -200,11 +217,11 @@ export default function Pass() {
                                         Unlock Premium track
                                     </Text>
                                     <Text style={styles.upgradeSub} allowFontScaling={false}>
-                                        $3.99 / season — earn premium-only cosmetics
+                                        {premiumPrice} / season — earn premium-only cosmetics
                                     </Text>
                                 </View>
                                 <Button
-                                    label="Unlock"
+                                    label={`Unlock ${premiumPrice}`}
                                     onPress={onUpgrade}
                                     busy={busy}
                                     style={{ height: 40, paddingHorizontal: spacing.lg }}
@@ -304,6 +321,11 @@ function RewardCell({
         <Pressable
             onPress={() => claimable && onClaim(reward)}
             disabled={!claimable || claiming}
+            accessibilityRole="button"
+            accessibilityLabel={`Tier ${reward.tier} ${track} reward, ${reward.cosmeticName ?? 'bonus XP'}, ${
+                reward.claimed ? 'owned' : claimable ? 'tap to claim' : 'locked'
+            }`}
+            accessibilityState={{ disabled: !claimable || claiming }}
             style={[
                 styles.cell,
                 track === 'premium' ? styles.cellPremium : null,

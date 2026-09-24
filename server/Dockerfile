@@ -19,6 +19,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/migrations ./migrations
 COPY src/data ./dist/data
+# Privacy / Terms / delete-account pages served at /legal/* (routes/legal.ts).
+COPY legal ./legal
 
 # Run as the built-in non-root user.
 USER node

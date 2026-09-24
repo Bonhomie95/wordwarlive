@@ -95,7 +95,7 @@ adsRouter.post('/ads/remove-ads-purchase', requireAuth, async (req, res) => {
         return res.status(verified.status).json({ error: verified.error });
     }
 
-    await applyRemoveAdsPurchase(req.session!.userId);
+    if (!verified.alreadyGranted) await applyRemoveAdsPurchase(req.session!.userId);
     res.json({ ok: true });
 });
 

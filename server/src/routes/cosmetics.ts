@@ -74,6 +74,7 @@ cosmeticsRouter.post('/cosmetics/:id/purchase', requireAuth, async (req, res) =>
         }
     }
 
+    // grantCosmetic is ON CONFLICT DO NOTHING, so a same-user replay is safe.
     await grantCosmetic(req.session!.userId, cosmeticId, 'purchase');
     res.json({ ok: true, cosmeticId });
 });

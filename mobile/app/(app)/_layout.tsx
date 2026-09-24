@@ -180,6 +180,7 @@ export default function AppTabsLayout() {
                     <Tabs.Screen name="mystery" options={{ href: null }} />
                     <Tabs.Screen name="friends" options={{ href: null }} />
                     <Tabs.Screen name="replays" options={{ href: null }} />
+                    <Tabs.Screen name="blocked" options={{ href: null }} />
                 </Tabs>
             </View>
             {/* Banner sits between content and tab bar. Hidden when ads_removed. */}
