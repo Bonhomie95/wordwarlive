@@ -3,7 +3,7 @@
 // the match played out.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -154,6 +154,13 @@ export default function PostGame() {
         <Screen>
             {victory ? <VictoryAnim kind={victory} /> : null}
             <AdLoadingOverlay visible={interstitialLoading} label="Quick ad break…" />
+            {/* Icon actions live at the top so they're visible on every
+                screen size — the scrollable summary below can be tall. */}
+            <View style={styles.topRow}>
+                <IconAction icon="home" label="Home" onPress={onHome} />
+                <MonoLabel>Match result</MonoLabel>
+                <IconAction icon="share-social" label="Share result" onPress={onShare} />
+            </View>
             <ScrollView
                 contentContainerStyle={styles.content}
                 showsVerticalScrollIndicator={false}
@@ -256,34 +263,38 @@ export default function PostGame() {
                     <BoardColumn title="Opponent" guesses={matchOver.opponentGuesses} />
                 </View>
 
-                {/* Actions */}
-                <View style={styles.actions}>
-                    {isMystery ? (
-                        <Button label="Back to Home" onPress={onHome} icon="home" />
-                    ) : (
-                        <Button label="REMATCH" onPress={onPlayAgain} icon="refresh" />
-                    )}
-                    <View style={styles.actionRow}>
-                        <Button
-                            label="Share"
-                            onPress={onShare}
-                            variant="secondary"
-                            icon="share-social"
-                            style={{ flex: 1 }}
-                        />
-                        {!isMystery ? (
-                            <Button
-                                label="Menu"
-                                onPress={onHome}
-                                variant="secondary"
-                                icon="home"
-                                style={{ flex: 1 }}
-                            />
-                        ) : null}
-                    </View>
-                </View>
             </ScrollView>
+            {/* Sticky primary action — never scrolls out of view. */}
+            <View style={styles.footer}>
+                {isMystery ? (
+                    <Button label="Back to Home" onPress={onHome} icon="home" />
+                ) : (
+                    <Button label="REMATCH" onPress={onPlayAgain} icon="refresh" />
+                )}
+            </View>
         </Screen>
+    );
+}
+
+function IconAction({
+    icon,
+    label,
+    onPress,
+}: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    onPress: () => void;
+}) {
+    return (
+        <Pressable
+            onPress={onPress}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            style={({ pressed }) => [styles.iconBtn, pressed ? { opacity: 0.7 } : null]}
+        >
+            <Ionicons name={icon} size={20} color={colors.text} />
+        </Pressable>
     );
 }
 
@@ -427,13 +438,37 @@ function BoardColumn({
 
 
 const styles = makeThemedStyles(() => StyleSheet.create({
-    content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
+    content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.lg },
+    topRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.sm,
+    },
+    iconBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: radius.md,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.surfaceElevated,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    footer: {
+        paddingHorizontal: spacing.lg,
+        paddingTop: spacing.sm,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        backgroundColor: colors.bg,
+    },
     empty: {
         textAlign: 'center',
         color: colors.textDim,
         marginTop: spacing.xxl,
     },
-    heroWrap: { alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
+    heroWrap: { alignItems: 'center', gap: spacing.xs },
     subtitle: {
         color: colors.textDim,
         fontFamily: typography.familyMono,
@@ -493,7 +528,6 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         fontSize: typography.sizes.sm,
         fontStyle: 'italic',
     },
-    actionRow: { flexDirection: 'row', gap: spacing.sm },
     boardsRow: { flexDirection: 'row', gap: spacing.md },
     boardCol: { flex: 1, alignItems: 'center', gap: spacing.sm },
     boardTitle: {
@@ -507,7 +541,6 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
     },
-    actions: { gap: spacing.sm, marginTop: spacing.lg },
     rewardsCard: {
         backgroundColor: colors.surface,
         borderRadius: radius.md,

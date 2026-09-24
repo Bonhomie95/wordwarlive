@@ -230,6 +230,13 @@ function interstitialUnitId(): string {
 }
 
 // ─── Rewarded ads ───────────────────────────────────────────────────────────
+//
+// One ad per slot, kept across taps. `preloadRewarded` starts the fetch when
+// the button appears; `showRewarded` reuses the same in-flight/loaded ad, so a
+// tap never spawns a second parallel load and there is never more than one
+// full-screen ad presented at a time (`presenting` guards rewarded AND
+// interstitial). A load that outlives the tap-to-show wait keeps going in the
+// background and is shown on the next tap.
 
 export interface RewardedShowResult {
     /** True if AdMob fired EARNED_REWARD. The server reward grant runs on a
@@ -242,10 +249,9 @@ export interface RewardedShowResult {
     error?: string;
 }
 
-/** How long we wait for a rewarded ad to LOAD before giving up. Without
- *  this, a network/AdMob outage left the promise pending forever — and the
- *  blocking AdLoadingOverlay with it, freezing the whole screen. */
-const REWARDED_LOAD_TIMEOUT_MS = 12_000;
+/** How long a tap waits for the ad to be ready before giving up. The load
+ *  itself keeps running so the next tap can use it. */
+const REWARDED_SHOW_TIMEOUT_MS = 20_000;
 
 /** Last-resort watchdog AFTER show() is called. If AdMob never fires
  *  CLOSED or ERROR (seen with mid-play SDK errors / activity teardown),
@@ -255,13 +261,112 @@ const REWARDED_LOAD_TIMEOUT_MS = 12_000;
  *  (If the user did earn, the server-side SSV callback still grants it.) */
 const SHOW_WATCHDOG_MS = 180_000;
 
+interface SlotAd {
+    ad: RewardedAdInstance;
+    userId: string;
+    state: 'loading' | 'loaded' | 'showing';
+    earned: boolean;
+    startedAt: number;
+    waiters: ((r: RewardedShowResult) => void)[];
+}
+
+const slots = new Map<RewardedSlot, SlotAd>();
+const PRELOAD_RETRY_MS = 30_000;
+const preloadRetried = new Set<RewardedSlot>();
+/** A full-screen ad (rewarded or interstitial) is on screen right now. */
+let presenting = false;
+
+function log(msg: string): void {
+    const pad = Platform.OS === 'ios' && Platform.isPad ? '-pad' : '';
+    if (__DEV__) console.log(`[ads:${Platform.OS}${pad}] ${msg}`);
+}
+
+/** Get the slot's current ad, creating + loading one if needed. */
+function ensureSlotAd(m: AdsModule, slot: RewardedSlot, userId: string): SlotAd {
+    const cur = slots.get(slot);
+    if (cur && cur.userId === userId) return cur;
+
+    const ad = m.RewardedAd.createForAdRequest(rewardedUnitId(), {
+        ...adRequestOptions(),
+        // customData = "<userId>|<slot>" lets AdMob's SSV callback route the
+        // reward server-side without trusting the client.
+        serverSideVerificationOptions: { customData: `${userId}|${slot}` },
+    });
+    const s: SlotAd = { ad, userId, state: 'loading', earned: false, startedAt: Date.now(), waiters: [] };
+    slots.set(slot, s);
+
+    const settle = (r: RewardedShowResult) => {
+        if (slots.get(slot) === s) slots.delete(slot);
+        if (s.state === 'showing') presenting = false;
+        const w = s.waiters;
+        s.waiters = [];
+        w.forEach((fn) => fn(r));
+    };
+    ad.addAdEventListener(m.RewardedAdEventType.LOADED, () => {
+        log(`${slot} loaded (+${Date.now() - s.startedAt}ms)`);
+        preloadRetried.delete(slot);
+        s.state = 'loaded';
+        if (s.waiters.length) presentSlot(s, settle);
+    });
+    ad.addAdEventListener(m.RewardedAdEventType.EARNED_REWARD, () => {
+        log(`${slot} earned`);
+        s.earned = true;
+    });
+    ad.addAdEventListener(m.AdEventType.CLOSED, () => {
+        log(`${slot} closed`);
+        settle({ earned: s.earned, unavailable: false });
+    });
+    ad.addAdEventListener(m.AdEventType.ERROR, (err) => {
+        const message = (err as { message?: string } | undefined)?.message ?? 'ad error';
+        log(`${slot} error: ${message} (+${Date.now() - s.startedAt}ms)`);
+        const background = s.waiters.length === 0 && s.state === 'loading';
+        settle({ earned: false, unavailable: false, error: message });
+        // A silent preload that failed (no fill / network) gets one delayed
+        // retry so the ad is usually ready by the time the user taps.
+        if (background && !preloadRetried.has(slot)) {
+            preloadRetried.add(slot);
+            setTimeout(() => preloadRewarded(slot, userId), PRELOAD_RETRY_MS);
+        }
+    });
+    try {
+        ad.load();
+    } catch (err) {
+        settle({ earned: false, unavailable: false, error: err instanceof Error ? err.message : 'load failed' });
+    }
+    return s;
+}
+
+function presentSlot(s: SlotAd, settle: (r: RewardedShowResult) => void): void {
+    if (s.state !== 'loaded') return;
+    if (presenting) {
+        settle({ earned: false, unavailable: false, error: 'Another ad is already showing.' });
+        return;
+    }
+    presenting = true;
+    s.state = 'showing';
+    const watchdog = setTimeout(() => settle({ earned: s.earned, unavailable: false }), SHOW_WATCHDOG_MS);
+    s.waiters.push(() => clearTimeout(watchdog));
+    s.ad.show().catch((err: unknown) => {
+        settle({ earned: false, unavailable: false, error: err instanceof Error ? err.message : 'show failed' });
+    });
+}
+
+/** Start loading the slot's ad in the background (call when its button
+ *  becomes visible). Safe to call repeatedly; no-op without the module. */
+export function preloadRewarded(slot: RewardedSlot, userId: string): void {
+    const m = loadModule();
+    if (!m) return;
+    initAds()
+        .then(() => {
+            if (rewardedUnitId()) ensureSlotAd(m, slot, userId);
+        })
+        .catch(() => {});
+}
+
 /**
  * Show a rewarded ad. ALWAYS resolves: when the user dismisses the ad,
- * when it errors, or when loading times out — so callers can safely keep
- * a blocking overlay up until this settles.
- *
- * customData = "<userId>|<slot>" lets AdMob's SSV callback route the reward
- * server-side without trusting the client.
+ * when it errors, or when the ready-wait times out — so callers can safely
+ * keep a blocking overlay up until this settles.
  */
 export async function showRewarded(
     slot: RewardedSlot,
@@ -270,79 +375,34 @@ export async function showRewarded(
     const m = loadModule();
     if (!m) return { earned: false, unavailable: true };
     await initAds();
-    const unitId = rewardedUnitId();
-    if (!unitId) {
+    if (!rewardedUnitId()) {
         return { earned: false, unavailable: true, error: 'No ad unit configured' };
     }
+    if (presenting) return { earned: false, unavailable: false };
 
+    const s = ensureSlotAd(m, slot, userId);
     return new Promise<RewardedShowResult>((resolve) => {
-        const ad = m.RewardedAd.createForAdRequest(unitId, {
-            ...adRequestOptions(),
-            serverSideVerificationOptions: {
-                customData: `${userId}|${slot}`,
-            },
-        });
-
-        let earned = false;
-        let resolved = false;
-        let showWatchdog: ReturnType<typeof setTimeout> | null = null;
-        const finish = (r: RewardedShowResult) => {
-            if (resolved) return;
-            resolved = true;
-            clearTimeout(loadTimer);
-            if (showWatchdog) clearTimeout(showWatchdog);
-            offLoaded?.();
-            offReward?.();
-            offClosed?.();
-            offError?.();
+        const timer = setTimeout(() => {
+            log(`${slot} not ready after ${REWARDED_SHOW_TIMEOUT_MS}ms (loading ${Date.now() - s.startedAt}ms)`);
+            s.waiters = s.waiters.filter((fn) => fn !== waiter);
+            resolve({
+                earned: false,
+                unavailable: false,
+                error: "The ad isn't ready yet. Please try again in a moment.",
+            });
+        }, REWARDED_SHOW_TIMEOUT_MS);
+        const waiter = (r: RewardedShowResult) => {
+            clearTimeout(timer);
             resolve(r);
         };
-
-        // Give up if the ad hasn't loaded in time (offline, AdMob down…).
-        // Once it HAS loaded and is showing, the timer no longer applies —
-        // the user can watch at their own pace.
-        const loadTimer = setTimeout(() => {
-            finish({
-                earned: false,
-                unavailable: false,
-                error: 'Ad took too long to load. Check your connection and try again.',
-            });
-        }, REWARDED_LOAD_TIMEOUT_MS);
-
-        const offLoaded = ad.addAdEventListener(m.RewardedAdEventType.LOADED, () => {
-            clearTimeout(loadTimer);
-            showWatchdog = setTimeout(() => {
-                finish({ earned, unavailable: false });
-            }, SHOW_WATCHDOG_MS);
-            ad.show().catch((err: unknown) => {
-                finish({
-                    earned: false,
-                    unavailable: false,
-                    error: err instanceof Error ? err.message : 'show failed',
-                });
-            });
-        });
-        const offReward = ad.addAdEventListener(m.RewardedAdEventType.EARNED_REWARD, () => {
-            earned = true;
-        });
-        const offClosed = ad.addAdEventListener(m.AdEventType.CLOSED, () => {
-            finish({ earned, unavailable: false });
-        });
-        const offError = ad.addAdEventListener(m.AdEventType.ERROR, (err) => {
-            finish({
-                earned: false,
-                unavailable: false,
-                error: (err as { message?: string } | undefined)?.message ?? 'ad error',
-            });
-        });
-
-        try {
-            ad.load();
-        } catch (err) {
-            finish({
-                earned: false,
-                unavailable: false,
-                error: err instanceof Error ? err.message : 'load failed',
+        s.waiters.push(waiter);
+        if (s.state === 'loaded') {
+            presentSlot(s, (r) => {
+                if (slots.get(slot) === s) slots.delete(slot);
+                presenting = false;
+                const w = s.waiters;
+                s.waiters = [];
+                w.forEach((fn) => fn(r));
             });
         }
     });

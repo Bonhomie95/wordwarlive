@@ -155,11 +155,14 @@ accounts/keys.
 - **Ads:** AdMob banner + interstitial + rewarded. iOS **ATT** prompt before
   init; **UMP consent form** (GDPR/UK + US states) via `AdsConsent.gatherConsent`
   with a Settings → *Privacy options* entry point where required; ad content
-  rating capped at **T**. **You:** replace the sample AdMob app ids
-  (`ADMOB_IOS_APP_ID` / `ADMOB_ANDROID_APP_ID` at build time) and unit ids
-  (`EXPO_PUBLIC_ADMOB_*`) — a production EAS build **fails** if they're missing
-  or still Google's samples. Declare "Contains ads" in both stores and set up
-  the GDPR/US-state messages in AdMob → Privacy & messaging.
+  rating capped at **T**; SKAdNetwork ids (Google's list) in Info.plist;
+  rewarded ads preloaded per screen. **You:**
+  replace the sample AdMob app ids (`ADMOB_IOS_APP_ID` / `ADMOB_ANDROID_APP_ID`
+  at build time) and unit ids (`EXPO_PUBLIC_ADMOB_*`) — a production EAS build
+  **fails** if they're missing or still Google's samples. Declare "Contains ads"
+  in both stores, set up the GDPR/US-state messages in AdMob → Privacy &
+  messaging, and set **App settings → Ad content rating → T** in the AdMob
+  console to match the in-app cap.
 - **In-app purchases:** through StoreKit / Play Billing (`expo-iap`, Play
   Billing Library 8.x). Prices in the UI come from the store (localized). iOS
   transactions are verified server-side from the StoreKit 2 signed JWS (Apple

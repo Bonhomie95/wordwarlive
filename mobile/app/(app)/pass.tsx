@@ -3,7 +3,7 @@
 // "Claim" buttons; once claimed they switch to "Owned". Premium track is
 // gated behind a single $3.99 unlock per season.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
     FlatList,
@@ -28,7 +28,7 @@ import {
     purchaseBattlePass,
     storePrice,
 } from '../../src/iap';
-import { adsAvailable, showRewarded } from '../../src/ads';
+import { adsAvailable, preloadRewarded, showRewarded } from '../../src/ads';
 import { useAuthStore } from '../../src/store/authStore';
 import type { BattlePassResponse, BattlePassRewardView } from '../../src/types/index';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
@@ -60,6 +60,16 @@ export default function Pass() {
     );
 
     const premiumPrice = storePrice(BATTLE_PASS_PRODUCT_ID) ?? '$3.99';
+
+    const xpBoostsToday = user && 'ads' in user ? user.ads.xpBoostAdsToday : 0;
+    const xpBoostLimit = user && 'ads' in user ? user.ads.xpBoostDailyLimit : 5;
+    const xpBoostsRemaining = Math.max(0, xpBoostLimit - xpBoostsToday);
+    // Rewarded ads are opt-in, so they stay available after Remove Ads.
+    const showXpBoost = adsAvailable() && xpBoostsRemaining > 0;
+    const userId = user?.id;
+    useEffect(() => {
+        if (showXpBoost && userId) preloadRewarded('bp_xp_boost', userId);
+    }, [showXpBoost, userId]);
 
     if (!data) {
         return (
@@ -175,11 +185,6 @@ export default function Pass() {
         }
     }
 
-    const xpBoostsToday = user && 'ads' in user ? user.ads.xpBoostAdsToday : 0;
-    const xpBoostLimit = user && 'ads' in user ? user.ads.xpBoostDailyLimit : 5;
-    const xpBoostsRemaining = Math.max(0, xpBoostLimit - xpBoostsToday);
-    // Rewarded ads are opt-in, so they stay available after Remove Ads.
-    const showXpBoost = adsAvailable() && xpBoostsRemaining > 0;
     const boostUntil = user && 'boosts' in user ? user.boosts.xpBoostUntil : null;
     const boosterActive = !!boostUntil && new Date(boostUntil).getTime() > Date.now();
 

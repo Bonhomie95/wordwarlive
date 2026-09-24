@@ -15,7 +15,7 @@ import { Card, MonoLabel, StatTile } from '../../src/components/ui/primitives';
 import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGameStore } from '../../src/store/gameStore';
-import { adsAvailable, showRewarded } from '../../src/ads';
+import { adsAvailable, preloadRewarded, showRewarded } from '../../src/ads';
 import { adsApi } from '../../src/api/resources';
 import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
@@ -79,6 +79,16 @@ export default function Home() {
         setShowOnboarding(false);
         SecureStore.setItemAsync('wordwar.onboarded', '1').catch(() => {});
     }
+
+    // Start fetching the rewarded ad as soon as the daily bonus is claimable so
+    // CLAIM shows it instantly instead of making the user wait on the load.
+    const userId = user?.id;
+    const lastDailyAdAt = user && 'ads' in user ? user.ads.lastDailyAdAt : null;
+    useEffect(() => {
+        if (!userId || dailyLocallyClaimed || !adsAvailable()) return;
+        if (lastDailyAdAt && sameLocalDay(new Date(lastDailyAdAt), new Date())) return;
+        preloadRewarded('daily_bonus', userId);
+    }, [userId, lastDailyAdAt, dailyLocallyClaimed]);
 
     if (!user || !token) {
         return null; // _layout will redirect to (auth)

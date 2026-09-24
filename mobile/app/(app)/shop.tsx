@@ -37,7 +37,7 @@ import {
     STARTER_BUNDLE_PRODUCT_ID,
     storePrice,
 } from '../../src/iap';
-import { adsAvailable, showRewarded } from '../../src/ads';
+import { adsAvailable, preloadRewarded, showRewarded } from '../../src/ads';
 import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import type { CoinPack, Cosmetic, CosmeticCategory, StarterBundle } from '../../src/types/index';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
@@ -370,6 +370,10 @@ export default function Shop() {
         user && 'ads' in user ? Math.max(0, user.ads.coinAdsDailyLimit - user.ads.coinAdsToday) : 0;
     // Rewarded ads are opt-in, so they stay available even after Remove Ads.
     const showCoinAd = adsAvailable() && coinAdsLeft > 0;
+    const userId = user?.id;
+    useEffect(() => {
+        if (showCoinAd && userId) preloadRewarded('coin_boost', userId);
+    }, [showCoinAd, userId]);
     const bundlePrice = bundle ? storePrice(STARTER_BUNDLE_PRODUCT_ID) ?? `$${bundle.priceUsd.toFixed(2)}` : '';
 
     async function onPackPurchase(pack: CoinPack) {
