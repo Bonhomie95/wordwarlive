@@ -3,7 +3,7 @@
 // screen's content in this so the backdrop is consistent everywhere.
 
 import React, { useEffect } from 'react';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { StyleSheet, View, type ViewStyle } from 'react-native';

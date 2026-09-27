@@ -9,7 +9,7 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuthStore } from '../../store/authStore';
-import { adsAvailable, adRequestOptions } from '../../ads';
+import { adsAvailable, adRequestOptions, useAdRequestsAllowed, useAdRequestRevision } from '../../ads';
 import { makeThemedStyles, colors } from '../../theme/colors';
 
 interface AdsModule {
@@ -48,9 +48,11 @@ function bannerUnitId(m: AdsModule): string {
 }
 
 export const BannerAdView: React.FC = () => {
+    const revision = useAdRequestRevision();
+    const requestsAllowed = useAdRequestsAllowed();
     const user = useAuthStore((s) => s.user);
     const adsRemoved = user && 'ads' in user ? user.ads.removed : false;
-    if (adsRemoved) return null;
+    if (adsRemoved || !requestsAllowed) return null;
     if (!adsAvailable()) return null;
 
     const m = loadModule();
@@ -62,6 +64,7 @@ export const BannerAdView: React.FC = () => {
     return (
         <View style={styles.container} pointerEvents="box-none">
             <m.BannerAd
+                key={revision}
                 unitId={unitId}
                 size={m.BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
                 requestOptions={adRequestOptions()}

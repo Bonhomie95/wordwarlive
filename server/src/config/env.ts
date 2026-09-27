@@ -113,6 +113,11 @@ if (parsed.data.NODE_ENV === 'production' && !parsed.data.IAP_ENFORCE) {
     throw new Error('IAP_ENFORCE must be true in production');
 }
 
+if (parsed.data.NODE_ENV === 'production' &&
+    (!parsed.data.APPLE_BUNDLE_ID || !parsed.data.APPLE_TEAM_ID || !parsed.data.APPLE_KEY_ID || !parsed.data.APPLE_PRIVATE_KEY)) {
+    throw new Error('Apple sign-in requires token revocation credentials in production');
+}
+
 export const env = {
     ...parsed.data,
     // Resolve a stable node id: explicit NODE_ID → OS hostname → random.

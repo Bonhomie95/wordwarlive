@@ -12,6 +12,7 @@
 // Invariant Violation that bubbles past JS try/catch (it's thrown from the
 // native bridge layer).
 
+import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
@@ -84,6 +85,30 @@ let mod: AdsModule | null = null;
 let initialized = false;
 let initPromise: Promise<void> | null = null;
 
+let consentAllowsAds = false;
+const adStateListeners = new Set<() => void>();
+let adRevision = 0;
+const notifyAdState = () => { adRevision++; adStateListeners.forEach((listener) => listener()); };
+export function useAdRequestRevision(): number {
+    return useSyncExternalStore((listener) => {
+        adStateListeners.add(listener);
+        return () => { adStateListeners.delete(listener); };
+    }, () => adRevision, () => 0);
+}
+const adRequestsAllowed = () => initialized && consentAllowsAds;
+export function useAdRequestsAllowed(): boolean {
+    return useSyncExternalStore((listener) => {
+        adStateListeners.add(listener);
+        return () => { adStateListeners.delete(listener); };
+    }, adRequestsAllowed, () => false);
+}
+function applyConsent(info: ConsentInfo): void {
+    consentAllowsAds = info.canRequestAds === true;
+    privacyOptionsRequired = info.privacyOptionsRequirementStatus === 'REQUIRED';
+    if (Platform.OS === 'android') nonPersonalizedOnly = !consentAllowsAds;
+    notifyAdState();
+}
+
 // Personalization gate.
 //   iOS: App Tracking Transparency (Apple 5.1.2) — until the user grants ATT we
 //        request non-personalized ads only.
@@ -118,17 +143,16 @@ async function requestTrackingIfNeeded(): Promise<void> {
 
 /**
  * Gather regulatory consent through UMP (shows Google's consent form where
- * required). Never throws — if consent gathering fails Google's guidance is to
- * still request ads.
+ * required). On error, use UMP's cached permission; otherwise fail closed.
  */
 async function gatherConsentIfNeeded(m: AdsModule): Promise<void> {
     try {
         const info = await m.AdsConsent.gatherConsent();
         log(`UMP status=${info.status} canRequestAds=${info.canRequestAds} privacyOptions=${info.privacyOptionsRequirementStatus}`);
-        privacyOptionsRequired = info.privacyOptionsRequirementStatus === 'REQUIRED';
-        if (Platform.OS === 'android') nonPersonalizedOnly = false; // UMP decides
+        applyConsent(info);
     } catch (err) {
-        // Ads still load (non-personalized where consent is unknown).
+        try { applyConsent(await m.AdsConsent.getConsentInfo()); }
+        catch { consentAllowsAds = false; notifyAdState(); }
         log(`UMP gatherConsent failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 }
@@ -150,7 +174,13 @@ export async function showAdPrivacyOptions(): Promise<void> {
     if (!m) return;
     try {
         const info = await m.AdsConsent.showPrivacyOptionsForm();
-        privacyOptionsRequired = info.privacyOptionsRequirementStatus === 'REQUIRED';
+        applyConsent(info);
+        // Drop prefetched creatives that were loaded under the previous choice.
+        for (const slot of slots.values()) {
+            slot.waiters.splice(0).forEach((resolve) => resolve({ earned: false, unavailable: true }));
+        }
+        slots.clear();
+        if (consentAllowsAds && !initialized) await initAds();
     } catch {
         // form unavailable — nothing to do
     }
@@ -197,6 +227,7 @@ export async function initAds(): Promise<void> {
             // initializes so the first ad requests already honor the choice.
             await requestTrackingIfNeeded();
             await gatherConsentIfNeeded(m);
+            if (!consentAllowsAds) return;
             // The app is rated 12+/Teen (user-generated names + words); never
             // pull mature ad creatives regardless of the AdMob account setting.
             await m
@@ -205,11 +236,13 @@ export async function initAds(): Promise<void> {
                 .catch(() => {});
             await m.default().initialize();
             initialized = true;
+            notifyAdState();
         } catch {
-            initialized = true; // don't keep retrying
+            initialized = false;
+            notifyAdState();
         }
     })();
-    return initPromise;
+    try { await initPromise; } finally { initPromise = null; }
 }
 
 // ─── Ad unit IDs ────────────────────────────────────────────────────────────
@@ -343,6 +376,7 @@ function ensureSlotAd(m: AdsModule, slot: RewardedSlot, userId: string): SlotAd 
 
 function presentSlot(s: SlotAd, settle: (r: RewardedShowResult) => void): void {
     if (s.state !== 'loaded') return;
+    if (!adRequestsAllowed()) { settle({ earned: false, unavailable: true }); return; }
     if (presenting) {
         settle({ earned: false, unavailable: false, error: 'Another ad is already showing.' });
         return;
@@ -363,7 +397,7 @@ export function preloadRewarded(slot: RewardedSlot, userId: string): void {
     if (!m) return;
     initAds()
         .then(() => {
-            if (rewardedUnitId()) ensureSlotAd(m, slot, userId);
+            if (adRequestsAllowed() && rewardedUnitId()) ensureSlotAd(m, slot, userId);
         })
         .catch(() => {});
 }
@@ -380,6 +414,7 @@ export async function showRewarded(
     const m = loadModule();
     if (!m) return { earned: false, unavailable: true };
     await initAds();
+    if (!adRequestsAllowed()) return { earned: false, unavailable: true };
     if (!rewardedUnitId()) {
         return { earned: false, unavailable: true, error: 'No ad unit configured' };
     }
@@ -430,6 +465,7 @@ export async function showInterstitial(): Promise<void> {
     const m = loadModule();
     if (!m) return;
     await initAds();
+    if (!adRequestsAllowed()) return;
     const unitId = interstitialUnitId();
     if (!unitId) return;
 
@@ -453,6 +489,7 @@ export async function showInterstitial(): Promise<void> {
             // Same last-resort settle as showRewarded: if CLOSED/ERROR never
             // fire after show(), don't leave the caller's overlay up forever.
             showWatchdog = setTimeout(done, SHOW_WATCHDOG_MS);
+            if (!adRequestsAllowed()) { done(); return; }
             ad.show().catch(done);
         });
         const offError = ad.addAdEventListener(m.AdEventType.ERROR, () => {

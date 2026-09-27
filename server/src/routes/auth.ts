@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -233,6 +234,11 @@ authRouter.post('/apple', async (req, res) => {
         logger.warn({ err }, 'Apple id_token verification failed');
         return res.status(400).json({ error: 'Could not verify Apple identity' });
     }
+    const appleRefresh = parsed.data.authorizationCode
+        ? await exchangeAppleAuthCode(parsed.data.authorizationCode) : null;
+    if (env.NODE_ENV === 'production' && !appleRefresh) {
+        return res.status(503).json({ error: 'Apple sign-in could not finish. Please retry so account deletion can be supported.' });
+    }
     let user = await findUserByProviderSubject('apple', identity.sub);
     if (!user) {
         const username = await uniqueUsername('apple_player');
@@ -243,10 +249,7 @@ authRouter.post('/apple', async (req, res) => {
             email: identity.email,
         });
     }
-    if (parsed.data.authorizationCode) {
-        const refresh = await exchangeAppleAuthCode(parsed.data.authorizationCode);
-        if (refresh) await setAppleRefreshToken(user.id, refresh);
-    }
+    if (appleRefresh) await setAppleRefreshToken(user.id, appleRefresh);
     const token = signSession({
         userId: user.id,
         username: user.username,
@@ -387,6 +390,11 @@ authRouter.post('/link/apple', requireAuth, async (req, res) => {
         });
     }
 
+    const appleRefresh = parsed.data.authorizationCode
+        ? await exchangeAppleAuthCode(parsed.data.authorizationCode) : null;
+    if (env.NODE_ENV === 'production' && !appleRefresh) {
+        return res.status(503).json({ error: 'Apple sign-in could not finish. Please retry so account deletion can be supported.' });
+    }
     const rows = await query<{ id: string }>(
         `UPDATE users SET
             auth_provider = 'apple',
@@ -401,10 +409,7 @@ authRouter.post('/link/apple', requireAuth, async (req, res) => {
         return res.status(409).json({ error: 'Account was already linked.' });
     }
 
-    if (parsed.data.authorizationCode) {
-        const refresh = await exchangeAppleAuthCode(parsed.data.authorizationCode);
-        if (refresh) await setAppleRefreshToken(check.user.id, refresh);
-    }
+    if (appleRefresh) await setAppleRefreshToken(check.user.id, appleRefresh);
     logger.info({ userId: check.user.id }, 'Anonymous account linked to Apple');
     const token = signSession({
         userId: check.user.id,

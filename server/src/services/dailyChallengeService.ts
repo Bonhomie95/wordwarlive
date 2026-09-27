@@ -325,7 +325,7 @@ export async function todaysLeaderboard(
          FROM daily_challenge_attempts a
          JOIN users u ON u.id = a.user_id
          WHERE a.challenge_date = $1 AND a.solved = TRUE
-           AND u.auth_subject NOT LIKE 'bot-%'`,
+           AND u.auth_subject NOT LIKE 'bot-%' AND u.banned = false`,
         [date]
     );
     const all = [

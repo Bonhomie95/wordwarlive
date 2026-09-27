@@ -230,8 +230,8 @@ Not collected: contacts, photos, precise location, health, browsing history.
 Data can be deleted by the user (in-app + web). Data is encrypted in transit.
 
 **Age rating:** answer the questionnaires honestly for user-generated
-usernames/words with moderation + reporting → typically **12+** (Apple,
-"Infrequent/Mild … user-generated content") / **Teen** (IARC). Do not select
+usernames/words with moderation + reporting → use Apple’s current age-rating questionnaire and IARC results; do not assume
+a legacy 12+ rating. Do not select
 the Kids category (ads + UGC).
 
 ---

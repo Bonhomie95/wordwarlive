@@ -4,6 +4,7 @@ import { requireAuth } from '../auth/middleware.js';
 import {
     changeUsername,
     deleteAccount,
+    AppleRevocationPendingError,
     findUserById,
     isValidUsername,
     updateEquippedCosmetic,
@@ -141,7 +142,12 @@ usersRouter.get('/users/:id', async (req, res) => {
 // Permanent account deletion. Required by the App Store for any app with
 // account creation, and by GDPR/CCPA. Irreversible.
 usersRouter.delete('/me', requireAuth, async (req, res) => {
-    await deleteAccount(req.session!.userId);
+    try {
+        await deleteAccount(req.session!.userId);
+    } catch (error) {
+        if (error instanceof AppleRevocationPendingError) return res.status(503).json({ error: error.message });
+        throw error;
+    }
     res.json({ ok: true });
 });
 

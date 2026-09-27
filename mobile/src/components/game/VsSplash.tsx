@@ -94,7 +94,7 @@ const PlayerCard: React.FC<{
             />
             <View style={styles.cardInfo}>
                 <Text style={[styles.label, { color: accent }]} allowFontScaling={false}>
-                    {label}
+                    {player.isBot ? 'COMPUTER' : label}
                 </Text>
                 <PlayerName
                     username={player.username}

@@ -197,7 +197,7 @@ export async function getLeaderboard(args: {
              FROM leaderboard_entries le
              JOIN users u ON u.id = le.user_id
              WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
-               AND u.auth_subject NOT LIKE 'bot-%'
+               AND u.auth_subject NOT LIKE 'bot-%' AND u.banned = false
              ORDER BY le.wins DESC, le.rank_points DESC
              LIMIT $4`,
             [args.period, bucket, mode, limit]
@@ -247,7 +247,7 @@ export async function getLeaderboard(args: {
                  FROM leaderboard_entries le
                  JOIN users u ON u.id = le.user_id
                  WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
-                   AND u.auth_subject NOT LIKE 'bot-%'
+                   AND u.auth_subject NOT LIKE 'bot-%' AND u.banned = false
             )
             SELECT * FROM ranked WHERE user_id = $4`,
             [args.period, bucket, mode, args.requesterId]

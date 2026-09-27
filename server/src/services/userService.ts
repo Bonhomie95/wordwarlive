@@ -343,16 +343,23 @@ export async function setAppleRefreshToken(userId: string, token: string): Promi
  * transaction. Aggregate stats on the opponent's row (wins/losses) are
  * denormalized and unaffected.
  */
+export class AppleRevocationPendingError extends Error {
+    constructor() {
+        super('Apple could not disconnect your sign-in. Your account has not been deleted. Please retry shortly or contact support.');
+    }
+}
+
 export async function deleteAccount(userId: string): Promise<void> {
     // Apple requires revoking Sign in with Apple tokens when the account goes
-    // away. Best-effort and BEFORE the row is deleted (that's where the token
-    // lives); a revoke failure never blocks the deletion itself.
+    // away. Keep the token/account available for retry if Apple is unavailable.
     const tok = await query<{ apple_refresh_token: string | null }>(
         'SELECT apple_refresh_token FROM users WHERE id = $1',
         [userId]
     );
     const refresh = tok[0]?.apple_refresh_token;
-    if (refresh) await revokeAppleRefreshToken(refresh);
+    if (refresh && !(await revokeAppleRefreshToken(refresh))) {
+        throw new AppleRevocationPendingError();
+    }
 
     const client = await pool.connect();
     try {
