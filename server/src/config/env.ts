@@ -109,6 +109,10 @@ if (!parsed.success) {
     process.exit(1);
 }
 
+if (parsed.data.NODE_ENV === 'production' && !parsed.data.IAP_ENFORCE) {
+    throw new Error('IAP_ENFORCE must be true in production');
+}
+
 export const env = {
     ...parsed.data,
     // Resolve a stable node id: explicit NODE_ID → OS hostname → random.

@@ -16,14 +16,16 @@
       "usesAppleSignIn": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "backgroundColor": "#0F1115"
     },
     "android": {
       "package": "dev.bonhomieinc.wordwar",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F1115"
-      }
+      },
+      "backgroundColor": "#0F1115"
     },
     "web": {
       "bundler": "metro",
@@ -118,10 +120,14 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
+          "image": "./assets/splash-logo.png",
           "backgroundColor": "#0F1115",
           "resizeMode": "contain",
-          "imageWidth": 200
+          "imageWidth": 220,
+          "dark": {
+            "image": "./assets/splash-logo.png",
+            "backgroundColor": "#0F1115"
+          }
         }
       ],
       "expo-status-bar",

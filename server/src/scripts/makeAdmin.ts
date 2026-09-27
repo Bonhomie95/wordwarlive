@@ -17,7 +17,7 @@ async function main() {
         process.exit(1);
     }
     const res = await pool.query(
-        `UPDATE users SET is_admin = $1, updated_at = now()
+        `UPDATE users SET is_admin = $1, is_super_admin = $1, updated_at = now()
          WHERE lower(email) = lower($2)
          RETURNING id, username, email, auth_provider, is_admin`,
         [!revoke, email]

@@ -6,6 +6,7 @@ import Animated, {
     useAnimatedStyle,
     useSharedValue,
     withTiming,
+    withDelay,
 } from 'react-native-reanimated';
 import { makeThemedStyles, colors, useThemeStore } from '../../theme/colors';
 import { typography, radius } from '../../theme/typography';
@@ -47,14 +48,14 @@ const TileRaw: React.FC<Props> = ({
     const flip = useSharedValue(0);
     useEffect(() => {
         if (state) {
-            flip.value = withTiming(1, {
+            flip.value = withDelay(revealDelayMs, withTiming(1, {
                 duration: 350,
                 easing: Easing.out(Easing.ease),
-            });
+            }));
         } else {
             flip.value = 0;
         }
-    }, [state, flip]);
+    }, [state, flip, revealDelayMs]);
 
     // Resolve the color palette: override beats default per-key, so a
     // theme that defines only `correct` still inherits the rest. Colors are
@@ -99,7 +100,7 @@ const TileRaw: React.FC<Props> = ({
     // Bright tile backgrounds (green/gold/orange/blue) read best with dark
     // text; the dark "wrong" tile and empty/filled cells use light text.
     const letterColor =
-        state === 'correct' || state === 'misplaced' ? colors.bg : colors.text;
+        state === 'correct' || state === 'misplaced' ? '#0F1115' : colors.text;
 
     return (
         <Animated.View
@@ -120,7 +121,10 @@ const TileRaw: React.FC<Props> = ({
                 cursor && !isSmall ? glow(colors.primary, 8, 0.5) : null,
                 animatedStyle,
             ]}
+            accessible={!isSmall}
+            accessibilityLabel={`${letter ?? hintLetter ?? 'Empty'}${state ? `, ${state}` : ''}${cursor ? ', selected' : ''}`}
         >
+            {colorBlind && state && !isSmall ? <Text style={{ position: 'absolute', right: 3, top: 1, fontSize: 9, color: letterColor }} allowFontScaling={false}>{state === 'correct' ? '✓' : state === 'misplaced' ? '●' : '×'}</Text> : null}
             {showLetter ? (
                 <Text
                     style={[styles.letter, { fontSize, color: letterColor }]}

@@ -3,7 +3,7 @@
 // they're playing for). Purely a visual revamp — all logic is unchanged.
 
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
@@ -21,6 +21,7 @@ import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { glow } from '../../src/theme/effects';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 const TIER_THRESHOLDS: { tier: RankTier; min: number }[] = [
     { tier: 'stone', min: 0 },
@@ -120,7 +121,7 @@ export default function Home() {
         try {
             const r = await showRewarded('daily_bonus', user.id);
             if (r.unavailable) {
-                Alert.alert(
+                appAlert(
                     'Ads not available',
                     'Daily bonus needs the production / dev-client build (not Expo Go).'
                 );
@@ -134,9 +135,9 @@ export default function Home() {
                     // 404 (prod) / 409 (already) — no-op; SSV handles it.
                 }
                 setTimeout(() => refreshMe().catch(() => {}), 1200);
-                Alert.alert('Reward incoming', '+30 coins, +75 BP XP, and a power-up. Updating…');
+                appAlert('Reward incoming', '+30 coins, +75 BP XP, and a power-up. Updating…');
             } else if (r.error) {
-                Alert.alert('Ad not available', r.error);
+                appAlert('Ad not available', r.error);
                 setDailyLocallyClaimed(false);
             } else {
                 setDailyLocallyClaimed(false);

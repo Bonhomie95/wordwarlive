@@ -3,6 +3,7 @@
 
 import * as Google from 'expo-auth-session/providers/google';
 import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 
 export interface GoogleSignInHook {
     /** True while the OAuth dance is in progress. */
@@ -26,10 +27,20 @@ export function useGoogleSignIn(): GoogleSignInHook {
 
     const available = Boolean(webClientId || iosClientId || androidClientId);
 
+    // iOS: Google only accepts the reversed-client-ID redirect for this iOS
+    // client (the default `<bundleId>:/oauthredirect` came back as
+    // redirect_uri_mismatch → "Access blocked: request is invalid"). The same
+    // scheme is registered in app.config.ts so the redirect reopens the app.
+    const iosRedirect =
+        Platform.OS === 'ios' && iosClientId
+            ? `${reversedClientId(iosClientId)}:/oauthredirect`
+            : undefined;
+
     const [, response, promptAsync] = Google.useIdTokenAuthRequest({
         clientId: webClientId,
         iosClientId,
         androidClientId,
+        ...(iosRedirect ? { redirectUri: iosRedirect } : {}),
     });
 
     const [inProgress, setInProgress] = useState(false);
@@ -74,4 +85,9 @@ export function useGoogleSignIn(): GoogleSignInHook {
     };
 
     return { inProgress, error, signIn, available };
+}
+
+/** `123-abc.apps.googleusercontent.com` → `com.googleusercontent.apps.123-abc` */
+export function reversedClientId(clientId: string): string {
+    return `com.googleusercontent.apps.${clientId.replace('.apps.googleusercontent.com', '')}`;
 }

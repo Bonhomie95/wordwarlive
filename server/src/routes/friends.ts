@@ -53,7 +53,7 @@ friendsRouter.post('/private-match/code', requireAuth, async (req, res) => {
     const wordLength = req.body?.wordLength
         ? Number(req.body.wordLength)
         : null;
-    if (wordLength !== null && (wordLength < 4 || wordLength > 10)) {
+    if (wordLength !== null && (!Number.isInteger(wordLength) || wordLength < 4 || wordLength > 10)) {
         return res.status(400).json({ error: 'wordLength must be 4-10' });
     }
     const code = await createPrivateMatchCode(req.session!.userId, wordLength);

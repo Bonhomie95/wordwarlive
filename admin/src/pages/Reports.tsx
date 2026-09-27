@@ -19,14 +19,17 @@ export default function Reports() {
     const [err, setErr] = useState('');
 
     const load = useCallback(() => {
+        setErr('');
         setRows(null);
         api.get<Report[]>(`/admin/reports?status=${status}`).then(setRows).catch((e) => setErr(e.message));
     }, [status]);
     useEffect(load, [load]);
 
     async function setReportStatus(id: string, s: string) {
-        await api.post(`/admin/reports/${id}/status`, { status: s });
-        load();
+        try {
+            await api.post(`/admin/reports/${id}/status`, { status: s });
+            load();
+        } catch (e) { setErr(e instanceof Error ? e.message : 'Update failed'); }
     }
 
     return (

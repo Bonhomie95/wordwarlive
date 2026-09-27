@@ -9,7 +9,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Alert,
     Pressable,
     StyleSheet,
     Text,
@@ -41,6 +40,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 const HINT_COIN_COST = 50;
 
@@ -216,7 +216,7 @@ export default function Match() {
 
     /** Quit / forfeit. Confirms first so accidental taps don't cost a match. */
     function onQuitMatch() {
-        Alert.alert(
+        appAlert(
             'Quit Match?',
             'Your opponent will win immediately. This counts as a loss in your stats.',
             [
@@ -407,9 +407,6 @@ export default function Match() {
         </SafeAreaView>
     );
 }
-
-// Used for fail-safe alert during dev — kept around.
-void Alert;
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { ...contentColumn, backgroundColor: colors.bg, paddingTop: 4 },

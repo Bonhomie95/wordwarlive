@@ -92,6 +92,7 @@ battlePassRouter.post('/battlepass/upgrade-premium', requireAuth, async (req, re
     const parsed = upgradeSchema.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
 
+    if (!(await getCurrentSeason())) return res.status(400).json({ error: 'No active season' });
     const verified = await verifyIapPurchase({
         userId: req.session!.userId,
         productId: BATTLE_PASS_PRODUCT_ID,
@@ -99,7 +100,7 @@ battlePassRouter.post('/battlepass/upgrade-premium', requireAuth, async (req, re
         platform: parsed.data.platform,
         receipt: parsed.data.receipt,
         transactionId: parsed.data.transactionId,
-    });
+    }, (client) => unlockPremium(req.session!.userId, client));
     if (!verified.ok) {
         return res.status(verified.status).json({ error: verified.error });
     }
@@ -108,6 +109,6 @@ battlePassRouter.post('/battlepass/upgrade-premium', requireAuth, async (req, re
     // Apple ID must be able to buy it again next season). A replayed
     // transaction from this account only re-affirms the season it paid for —
     // it must never unlock a later season.
-    if (!verified.alreadyGranted) await unlockPremium(req.session!.userId);
+
     res.json({ ok: true });
 });

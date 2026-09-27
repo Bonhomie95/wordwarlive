@@ -15,7 +15,8 @@
 import { JWT } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
-import { pool } from '../db/pool.js';
+import { transaction } from '../db/pool.js';
+import type { PoolClient } from 'pg';
 import { logger } from '../utils/logger.js';
 import { looksLikeJws, verifyAppleSignedTransaction } from './appleJws.js';
 
@@ -71,7 +72,8 @@ function isPlatform(v: string | undefined): v is IapPlatform {
  * grant the entitlement. On failure nothing has been recorded.
  */
 export async function verifyIapPurchase(
-    args: VerifyArgs
+    args: VerifyArgs,
+    fulfill?: (client: PoolClient) => Promise<void>
 ): Promise<VerifyResult> {
     // ─── Dev / unenforced ────────────────────────────────────────────────────
     if (!env.IAP_ENFORCE) {
@@ -83,7 +85,7 @@ export async function verifyIapPurchase(
             userId: args.userId,
             productId: args.productId,
             entitlement: args.entitlement,
-        });
+        }, fulfill);
     }
 
     // ─── Production / enforced ───────────────────────────────────────────────
@@ -98,7 +100,7 @@ export async function verifyIapPurchase(
     try {
         storeTxnId =
             args.platform === 'ios'
-                ? await verifyApple(args.receipt, args.productId)
+                ? await verifyApple(args.receipt, args.productId, args.transactionId)
                 : await verifyGoogle(args.receipt, args.productId);
     } catch (err) {
         logger.warn(
@@ -114,7 +116,7 @@ export async function verifyIapPurchase(
         userId: args.userId,
         productId: args.productId,
         entitlement: args.entitlement,
-    });
+    }, fulfill);
 }
 
 /**
@@ -128,14 +130,23 @@ async function reserveOrReplay(row: {
     userId: string;
     productId: string;
     entitlement: string;
-}): Promise<VerifyResult> {
-    if (await reserveTransaction(row)) {
+}, fulfill?: (client: PoolClient) => Promise<void>): Promise<VerifyResult> {
+    return transaction(async (client): Promise<VerifyResult> => {
+    // Lock before inserting the FK row: upgrading concurrent FK key-share locks
+    // later (e.g. a bundle grant) can deadlock. All grants use this lock order.
+    const user = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [row.userId]);
+    if (!user.rowCount) return { ok: false, status: 404, error: 'User not found' };
+    if (await reserveTransaction(row, client)) {
+        if (fulfill) await fulfill(client);
         return { ok: true, transactionId: row.transactionId, alreadyGranted: false };
     }
-    const prior = await pool.query<{ user_id: string }>(
-        'SELECT user_id FROM iap_transactions WHERE platform = $1 AND transaction_id = $2',
+    const prior = await client.query<{ user_id: string; product_id: string }>(
+        'SELECT user_id, product_id FROM iap_transactions WHERE platform = $1 AND transaction_id = $2',
         [row.platform, row.transactionId]
     );
+    if (prior.rows[0]?.product_id !== row.productId) {
+        return { ok: false, status: 400, error: 'Transaction product mismatch.' };
+    }
     if (prior.rows[0]?.user_id === row.userId) {
         return { ok: true, transactionId: row.transactionId, alreadyGranted: true };
     }
@@ -144,6 +155,7 @@ async function reserveOrReplay(row: {
         status: 409,
         error: 'This purchase was already redeemed by another account.',
     };
+    });
 }
 
 /**
@@ -156,11 +168,11 @@ async function reserveTransaction(row: {
     userId: string;
     productId: string;
     entitlement: string;
-}): Promise<boolean> {
-    const res = await pool.query(
+}, client: PoolClient): Promise<boolean> {
+    const res = await client.query(
         `INSERT INTO iap_transactions
-             (platform, transaction_id, user_id, product_id, entitlement)
-         VALUES ($1, $2, $3, $4, $5)
+             (platform, transaction_id, user_id, product_id, entitlement, store_verified)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (platform, transaction_id) DO NOTHING
          RETURNING id`,
         [
@@ -169,6 +181,7 @@ async function reserveTransaction(row: {
             row.userId,
             row.productId,
             row.entitlement,
+            env.IAP_ENFORCE,
         ]
     );
     return (res.rowCount ?? 0) > 0;
@@ -182,10 +195,11 @@ const APPLE_SANDBOX_URL = 'https://sandbox.itunes.apple.com/verifyReceipt';
 interface AppleReceiptItem {
     product_id: string;
     transaction_id: string;
+    cancellation_date?: string;
 }
 interface AppleVerifyResponse {
     status: number;
-    receipt?: { in_app?: AppleReceiptItem[] };
+    receipt?: { bundle_id?: string; in_app?: AppleReceiptItem[] };
     latest_receipt_info?: AppleReceiptItem[];
 }
 
@@ -195,6 +209,7 @@ async function appleVerify(
 ): Promise<AppleVerifyResponse> {
     const res = await fetch(url, {
         method: 'POST',
+        signal: AbortSignal.timeout(15_000),
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
             'receipt-data': receipt,
@@ -207,7 +222,7 @@ async function appleVerify(
 }
 
 /** Returns the store transaction id for the matching product, or throws. */
-async function verifyApple(receipt: string, productId: string): Promise<string> {
+async function verifyApple(receipt: string, productId: string, transactionId?: string): Promise<string> {
     // StoreKit 2 path: the client sends the transaction's JWS. Verified
     // offline against Apple's pinned root — no shared secret needed.
     if (looksLikeJws(receipt)) {
@@ -240,11 +255,15 @@ async function verifyApple(receipt: string, productId: string): Promise<string> 
     if (body.status !== 0) {
         throw new Error(`Apple receipt status ${body.status}`);
     }
+    if (!env.APPLE_BUNDLE_ID || body.receipt?.bundle_id !== env.APPLE_BUNDLE_ID) {
+        throw new Error('Receipt bundle ID mismatch');
+    }
+    if (!transactionId) throw new Error('Legacy receipt requires transaction ID');
     const items = [
         ...(body.latest_receipt_info ?? []),
         ...(body.receipt?.in_app ?? []),
     ];
-    const match = items.find((it) => it.product_id === productId);
+    const match = items.find((it) => it.product_id === productId && it.transaction_id === transactionId && !it.cancellation_date);
     if (!match) {
         throw new Error(`Receipt has no purchase of ${productId}`);
     }

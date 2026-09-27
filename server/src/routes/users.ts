@@ -91,7 +91,7 @@ async function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>)
         hintCredits: u.hint_credits,
         lifetimeHintsUsed: u.lifetime_hints_used,
         streak: {
-            playStreak: effectiveStreak(u.play_streak, u.last_play_date),
+            playStreak: effectiveStreak(u.play_streak, u.last_play_date, u.streak_shields),
             playStreakBest: u.play_streak_best,
             lastPlayDate: u.last_play_date,
         },

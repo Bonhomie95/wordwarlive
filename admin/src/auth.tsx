@@ -4,6 +4,7 @@ import { api, getToken, setToken, clearToken } from './api';
 interface AdminMe {
     id: string;
     username: string;
+    superAdmin: boolean;
 }
 interface AuthState {
     me: AdminMe | null;
@@ -37,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             password,
         });
         setToken(res.token);
-        setMe({ id: res.admin.id, username: res.admin.username });
+        setMe(res.admin);
     }
 
     function logout() {

@@ -29,7 +29,7 @@ function shape(c: Awaited<ReturnType<typeof listShopCosmetics>>[number], owned: 
 
 cosmeticsRouter.get('/cosmetics', requireAuth, async (req, res) => {
     const [items, owned] = await Promise.all([
-        listShopCosmetics(),
+        listShopCosmetics(req.session!.userId),
         listOwnedCosmetics(req.session!.userId),
     ]);
     const ownedSet = new Set(owned);
@@ -70,14 +70,14 @@ cosmeticsRouter.post('/cosmetics/:id/purchase', requireAuth, async (req, res) =>
             platform: parsed.data.platform,
             receipt: parsed.data.receipt,
             transactionId: parsed.data.transactionId,
-        });
+        }, (client) => grantCosmetic(req.session!.userId, cosmeticId, 'purchase', client));
         if (!verified.ok) {
             return res.status(verified.status).json({ error: verified.error });
         }
     }
 
     // grantCosmetic is ON CONFLICT DO NOTHING, so a same-user replay is safe.
-    await grantCosmetic(req.session!.userId, cosmeticId, 'purchase');
+    if (cos.price_cents === 0) await grantCosmetic(req.session!.userId, cosmeticId, 'purchase');
     res.json({ ok: true, cosmeticId });
 });
 

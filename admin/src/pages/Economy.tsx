@@ -5,6 +5,7 @@ import { num } from '../format';
 
 interface Economy {
     bySource: { source: string; granted: string | null; spent: string | null; events: string }[];
+    monetization: { transactions: string; buyers: string; rewarded_ads: string; ad_viewers: string; products: { product_id: string; transactions: string; buyers: string }[] };
     totals: { granted: string; spent: string; circulating: string };
 }
 
@@ -30,6 +31,14 @@ export default function EconomyPage() {
                 <StatCard label="Total spent (all time)" value={num(d.totals.spent)} />
             </div>
 
+            <h2 className="section-title">Monetization · last 30 days</h2>
+            <div className="grid cols-3">
+                <StatCard label="Verified purchases" value={num(d.monetization.transactions)} />
+                <StatCard label="Paying players" value={num(d.monetization.buyers)} />
+                <StatCard label="Rewarded ads completed" value={num(d.monetization.rewarded_ads)} sub={`${num(d.monetization.ad_viewers)} viewers`} />
+            </div>
+            <p className="muted">Local test purchases and unverified legacy records are excluded. Net revenue and refunds remain in the store and AdMob financial reports.</p>
+            {d.monetization.products.length > 0 && <div className="table-wrap"><table><thead><tr><th>Product</th><th>Purchases</th><th>Buyers</th></tr></thead><tbody>{d.monetization.products.map((p) => <tr key={p.product_id}><td>{p.product_id}</td><td>{num(p.transactions)}</td><td>{num(p.buyers)}</td></tr>)}</tbody></table></div>}
             <h2 className="section-title">Coins by source</h2>
             <div className="table-wrap">
                 <table>

@@ -10,13 +10,11 @@ import {
     COIN_PACKS,
     HINT_COIN_COST,
     STARTER_BUNDLE,
-    fulfillCoinPackPurchase,
     getCoinBalance,
     grantCoins,
 } from '../services/coinsService.js';
 import { grantCosmetic } from '../services/cosmeticsService.js';
 import { findUserById } from '../services/userService.js';
-import { query } from '../db/pool.js';
 import { effectiveStreak, MILESTONES, nextMilestone } from '../services/streakService.js';
 import { STARTER_BUNDLE_PRODUCT_ID, verifyIapPurchase } from '../iap/verify.js';
 
@@ -38,33 +36,20 @@ coinsRouter.post('/coins/bundles/starter/purchase', requireAuth, async (req, res
 
     const user = await findUserById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.starter_bundle_at) {
-        return res.status(409).json({ error: 'You already own the Starter Bundle.' });
-    }
+
 
     const verified = await verifyIapPurchase({
-        userId,
-        productId: STARTER_BUNDLE_PRODUCT_ID,
-        entitlement: 'bundle:starter',
-        platform: parsed.data.platform,
-        receipt: parsed.data.receipt,
-        transactionId: parsed.data.transactionId,
+        userId, productId: STARTER_BUNDLE_PRODUCT_ID, entitlement: 'bundle:starter', ...parsed.data,
+    }, async (client) => {
+        // The user lock also prevents different store transactions from double-granting the bundle.
+        const row = await client.query('SELECT starter_bundle_at FROM users WHERE id = $1 FOR UPDATE', [userId]);
+        if (row.rows[0]?.starter_bundle_at) return;
+        await client.query('UPDATE users SET starter_bundle_at = now(), updated_at = now() WHERE id = $1', [userId]);
+        for (const id of STARTER_BUNDLE.cosmeticIds) await grantCosmetic(userId, id, 'purchase', client);
+        await grantCoins({ userId, amount: STARTER_BUNDLE.coins, source: 'bundle', metadata: { productId: STARTER_BUNDLE.productId } }, client);
     });
     if (!verified.ok) return res.status(verified.status).json({ error: verified.error });
-    if (verified.alreadyGranted) {
-        return res.json({ ok: true, newBalance: await getCoinBalance(userId) });
-    }
-
-    // Mark first so a retry can't double-grant, then hand everything out.
-    await query('UPDATE users SET starter_bundle_at = now(), updated_at = now() WHERE id = $1', [userId]);
-    for (const id of STARTER_BUNDLE.cosmeticIds) await grantCosmetic(userId, id, 'purchase');
-    const newBalance = await grantCoins({
-        userId,
-        amount: STARTER_BUNDLE.coins,
-        source: 'bundle',
-        metadata: { bundle: STARTER_BUNDLE.id, productId: STARTER_BUNDLE.productId },
-    });
-    res.json({ ok: true, newBalance });
+    res.json({ ok: true, newBalance: await getCoinBalance(userId) });
 });
 
 const purchaseSchema = z.object({
@@ -88,33 +73,19 @@ coinsRouter.post('/coins/packs/:id/purchase', requireAuth, async (req, res) => {
         platform: parsed.data.platform,
         receipt: parsed.data.receipt,
         transactionId: parsed.data.transactionId,
+    }, async (client) => {
+        await grantCoins({ userId: req.session!.userId, amount: pack.coins, source: 'iap', metadata: { packId: pack.id, productId: pack.productId } }, client);
     });
     if (!verified.ok) {
         return res.status(verified.status).json({ error: verified.error });
     }
-    if (verified.alreadyGranted) {
-        // Consumable replay from the same account (e.g. a retry after a dropped
-        // response): never grant twice. Tell the client the current balance.
-        return res.json({
-            ok: true,
-            pack: { id: pack.id, name: pack.name, coins: pack.coins },
-            newBalance: await getCoinBalance(req.session!.userId),
-        });
-    }
-
-    const result = await fulfillCoinPackPurchase({
-        userId: req.session!.userId,
-        packId: id,
-        receipt: parsed.data.receipt,
-    });
-    if (!result) return res.status(404).json({ error: 'Unknown pack' });
-    res.json({ ok: true, pack: result.pack, newBalance: result.newBalance });
+    res.json({ ok: true, pack: { id: pack.id, name: pack.name, coins: pack.coins }, newBalance: await getCoinBalance(req.session!.userId) });
 });
 
 coinsRouter.get('/streak', requireAuth, async (req, res) => {
     const u = await findUserById(req.session!.userId);
     if (!u) return res.status(404).json({ error: 'User not found' });
-    const effective = effectiveStreak(u.play_streak, u.last_play_date);
+    const effective = effectiveStreak(u.play_streak, u.last_play_date, u.streak_shields);
     const next = nextMilestone(effective);
     res.json({
         playStreak: effective,

@@ -101,7 +101,7 @@ export async function apiRequest<T>(path: string, opts: RequestOpts = {}): Promi
     }
 
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const retries = opts.retries ?? DEFAULT_RETRIES;
+    const retries = opts.retries ?? ((opts.method ?? 'GET') === 'GET' ? DEFAULT_RETRIES : 0);
     const init: RequestInit = {
         method: opts.method ?? 'GET',
         headers,
@@ -123,7 +123,9 @@ export async function apiRequest<T>(path: string, opts: RequestOpts = {}): Promi
             if (!res.ok) {
                 // A 401 on a request we actually authenticated means the
                 // session token is expired/invalid → sign out globally.
-                if (res.status === 401 && sentWithToken && onUnauthorized) {
+                // Auth endpoints (sign-in / link) report bad CREDENTIALS, not a
+                // dead session, so they never trigger the global sign-out.
+                if (res.status === 401 && sentWithToken && onUnauthorized && !path.startsWith('/api/auth/')) {
                     onUnauthorized();
                 }
                 const message =

@@ -9,7 +9,7 @@
 //   last <  yesterday  → streak = 1 (broken, restart)
 
 import { pool } from '../db/pool.js';
-import { grantCoins, grantHintCredits } from './coinsService.js';
+import { grantCoins } from './coinsService.js';
 
 const DAILY_COIN_REWARD = 10;
 
@@ -133,19 +133,12 @@ export async function advanceStreakOnMatchComplete(
              WHERE id = $4`,
             [newStreak, newBest, today, userId, shieldsUsed]
         );
-        await client.query('COMMIT');
-
-        // Grant the daily reward + check for milestone. Done outside the
-        // transaction so coin_grants stamps land in coinsService's own
-        // transactions (they're idempotent on amount = grant log, not on
-        // streak day, so a retry would double-count — but we already
-        // committed the streak advance above, so retries can't reach here).
         await grantCoins({
             userId,
             amount: DAILY_COIN_REWARD,
             source: 'streak_daily',
             metadata: { day: newStreak },
-        });
+        }, client);
 
         const milestone = MILESTONES.find((m) => m.day === newStreak) ?? null;
         if (milestone) {
@@ -154,12 +147,13 @@ export async function advanceStreakOnMatchComplete(
                 amount: milestone.coins,
                 source: 'streak_milestone',
                 metadata: { day: newStreak },
-            });
+            }, client);
             if (milestone.hintCredits > 0) {
-                await grantHintCredits(userId, milestone.hintCredits);
+                await client.query('UPDATE users SET hint_credits = hint_credits + $1 WHERE id = $2', [milestone.hintCredits, userId]);
             }
         }
 
+        await client.query('COMMIT');
         return {
             playStreak: newStreak,
             advanced: true,
@@ -200,7 +194,8 @@ export function nextMilestone(playStreak: number): Milestone | null {
  */
 export function effectiveStreak(
     storedStreak: number,
-    lastPlayDate: Date | string | null
+    lastPlayDate: Date | string | null,
+    shields = 0
 ): number {
     if (!lastPlayDate) return 0;
     const today = todayUtcDateString();
@@ -209,6 +204,6 @@ export function effectiveStreak(
         lastPlayDate instanceof Date
             ? lastPlayDate.toISOString().slice(0, 10)
             : String(lastPlayDate).slice(0, 10);
-    if (lastStr === today || lastStr === yesterday) return storedStreak;
+    if (lastStr === today || lastStr === yesterday || daysBetween(lastStr, today) - 1 <= shields) return storedStreak;
     return 0;
 }

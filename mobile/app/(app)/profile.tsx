@@ -4,7 +4,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
-    Alert,
     FlatList,
     Modal,
     Pressable,
@@ -21,10 +20,11 @@ import { TopBar } from '../../src/components/ui/TopBar';
 import { Avatar } from '../../src/components/ui/Avatar';
 import { PlayerName } from '../../src/components/ui/PlayerName';
 import { useAuthStore } from '../../src/store/authStore';
-import { matchesApi, usersApi } from '../../src/api/resources';
-import type { RecentMatch } from '../../src/types/index';
+import { cosmeticsApi, matchesApi, usersApi } from '../../src/api/resources';
+import type { Cosmetic, RecentMatch } from '../../src/types/index';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { AlertHost, appAlert } from '../../src/components/ui/AppAlert';
 
 export default function Profile() {
     const router = useRouter();
@@ -36,6 +36,10 @@ export default function Profile() {
     const [renaming, setRenaming] = useState(false);
     const [newName, setNewName] = useState('');
     const [renameBusy, setRenameBusy] = useState(false);
+    const [pickingAvatar, setPickingAvatar] = useState(false);
+    const [avatars, setAvatars] = useState<Cosmetic[]>([]);
+    const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set());
+    const [equipBusy, setEquipBusy] = useState<string | null>(null);
 
     // Re-fetch on every focus: the tab stays mounted, so a mount-only effect
     // left "Recent matches" stale after a game was played.
@@ -59,10 +63,41 @@ export default function Profile() {
     const isGuest = user.provider === 'anonymous';
     const renameCost = 'usernameChangeCost' in user ? user.usernameChangeCost : 0;
 
+    async function openAvatarPicker() {
+        setPickingAvatar(true);
+        try {
+            const [list, owned] = await Promise.all([cosmeticsApi.list(), cosmeticsApi.owned()]);
+            setAvatars(list.cosmetics.filter((c) => c.category === 'avatar'));
+            setOwnedIds(new Set(owned.owned));
+        } catch {
+            setPickingAvatar(false);
+            appAlert('Could not load avatars', 'Check your connection and try again.');
+        }
+    }
+
+    async function pickAvatar(c: Cosmetic) {
+        const free = c.priceCents === 0 && (c.priceCoins ?? 0) === 0;
+        if (!free && !ownedIds.has(c.id)) {
+            setPickingAvatar(false);
+            router.push('/(app)/shop');
+            return;
+        }
+        setEquipBusy(c.id);
+        try {
+            await usersApi.equip('avatar', c.id);
+            await refreshMe();
+            setPickingAvatar(false);
+        } catch (err) {
+            appAlert('Could not change avatar', err instanceof Error ? err.message : 'Try again.');
+        } finally {
+            setEquipBusy(null);
+        }
+    }
+
     async function submitRename() {
         const name = newName.trim();
         if (!/^[a-zA-Z0-9_]{3,16}$/.test(name)) {
-            Alert.alert('Invalid username', 'Letters, numbers, and underscores only — 3 to 16 characters.');
+            appAlert('Invalid username', 'Letters, numbers, and underscores only — 3 to 16 characters.');
             return;
         }
         setRenameBusy(true);
@@ -71,7 +106,7 @@ export default function Profile() {
             await refreshMe();
             setRenaming(false);
         } catch (err) {
-            Alert.alert('Could not rename', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Could not rename', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setRenameBusy(false);
         }
@@ -81,7 +116,7 @@ export default function Profile() {
         // Guests have no way to sign back into this account from another
         // session — warn them and steer towards linking first.
         if (isGuest) {
-            Alert.alert(
+            appAlert(
                 'Sign out of guest account?',
                 'This is a guest account. Link an email, Google, or Apple sign-in first — otherwise your rank, coins, and history stay tied to this device only.',
                 [
@@ -99,7 +134,7 @@ export default function Profile() {
             );
             return;
         }
-        Alert.alert('Sign out?', 'You can sign back in any time.', [
+        appAlert('Sign out?', 'You can sign back in any time.', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
         ]);
@@ -135,17 +170,70 @@ export default function Profile() {
                         </View>
                     </View>
                 </View>
+                <AlertHost scoped />
+            </Modal>
+            <Modal visible={pickingAvatar} transparent animationType="fade" onRequestClose={() => setPickingAvatar(false)}>
+                <View style={styles.modalBackdrop}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle} allowFontScaling={false}>
+                            Choose avatar
+                        </Text>
+                        <View style={styles.avatarGrid}>
+                            {avatars.map((c) => {
+                                const free = c.priceCents === 0 && (c.priceCoins ?? 0) === 0;
+                                const unlocked = free || ownedIds.has(c.id);
+                                const current = (('equipped' in user ? user.equipped?.avatar : null) ?? 'avatar_default') === c.id;
+                                return (
+                                    <Pressable
+                                        key={c.id}
+                                        onPress={() => pickAvatar(c)}
+                                        disabled={!!equipBusy}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={unlocked ? `Use ${c.name} avatar` : `${c.name} avatar, locked. Open shop`}
+                                        style={({ pressed }) => [
+                                            styles.avatarOption,
+                                            current ? styles.avatarOptionOn : null,
+                                            pressed ? { opacity: 0.8 } : null,
+                                        ]}
+                                    >
+                                        <View style={!unlocked ? { opacity: 0.45 } : null}>
+                                            <Avatar avatarId={c.id} size={56} />
+                                        </View>
+                                        <Text style={styles.avatarName} allowFontScaling={false} numberOfLines={1}>
+                                            {c.name}
+                                        </Text>
+                                        <Text style={styles.avatarState} allowFontScaling={false}>
+                                            {equipBusy === c.id ? '…' : current ? 'EQUIPPED' : unlocked ? 'USE' : `🔒 ${c.priceCoins ?? ''} coins`}
+                                        </Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                        <Button label="Close" variant="ghost" onPress={() => setPickingAvatar(false)} />
+                    </View>
+                </View>
+                <AlertHost scoped />
             </Modal>
             <TopBar title="Profile" />
             <FlatList
                 ListHeaderComponent={
                     <View style={styles.header}>
                         <View style={styles.identityRow}>
-                            <Avatar
-                                avatarId={'equipped' in user ? user.equipped?.avatar : null}
-                                borderId={'equipped' in user ? user.equipped?.profileBorder : null}
-                                size={64}
-                            />
+                            <Pressable
+                                onPress={openAvatarPicker}
+                                accessibilityRole="button"
+                                accessibilityLabel="Change avatar"
+                                hitSlop={6}
+                            >
+                                <Avatar
+                                    avatarId={'equipped' in user ? user.equipped?.avatar : null}
+                                    borderId={'equipped' in user ? user.equipped?.profileBorder : null}
+                                    size={64}
+                                />
+                                <View style={styles.avatarEditBadge}>
+                                    <Ionicons name="pencil" size={12} color={colors.bg} />
+                                </View>
+                            </Pressable>
                             <View style={{ flex: 1 }}>
                                 <Pressable
                                     onPress={() => {
@@ -305,6 +393,48 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         flexShrink: 1,
     },
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    avatarEditBadge: {
+        position: 'absolute',
+        right: -2,
+        bottom: -2,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: colors.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: colors.bg,
+    },
+    avatarGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: spacing.sm,
+        marginVertical: spacing.sm,
+    },
+    avatarOption: {
+        width: 92,
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: spacing.sm,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surfaceElevated,
+    },
+    avatarOptionOn: { borderColor: colors.primary },
+    avatarName: {
+        color: colors.text,
+        fontSize: typography.sizes.xs,
+        fontWeight: typography.weights.bold,
+    },
+    avatarState: {
+        color: colors.textDim,
+        fontSize: 10,
+        fontFamily: typography.familyMono,
+        letterSpacing: 0.5,
+    },
     modalBackdrop: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.75)',

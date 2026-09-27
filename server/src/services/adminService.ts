@@ -6,7 +6,7 @@
 // from leaderboards, but ARE visible/filterable in the player list so an admin
 // can inspect them.
 
-import { pool, query } from '../db/pool.js';
+import { pool, query, transaction } from '../db/pool.js';
 import { redis } from '../db/redis.js';
 import { bumpTokenVersion, deleteAccount } from './userService.js';
 import { grantCoins } from './coinsService.js';
@@ -28,8 +28,8 @@ export async function isAdmin(userId: string): Promise<boolean> {
 export async function promoteAdminEmails(emails: string[]): Promise<number> {
     if (emails.length === 0) return 0;
     const res = await pool.query(
-        `UPDATE users SET is_admin = TRUE
-         WHERE lower(email) = ANY($1::text[]) AND is_admin = FALSE`,
+        `UPDATE users SET is_admin = TRUE, is_super_admin = TRUE
+         WHERE lower(email) = ANY($1::text[]) AND (is_admin = FALSE OR is_super_admin = FALSE)`,
         [emails]
     );
     return res.rowCount ?? 0;
@@ -223,7 +223,9 @@ export async function getPlayerDetail(userId: string): Promise<Record<string, un
     );
     const u = rows[0];
     if (!u) return null;
-    delete (u as Record<string, unknown>).password_hash;
+    delete u.password_hash;
+    delete u.apple_refresh_token;
+    delete u.auth_subject;
 
     const [matches, coinLedger, cosmetics, iap, reportsAgainst, reportsBy, bpClaims, hintCount] =
         await Promise.all([
@@ -374,7 +376,7 @@ export async function listRecentMatches(limit = 50, userId?: string): Promise<un
 
 export async function listIap(limit = 100): Promise<unknown[]> {
     return query(
-        `SELECT t.id, t.platform, t.product_id, t.entitlement, t.transaction_id,
+        `SELECT t.id, t.platform, t.product_id, t.entitlement, t.transaction_id, t.store_verified,
                 u.username, u.id AS user_id, t.created_at
          FROM iap_transactions t LEFT JOIN users u ON u.id=t.user_id
          ORDER BY t.created_at DESC LIMIT $1`,
@@ -396,5 +398,46 @@ export async function getEconomy(): Promise<unknown> {
                 (SELECT COALESCE(SUM(coins),0) FROM users WHERE NOT (${BOT_FILTER})) AS circulating
          FROM coin_grants`
     );
-    return { bySource, totals };
+    const [purchases] = await query(`SELECT COUNT(*) AS transactions, COUNT(DISTINCT user_id) AS buyers
+        FROM iap_transactions WHERE store_verified AND created_at >= now() - interval '30 days'`);
+    const products = await query(`SELECT product_id, COUNT(*) AS transactions, COUNT(DISTINCT user_id) AS buyers
+        FROM iap_transactions WHERE store_verified AND created_at >= now() - interval '30 days'
+        GROUP BY product_id ORDER BY COUNT(*) DESC`);
+    const [engagement] = await query(`SELECT COUNT(*) AS rewarded_ads, COUNT(DISTINCT user_id) AS ad_viewers
+        FROM ad_rewards WHERE granted AND transaction_id NOT LIKE 'dev-%' AND granted_at >= now() - interval '30 days'`);
+    return { bySource, totals, monetization: { ...purchases, ...engagement, products } };
+}
+
+export async function isSuperAdmin(userId: string): Promise<boolean> {
+    const rows = await query<{ is_super_admin: boolean }>('SELECT is_super_admin FROM users WHERE id = $1', [userId]);
+    return rows[0]?.is_super_admin ?? false;
+}
+
+/** Support adjustments and their audit record share a transaction. */
+export async function supportPlayer(userId: string, actorId: string, actorName: string, body: {
+    reason: string; cosmeticId?: string; adsRemoved?: boolean; hintCredits?: number;
+    reveal?: number; scramble?: number; lock?: number; streakShields?: number;
+    premium?: boolean;
+}): Promise<void> {
+    await transaction(async (client) => {
+        const found = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+        if (!found.rowCount) throw new Error('Player not found');
+        const fields = { adsRemoved: 'ads_removed', hintCredits: 'hint_credits', reveal: 'powerup_reveal', scramble: 'powerup_scramble', lock: 'powerup_lock', streakShields: 'streak_shields' } as const;
+        for (const [key, col] of Object.entries(fields)) {
+            const value = body[key as keyof typeof fields];
+            if (value !== undefined) await client.query(`UPDATE users SET ${col} = $1, updated_at = now() WHERE id = $2`, [value, userId]);
+        }
+        if (body.cosmeticId) {
+            const { grantCosmetic } = await import('./cosmeticsService.js');
+            await grantCosmetic(userId, body.cosmeticId, 'grant', client);
+        }
+        if (body.premium === true) {
+            const { unlockPremium } = await import('./battlePassService.js');
+            await unlockPremium(userId, client);
+        } else if (body.premium === false) {
+            await client.query('UPDATE users SET battle_pass_premium = FALSE WHERE id = $1', [userId]);
+        }
+        await client.query(`INSERT INTO admin_audit_log (admin_id, admin_name, action, target_type, target_id, detail)
+            VALUES ($1, $2, 'support', 'user', $3, $4)`, [actorId, actorName, userId, body]);
+    });
 }

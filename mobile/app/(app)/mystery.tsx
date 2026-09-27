@@ -5,7 +5,6 @@
 
 import { useCallback, useState } from 'react';
 import {
-    Alert,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -23,6 +22,7 @@ import { Button } from '../../src/components/ui/Button';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 export default function MysteryScreen() {
     const router = useRouter();
@@ -63,13 +63,13 @@ export default function MysteryScreen() {
         try {
             const r = await mysteryApi.submit(trimmed);
             if (!r.ok) {
-                Alert.alert('Not accepted', r.error ?? 'Try another word.');
+                appAlert('Not accepted', r.error ?? 'Try another word.');
                 return;
             }
             setPending(r.submission ?? null);
             setWord('');
         } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Error', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setSubmitting(false);
         }
@@ -90,7 +90,7 @@ export default function MysteryScreen() {
             await mysteryApi.withdraw();
             setPending(null);
         } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Error', err instanceof Error ? err.message : 'Try again.');
         }
     }
 

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-    Alert,
     KeyboardAvoidingView,
     Platform,
     StyleSheet,
@@ -16,6 +15,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 export default function Register() {
     const router = useRouter();
@@ -30,15 +30,15 @@ export default function Register() {
 
     async function onSubmit() {
         if (!email || !password || !username) {
-            Alert.alert('Missing fields', 'Username, email and password are all required.');
+            appAlert('Missing fields', 'Username, email and password are all required.');
             return;
         }
         if (password.length < 8) {
-            Alert.alert('Weak password', 'Use at least 8 characters.');
+            appAlert('Weak password', 'Use at least 8 characters.');
             return;
         }
         if (!/^[a-zA-Z0-9_]{3,16}$/.test(username)) {
-            Alert.alert(
+            appAlert(
                 'Invalid username',
                 'Letters, numbers, and underscores only — 3 to 16 characters.'
             );
@@ -47,13 +47,13 @@ export default function Register() {
         try {
             await registerEmail(email, password, username);
         } catch (err) {
-            Alert.alert('Registration failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Registration failed', err instanceof Error ? err.message : 'Try again.');
         }
     }
 
     async function onGoogle() {
         if (!google.available) {
-            Alert.alert('Not configured', 'Google Sign-In env vars are missing.');
+            appAlert('Not configured', 'Google Sign-In env vars are missing.');
             return;
         }
         setOauthBusy(true);
@@ -61,7 +61,7 @@ export default function Register() {
             const idToken = await google.signIn();
             if (idToken) await signInGoogle(idToken);
         } catch (err) {
-            Alert.alert('Google sign-in failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Google sign-in failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setOauthBusy(false);
         }

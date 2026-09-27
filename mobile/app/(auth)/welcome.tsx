@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -14,6 +14,7 @@ import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { appleSignIn, useAppleAvailable } from '../../src/auth/appleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 const APP_VERSION = `v${Constants.expoConfig?.version ?? '1.0.0'}`;
 
@@ -31,13 +32,13 @@ export default function Welcome() {
         try {
             await signInAnonymous();
         } catch (err) {
-            Alert.alert('Sign-in failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Sign-in failed', err instanceof Error ? err.message : 'Try again.');
         }
     }
 
     async function onGoogle() {
         if (!google.available) {
-            Alert.alert('Not configured', 'Google Sign-In env vars are missing.');
+            appAlert('Not configured', 'Google Sign-In env vars are missing.');
             return;
         }
         setOauthBusy(true);
@@ -45,7 +46,7 @@ export default function Welcome() {
             const idToken = await google.signIn();
             if (idToken) await signInGoogle(idToken);
         } catch (err) {
-            Alert.alert('Google sign-in failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Google sign-in failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setOauthBusy(false);
         }
@@ -57,7 +58,7 @@ export default function Welcome() {
             const cred = await appleSignIn();
             if (cred) await signInApple(cred);
         } catch (err) {
-            Alert.alert('Apple sign-in failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Apple sign-in failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setOauthBusy(false);
         }

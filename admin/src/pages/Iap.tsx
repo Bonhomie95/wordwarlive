@@ -5,6 +5,7 @@ import { Loading, ErrorNote, Badge } from '../components/ui';
 import { dateTime } from '../format';
 
 interface Row {
+    store_verified: boolean;
     id: string; platform: string; product_id: string; entitlement: string;
     transaction_id: string; username: string | null; user_id: string | null; created_at: string;
 }
@@ -19,11 +20,11 @@ export default function Iap() {
     if (!rows) return <Loading />;
     return (
         <>
-            <p className="muted" style={{ marginTop: 0 }}>Most recent 200 in-app purchases (verified receipts).</p>
+            <p className="muted" style={{ marginTop: 0 }}>Most recent 200 purchases. Store verification is shown separately from local test or legacy records.</p>
             <div className="table-wrap">
                 <table>
                     <thead>
-                        <tr><th>Buyer</th><th>Entitlement</th><th>Product</th><th>Platform</th><th>Transaction</th><th>When</th></tr>
+                        <tr><th>Buyer</th><th>Entitlement</th><th>Product</th><th>Verification</th><th>Platform</th><th>Transaction</th><th>When</th></tr>
                     </thead>
                     <tbody>
                         {rows.map((t) => (
@@ -31,6 +32,7 @@ export default function Iap() {
                                 <td>{t.user_id ? <Link to={`/players/${t.user_id}`}>{t.username ?? '—'}</Link> : <span className="muted">deleted</span>}</td>
                                 <td><Badge tone="green">{t.entitlement}</Badge></td>
                                 <td className="mono dim" style={{ fontSize: 12 }}>{t.product_id}</td>
+<td><Badge tone={t.store_verified ? 'green' : 'gray'}>{t.store_verified ? 'Store verified' : 'Test / legacy'}</Badge></td>
                                 <td>{t.platform}</td>
                                 <td className="mono dim" style={{ fontSize: 11 }}>{t.transaction_id}</td>
                                 <td className="dim">{dateTime(t.created_at)}</td>

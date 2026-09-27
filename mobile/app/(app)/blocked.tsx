@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Pressable,
     StyleSheet,
@@ -18,6 +17,7 @@ import { blocksApi, type BlockedUser } from '../../src/api/resources';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 export default function BlockedScreen() {
     const router = useRouter();
@@ -39,7 +39,7 @@ export default function BlockedScreen() {
     }, [load]);
 
     function onUnblock(u: BlockedUser) {
-        Alert.alert(
+        appAlert(
             `Unblock ${u.username}?`,
             'You may be matched with them again and they can challenge you.',
             [
@@ -54,7 +54,7 @@ export default function BlockedScreen() {
                                 (prev ?? []).filter((b) => b.userId !== u.userId)
                             );
                         } catch {
-                            Alert.alert('Could not unblock', 'Please try again later.');
+                            appAlert('Could not unblock', 'Please try again later.');
                         } finally {
                             setBusyId(null);
                         }

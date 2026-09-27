@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
 import {
+    ensureAttemptStarted,
     getMyAttempt,
     getMyDailyHints,
     getOrCreateTodaysChallenge,
@@ -19,6 +20,7 @@ export const dailyRouter = Router();
 
 dailyRouter.get('/daily', requireAuth, async (req, res) => {
     const challenge = await getOrCreateTodaysChallenge();
+    await ensureAttemptStarted(req.session!.userId);
     const [attempt, hints] = await Promise.all([
         getMyAttempt(req.session!.userId),
         getMyDailyHints(req.session!.userId),

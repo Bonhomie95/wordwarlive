@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 // AdMob Server-Side Verification (SSV) and reward granting.
 //
 // Flow:
@@ -13,7 +14,7 @@
 // Docs:       https://developers.google.com/admob/android/ssv
 
 import crypto from 'node:crypto';
-import { pool, query } from '../db/pool.js';
+import { pool, query, transaction } from '../db/pool.js';
 import { logger } from '../utils/logger.js';
 import { awardMatchXp } from './battlePassService.js';
 
@@ -213,6 +214,7 @@ export async function processSsvReward(p: SsvParams): Promise<GrantResult> {
                         WHEN $3::int IS NULL THEN battle_pass_xp
                         WHEN battle_pass_season = $3 THEN battle_pass_xp + $4
                         ELSE $4 END,
+                    battle_pass_premium = CASE WHEN $3::int IS NULL OR battle_pass_season = $3 THEN battle_pass_premium ELSE FALSE END,
                     battle_pass_season = COALESCE($3::int, battle_pass_season),
                     updated_at = now()
                  WHERE id = $1`,
@@ -266,8 +268,8 @@ export async function processSsvReward(p: SsvParams): Promise<GrantResult> {
                  WHERE transaction_id = $1`,
                 [p.transaction_id]
             );
+            await bumpBattlePassXp(userId, XP_BOOST_AMOUNT, client);
             await client.query('COMMIT');
-            await bumpBattlePassXp(userId, XP_BOOST_AMOUNT);
             return { granted: true, rewardKind };
         }
 
@@ -340,13 +342,11 @@ function sameLocalDay(a: Date, b: Date, tzOffsetMinutes: number): boolean {
  * Add raw XP to the user's current battle-pass progress. Bypasses the
  * match-result XP scaling (which is for played matches).
  */
-async function bumpBattlePassXp(userId: string, xp: number): Promise<void> {
+async function bumpBattlePassXp(userId: string, xp: number, existing?: PoolClient): Promise<void> {
     // We piggy-back on awardMatchXp's logic; there's no other XP source
     // currently. Using 'tie' would award the wrong number — instead we
     // perform a direct increment, mirroring the row-level lock approach.
-    const c = await pool.connect();
-    try {
-        await c.query('BEGIN');
+    return transaction(async (c) => {
         const seasonRes = await c.query<{
             season_number: number;
             xp_per_tier: number;
@@ -359,7 +359,6 @@ async function bumpBattlePassXp(userId: string, xp: number): Promise<void> {
         );
         const s = seasonRes.rows[0];
         if (!s) {
-            await c.query('COMMIT');
             return;
         }
         const userRow = await c.query<{
@@ -372,25 +371,18 @@ async function bumpBattlePassXp(userId: string, xp: number): Promise<void> {
         );
         const u = userRow.rows[0];
         if (!u) {
-            await c.query('COMMIT');
             return;
         }
         const baseXp =
             u.battle_pass_season === s.season_number ? u.battle_pass_xp : 0;
         const newXp = baseXp + xp;
         await c.query(
-            `UPDATE users SET battle_pass_xp = $1, battle_pass_season = $2,
+            `UPDATE users SET battle_pass_xp = $1, battle_pass_premium = CASE WHEN battle_pass_season = $2 THEN battle_pass_premium ELSE FALSE END, battle_pass_season = $2,
                               updated_at = now()
              WHERE id = $3`,
             [newXp, s.season_number, userId]
         );
-        await c.query('COMMIT');
-    } catch (err) {
-        await c.query('ROLLBACK');
-        throw err;
-    } finally {
-        c.release();
-    }
+    }, existing);
 }
 
 // ─── Remove Ads IAP ─────────────────────────────────────────────────────────

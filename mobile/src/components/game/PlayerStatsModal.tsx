@@ -6,7 +6,7 @@
 // owns the open/close state.
 
 import React from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
@@ -15,6 +15,7 @@ import { Avatar } from '../ui/Avatar';
 import { PlayerName } from '../ui/PlayerName';
 import { blocksApi, reportsApi } from '../../api/resources';
 import type { PublicUser, RankTier } from '../../types/index';
+import { AlertHost, appAlert } from '../ui/AppAlert';
 
 interface Props {
     player: PublicUser | null;
@@ -28,7 +29,7 @@ interface Props {
 }
 
 function confirmBlock(player: PublicUser, onDone: () => void) {
-    Alert.alert(
+    appAlert(
         `Block ${player.username}?`,
         "You won't be matched with this player again, and they can't challenge you. You can unblock them later in Settings.",
         [
@@ -39,10 +40,10 @@ function confirmBlock(player: PublicUser, onDone: () => void) {
                 onPress: async () => {
                     try {
                         await blocksApi.block(player.id);
-                        Alert.alert('Blocked', `You've blocked ${player.username}.`);
+                        appAlert('Blocked', `You've blocked ${player.username}.`);
                         onDone();
                     } catch {
-                        Alert.alert('Could not block', 'Please try again later.');
+                        appAlert('Could not block', 'Please try again later.');
                     }
                 },
             },
@@ -51,7 +52,7 @@ function confirmBlock(player: PublicUser, onDone: () => void) {
 }
 
 function reportPlayer(player: PublicUser) {
-    Alert.alert(
+    appAlert(
         `Report ${player.username}?`,
         'Report this player for an offensive username or bad behavior. Our team will review it.',
         [
@@ -80,9 +81,9 @@ async function submitReport(
             targetId: player.id,
             reason,
         });
-        Alert.alert('Thanks', 'Your report has been submitted.');
+        appAlert('Thanks', 'Your report has been submitted.');
     } catch {
-        Alert.alert('Could not submit', 'Please try again later.');
+        appAlert('Could not submit', 'Please try again later.');
     }
 }
 
@@ -193,7 +194,8 @@ export const PlayerStatsModal: React.FC<Props> = ({
                     </Pressable>
                 </Pressable>
             ) : null}
-        </Modal>
+            <AlertHost scoped />
+            </Modal>
     );
 };
 

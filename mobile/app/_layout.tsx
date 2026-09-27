@@ -25,6 +25,7 @@ import { initObservability } from '../src/observability';
 import { restoreHapticsPref } from '../src/lib/haptics';
 import { registerForPush, onNotificationResponse } from '../src/lib/notifications';
 import { makeThemedStyles, colors, useThemeStore, type ThemeId } from '../src/theme/colors';
+import { AlertHost } from '../src/components/ui/AppAlert';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
 
@@ -103,7 +104,9 @@ export default function RootLayout() {
             registerForPush({ prompt: false }).catch(() => {});
             // Fulfil anything the store still holds for this account (an
             // interrupted purchase, a non-consumable to restore). Idempotent.
-            reconcilePurchases().catch(() => {});
+            reconcilePurchases().then((count) => {
+                if (count > 0) return useAuthStore.getState().refreshMe();
+            }).catch(() => {});
         }
     }, [token, connectPersistent]);
 
@@ -143,6 +146,7 @@ export default function RootLayout() {
                         <Stack.Screen name="(auth)" />
                         <Stack.Screen name="(app)" />
                     </Stack>
+                    <AlertHost />
                 </SafeAreaProvider>
             </GestureHandlerRootView>
         </ErrorBoundary>

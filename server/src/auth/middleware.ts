@@ -40,15 +40,15 @@ export async function requireAuth(
     }
     try {
         const state = await getSessionState(session.userId);
-        if (state === null || state.tokenVersion !== session.tokenVersion) {
-            res.status(401).json({ error: 'Session expired. Please sign in again.' });
-            return;
-        }
-        if (state.banned) {
+        if (state?.banned) {
             res.status(403).json({
                 error: 'This account has been suspended.',
                 code: 'ACCOUNT_SUSPENDED',
             });
+            return;
+        }
+        if (state === null || state.tokenVersion !== session.tokenVersion) {
+            res.status(401).json({ error: 'Session expired. Please sign in again.' });
             return;
         }
     } catch {

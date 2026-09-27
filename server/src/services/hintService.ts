@@ -12,7 +12,7 @@
 //
 // Server is authoritative — picks the position, bills the user, logs.
 
-import { pool, query } from '../db/pool.js';
+import { transaction } from '../db/pool.js';
 import { spendCoins, HINT_COIN_COST } from './coinsService.js';
 import type { GuessResult } from '../game/engine.js';
 
@@ -46,10 +46,11 @@ export interface HintError {
  */
 export function pickHintPosition(
     target: string,
-    history: GuessResult[]
+    history: GuessResult[],
+    excluded: number[] = []
 ): { position: number; letter: string } | null {
     const t = target.toUpperCase();
-    const greened = new Set<number>();
+    const greened = new Set<number>(excluded);
     for (const g of history) {
         for (let i = 0; i < g.tiles.length; i++) {
             if (g.tiles[i] === 'correct') greened.add(i);
@@ -69,103 +70,31 @@ interface RedeemArgs {
     matchId: string;
     target: string;
     history: GuessResult[];
+    excluded?: number[];
 }
 
 export async function redeemHint(args: RedeemArgs): Promise<HintResult | HintError> {
-    const pick = pickHintPosition(args.target, args.history);
-    if (!pick) return { ok: false, error: 'NO_POSITIONS_LEFT' };
-
-    // Read user state for the waterfall decision.
-    const userRows = await query<{
-        coins: number;
-        hint_credits: number;
-        lifetime_hints_used: number;
-    }>(
-        `SELECT coins, hint_credits, lifetime_hints_used FROM users WHERE id = $1`,
-        [args.userId]
-    );
-    const u = userRows[0];
-    if (!u) return { ok: false, error: 'NOT_FOUND' };
-
-    // Payment waterfall: lifetime-first → credits → coins.
-    //
-    // Even on the lifetime-first free path we still increment
-    // lifetime_hints_used so the next request is no longer free.
-    let paidWith: 'free' | 'credit' | 'coins';
-    let coinsSpent = 0;
-    let coinsRemaining = u.coins;
-    let hintCreditsRemaining = u.hint_credits;
-
-    if (u.lifetime_hints_used === 0) {
-        paidWith = 'free';
-    } else if (u.hint_credits > 0) {
-        // Conditional UPDATE — atomic decrement, no race.
-        const r = await query<{ hint_credits: number }>(
-            `UPDATE users SET hint_credits = hint_credits - 1, updated_at = now()
-             WHERE id = $1 AND hint_credits > 0 RETURNING hint_credits`,
-            [args.userId]
-        );
-        if (r.length === 0) {
-            // Lost the race for the credit; fall through to coins.
-            const newBal = await spendCoins({
-                userId: args.userId,
-                amount: HINT_COIN_COST,
-                source: 'hint_spend',
-                metadata: { matchId: args.matchId },
-            });
-            if (newBal === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-            paidWith = 'coins';
-            coinsSpent = HINT_COIN_COST;
-            coinsRemaining = newBal;
-        } else {
-            paidWith = 'credit';
-            hintCreditsRemaining = r[0]!.hint_credits;
+    return transaction(async (client): Promise<HintResult | HintError> => {
+        const user = await client.query<{ coins: number; hint_credits: number; lifetime_hints_used: number }>(
+            'SELECT coins, hint_credits, lifetime_hints_used FROM users WHERE id = $1 FOR UPDATE', [args.userId]);
+        const u = user.rows[0];
+        if (!u) return { ok: false, error: 'NOT_FOUND' };
+        const prior = await client.query<{ position: number }>('SELECT position FROM hint_uses WHERE match_id = $1 AND user_id = $2', [args.matchId, args.userId]);
+        if (prior.rows.length >= (args.target.length >= 8 ? 2 : 1)) return { ok: false, error: 'PER_MATCH_LIMIT' };
+        const pick = pickHintPosition(args.target, args.history, [...(args.excluded ?? []), ...prior.rows.map((h) => h.position)]);
+        if (!pick) return { ok: false, error: 'NO_POSITIONS_LEFT' };
+        const paidWith = u.lifetime_hints_used === 0 ? 'free' : u.hint_credits > 0 ? 'credit' : 'coins';
+        const coinsSpent = paidWith === 'coins' ? HINT_COIN_COST : 0;
+        let coinsRemaining = u.coins;
+        if (coinsSpent) {
+            const balance = await spendCoins({ userId: args.userId, amount: coinsSpent, source: 'hint_spend', metadata: { matchId: args.matchId } }, client);
+            if (balance === null) return { ok: false, error: 'NOT_AFFORDABLE' };
+            coinsRemaining = balance;
         }
-    } else if (u.coins >= HINT_COIN_COST) {
-        const newBal = await spendCoins({
-            userId: args.userId,
-            amount: HINT_COIN_COST,
-            source: 'hint_spend',
-            metadata: { matchId: args.matchId },
-        });
-        if (newBal === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-        paidWith = 'coins';
-        coinsSpent = HINT_COIN_COST;
-        coinsRemaining = newBal;
-    } else {
-        return { ok: false, error: 'NOT_AFFORDABLE' };
-    }
-
-    // Increment lifetime counter.
-    const lifetimeRow = await query<{ lifetime_hints_used: number }>(
-        `UPDATE users SET lifetime_hints_used = lifetime_hints_used + 1,
-                          updated_at = now()
-         WHERE id = $1 RETURNING lifetime_hints_used`,
-        [args.userId]
-    );
-    const lifetimeHintsUsed =
-        lifetimeRow[0]?.lifetime_hints_used ?? u.lifetime_hints_used + 1;
-
-    // Audit log.
-    await query(
-        `INSERT INTO hint_uses (match_id, user_id, paid_with, coins_spent, position, letter)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [args.matchId, args.userId, paidWith, coinsSpent, pick.position, pick.letter]
-    );
-
-    return {
-        ok: true,
-        position: pick.position,
-        letter: pick.letter,
-        paidWith,
-        coinsSpent,
-        coinsRemaining,
-        hintCreditsRemaining,
-        lifetimeHintsUsed,
-    };
+        await client.query(`UPDATE users SET hint_credits = hint_credits - $2, lifetime_hints_used = lifetime_hints_used + 1, updated_at = now() WHERE id = $1`, [args.userId, paidWith === 'credit' ? 1 : 0]);
+        await client.query(`INSERT INTO hint_uses (match_id, user_id, paid_with, coins_spent, position, letter) VALUES ($1, $2, $3, $4, $5, $6)`, [args.matchId, args.userId, paidWith, coinsSpent, pick.position, pick.letter]);
+        return { ok: true, ...pick, paidWith, coinsSpent, coinsRemaining, hintCreditsRemaining: u.hint_credits - (paidWith === 'credit' ? 1 : 0), lifetimeHintsUsed: u.lifetime_hints_used + 1 };
+    });
 }
 
 export { HINT_COIN_COST };
-
-// Reference imports so linters don't whine.
-void pool;

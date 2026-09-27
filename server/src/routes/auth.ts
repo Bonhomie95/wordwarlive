@@ -190,7 +190,7 @@ authRouter.post('/google', async (req, res) => {
         identity = await verifyGoogleIdToken(parsed.data.idToken);
     } catch (err) {
         logger.warn({ err }, 'Google id_token verification failed');
-        return res.status(401).json({ error: 'Could not verify Google identity' });
+        return res.status(400).json({ error: 'Could not verify Google identity' });
     }
     let user = await findUserByProviderSubject('google', identity.sub);
     if (!user) {
@@ -231,7 +231,7 @@ authRouter.post('/apple', async (req, res) => {
         identity = await verifyAppleIdToken(parsed.data.idToken);
     } catch (err) {
         logger.warn({ err }, 'Apple id_token verification failed');
-        return res.status(401).json({ error: 'Could not verify Apple identity' });
+        return res.status(400).json({ error: 'Could not verify Apple identity' });
     }
     let user = await findUserByProviderSubject('apple', identity.sub);
     if (!user) {
@@ -335,7 +335,7 @@ authRouter.post('/link/google', requireAuth, async (req, res) => {
         identity = await verifyGoogleIdToken(parsed.data.idToken);
     } catch (err) {
         logger.warn({ err }, 'Google id_token verification failed (link)');
-        return res.status(401).json({ error: 'Could not verify Google identity' });
+        return res.status(400).json({ error: 'Could not verify Google identity' });
     }
     if (await findUserByProviderSubject('google', identity.sub)) {
         return res.status(409).json({
@@ -379,7 +379,7 @@ authRouter.post('/link/apple', requireAuth, async (req, res) => {
         identity = await verifyAppleIdToken(parsed.data.idToken);
     } catch (err) {
         logger.warn({ err }, 'Apple id_token verification failed (link)');
-        return res.status(401).json({ error: 'Could not verify Apple identity' });
+        return res.status(400).json({ error: 'Could not verify Apple identity' });
     }
     if (await findUserByProviderSubject('apple', identity.sub)) {
         return res.status(409).json({

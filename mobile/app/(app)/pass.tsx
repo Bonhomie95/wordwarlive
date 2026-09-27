@@ -5,7 +5,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
     FlatList,
     Pressable,
     StyleSheet,
@@ -33,6 +32,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import type { BattlePassResponse, BattlePassRewardView } from '../../src/types/index';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 export default function Pass() {
     const [data, setData] = useState<BattlePassResponse | null>(null);
@@ -48,7 +48,7 @@ export default function Pass() {
             const r = await battlePassApi.current();
             setData(r);
         } catch (err) {
-            Alert.alert('Could not load battle pass', err instanceof Error ? err.message : '');
+            appAlert('Could not load battle pass', err instanceof Error ? err.message : '');
         }
     }, []);
 
@@ -88,7 +88,7 @@ export default function Pass() {
                     <Ionicons name="ribbon-outline" size={48} color={colors.textMuted} />
                     <Text style={styles.empty} allowFontScaling={false}>
                         No active season right now. A new season starts soon —
-                        keep playing and your XP carries into it.
+                        your new season starts with fresh XP.
                     </Text>
                 </View>
             </Screen>
@@ -98,7 +98,7 @@ export default function Pass() {
     const { season, you, rewards } = data;
     const xpInTier = you.xp - you.currentTier * season.xpPerTier;
     const xpToNext = season.xpPerTier;
-    const tierProgress = Math.min(1, xpInTier / xpToNext);
+    const tierProgress = you.currentTier >= season.maxTier ? 1 : Math.min(1, xpInTier / xpToNext);
 
     // Group rewards by tier.
     const byTier: Record<number, BattlePassRewardView[]> = {};
@@ -112,7 +112,7 @@ export default function Pass() {
         .sort((a, b) => a - b);
 
     async function onUpgrade() {
-        Alert.alert(
+        appAlert(
             'Unlock Premium',
             `Premium track gives you access to all premium rewards this season for ${premiumPrice}.` +
                 (iapAvailable()
@@ -129,7 +129,7 @@ export default function Pass() {
                             await load();
                         } catch (err) {
                             if (!(err instanceof IapCancelled)) {
-                                Alert.alert('Upgrade failed', err instanceof Error ? err.message : '');
+                                appAlert('Upgrade failed', err instanceof Error ? err.message : '');
                             }
                         } finally {
                             setBusy(false);
@@ -147,7 +147,7 @@ export default function Pass() {
             await battlePassApi.claim(reward.tier, reward.track);
             await load();
         } catch (err) {
-            Alert.alert('Claim failed', err instanceof Error ? err.message : '');
+            appAlert('Claim failed', err instanceof Error ? err.message : '');
         } finally {
             setClaimingKey(null);
         }
@@ -159,7 +159,7 @@ export default function Pass() {
         try {
             const r = await showRewarded('bp_xp_boost', user.id);
             if (r.unavailable) {
-                Alert.alert(
+                appAlert(
                     'Ads not available',
                     'XP boost needs the production / dev-client build (not Expo Go).'
                 );
@@ -176,9 +176,9 @@ export default function Pass() {
                     refreshMe().catch(() => {});
                     load().catch(() => {});
                 }, 1200);
-                Alert.alert('+50 XP incoming', 'Updating your battle pass…');
+                appAlert('+50 XP incoming', 'Updating your battle pass…');
             } else if (r.error) {
-                Alert.alert('Ad not available', r.error);
+                appAlert('Ad not available', r.error);
             }
         } finally {
             setAdBusy(false);

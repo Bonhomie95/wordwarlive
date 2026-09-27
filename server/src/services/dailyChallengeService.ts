@@ -114,6 +114,21 @@ export async function getMyAttempt(userId: string): Promise<DailyAttempt | null>
 }
 
 /**
+ * Start today's clock the first time the player opens the challenge, so solve
+ * time includes thinking before the first guess (otherwise a one-guess solve
+ * would read 0 s). No-op once an attempt exists.
+ */
+export async function ensureAttemptStarted(userId: string): Promise<void> {
+    await query(
+        `INSERT INTO daily_challenge_attempts
+            (challenge_date, user_id, guesses, solved, guess_count, duration_ms, created_at)
+         VALUES ($1, $2, '[]'::jsonb, FALSE, 0, 0, now())
+         ON CONFLICT (challenge_date, user_id) DO NOTHING`,
+        [todayUtc(), userId]
+    );
+}
+
+/**
  * Submit a guess. Validates against the word bank + the actual answer for
  * tile colors. Already-solved attempts are immutable.
  */

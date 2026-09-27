@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
@@ -24,4 +24,21 @@ export async function query<T = any>(
 ): Promise<T[]> {
     const result = await pool.query(text, params);
     return result.rows as T[];
+}
+
+/** Compose related writes atomically; nested services reuse the caller's client. */
+export async function transaction<T>(work: (client: PoolClient) => Promise<T>, existing?: PoolClient): Promise<T> {
+    if (existing) return work(existing);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await work(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 }

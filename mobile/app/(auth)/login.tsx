@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-    Alert,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -16,6 +15,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { contactSupport } from '../../src/lib/links';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 export default function Login() {
     const router = useRouter();
@@ -26,13 +26,13 @@ export default function Login() {
 
     async function onSubmit() {
         if (!email || !password) {
-            Alert.alert('Missing fields', 'Enter your email and password.');
+            appAlert('Missing fields', 'Enter your email and password.');
             return;
         }
         try {
             await signInEmail(email, password);
         } catch (err) {
-            Alert.alert('Sign-in failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Sign-in failed', err instanceof Error ? err.message : 'Try again.');
         }
     }
 
@@ -66,7 +66,7 @@ export default function Login() {
                         />
                         <Pressable
                             onPress={() =>
-                                Alert.alert(
+                                appAlert(
                                     'Forgot your password?',
                                     'Email support from the address you signed up with and we will reset it for you.',
                                     [

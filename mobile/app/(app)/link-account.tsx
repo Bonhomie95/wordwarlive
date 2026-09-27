@@ -6,7 +6,6 @@
 
 import { useState } from 'react';
 import {
-    Alert,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -27,6 +26,7 @@ import { appleSignIn, useAppleAvailable } from '../../src/auth/appleSignIn';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 export default function LinkAccount() {
     const router = useRouter();
@@ -57,7 +57,7 @@ export default function LinkAccount() {
     }
 
     function done() {
-        Alert.alert(
+        appAlert(
             'Account linked!',
             'Your progress is safe. Use these credentials to sign in on any device.',
             [{ text: 'OK', onPress: () => router.back() }]
@@ -66,18 +66,18 @@ export default function LinkAccount() {
 
     async function onLinkEmail() {
         if (!email || !password) {
-            Alert.alert('Missing fields', 'Email and password are required.');
+            appAlert('Missing fields', 'Email and password are required.');
             return;
         }
         if (password.length < 8) {
-            Alert.alert('Weak password', 'Use at least 8 characters.');
+            appAlert('Weak password', 'Use at least 8 characters.');
             return;
         }
         try {
             await linkEmail(email, password);
             done();
         } catch (err) {
-            Alert.alert(
+            appAlert(
                 'Linking failed',
                 err instanceof Error ? err.message : 'Try again.'
             );
@@ -86,7 +86,7 @@ export default function LinkAccount() {
 
     async function onLinkGoogle() {
         if (!google.available) {
-            Alert.alert('Not configured', 'Google Sign-In env vars are missing.');
+            appAlert('Not configured', 'Google Sign-In env vars are missing.');
             return;
         }
         setOauthBusy(true);
@@ -97,7 +97,7 @@ export default function LinkAccount() {
                 done();
             }
         } catch (err) {
-            Alert.alert(
+            appAlert(
                 'Linking failed',
                 err instanceof Error ? err.message : 'Try again.'
             );
@@ -115,7 +115,7 @@ export default function LinkAccount() {
                 done();
             }
         } catch (err) {
-            Alert.alert(
+            appAlert(
                 'Linking failed',
                 err instanceof Error ? err.message : 'Try again.'
             );

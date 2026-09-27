@@ -20,6 +20,7 @@ import { friendChallengeHub } from './friendChallenge.js';
 import { getMyPendingSubmission } from '../services/mysteryService.js';
 import { markOffline, markOnline, socketIdFor } from './presence.js';
 import {
+    befriend,
     consumePrivateMatchCode,
     resolvePrivateMatchCode,
 } from '../services/friendsService.js';
@@ -295,7 +296,10 @@ export function createSocketServer(http: HttpServer): AppIOServer {
 
                 const hostSocketId = await socketIdFor(resolved.hostId);
                 if (!hostSocketId) {
-                    return ack({ ok: false, error: 'Host is offline.' });
+                    return ack({
+                        ok: false,
+                        error: "Your friend isn't in WordWar right now. Ask them to keep the app open, then try again.",
+                    });
                 }
                 // Both sockets must be on this node (node-local match runtime).
                 if (!io.sockets.sockets.has(hostSocketId)) {
@@ -332,6 +336,11 @@ export function createSocketServer(http: HttpServer): AppIOServer {
                     explicitWord: word,
                     mode: 'classic',
                 });
+                // Playing by code also makes you friends, so next time you
+                // can challenge each other straight from the list.
+                befriend(host.id, joiner.id).catch((err) =>
+                    logger.warn({ err }, 'befriend after private match failed')
+                );
                 ack({ ok: true });
             } catch (err) {
                 logger.error({ err }, 'private_join failed');

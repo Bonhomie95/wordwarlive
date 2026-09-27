@@ -27,6 +27,7 @@ import { findUserByEmail, getPasswordHash } from '../services/userService.js';
 import { verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
 import { query } from '../db/pool.js';
+import { authLimiter } from '../middleware/rateLimit.js';
 import { env } from '../config/env.js';
 import * as admin from '../services/adminService.js';
 
@@ -39,7 +40,7 @@ const loginSchema = z.object({
     password: z.string().min(1),
 });
 
-adminRouter.post('/admin/login', async (req, res) => {
+adminRouter.post('/admin/login', authLimiter, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
     const { email, password } = parsed.data;
@@ -61,13 +62,14 @@ adminRouter.post('/admin/login', async (req, res) => {
     if (!(await admin.isAdmin(user.id))) {
         return res.status(403).json({ error: 'This account is not an administrator.' });
     }
+    if ((await query<{ banned: boolean }>('SELECT banned FROM users WHERE id = $1', [user.id]))[0]?.banned) return res.status(403).json({ error: 'Account suspended.' });
     const token = signSession({
         userId: user.id,
         username: user.username,
         tokenVersion: user.token_version,
         provider: 'email',
     });
-    res.json({ token, admin: { id: user.id, username: user.username, email: user.email } });
+    res.json({ token, admin: { id: user.id, username: user.username, email: user.email, superAdmin: await admin.isSuperAdmin(user.id) } });
 });
 
 // ─── Everything below requires an admin session ──────────────────────────────
@@ -90,11 +92,45 @@ async function actor(req: import('express').Request) {
 }
 
 adminRouter.get('/admin/me', wrap(async (req, res) => {
-    res.json({ id: req.session!.userId, username: req.session!.username });
+    res.json({ id: req.session!.userId, username: req.session!.username, superAdmin: await admin.isSuperAdmin(req.session!.userId) });
 }));
 
 adminRouter.get('/admin/overview', wrap(async (_req, res) => {
     res.json(await admin.getOverview());
+}));
+
+// Validate player IDs and protect privileged accounts on every player mutation.
+adminRouter.use('/admin/players/:id', async (req, res, next) => {
+    const id = String(req.params.id);
+    if (!z.string().uuid().safeParse(id).success) return res.status(400).json({ error: 'Invalid player ID' });
+    const target = await query<{ is_admin: boolean; is_super_admin: boolean }>('SELECT is_admin, is_super_admin FROM users WHERE id = $1', [id]);
+    if (!target[0]) return res.status(404).json({ error: 'Player not found' });
+    if (req.method !== 'GET' && target[0].is_admin && !(await admin.isSuperAdmin(req.session!.userId))) {
+        return res.status(403).json({ error: 'Super-admin access required to manage administrators.' });
+    }
+    if (req.method !== 'GET' && target[0].is_super_admin && (req.method === 'DELETE' || req.path === '/ban' || req.path === '/role')) {
+        return res.status(403).json({ error: 'Super-admin access is managed by the server operator.' });
+    }
+    next();
+});
+
+const supportSchema = z.object({
+    reason: z.string().trim().min(3).max(500), cosmeticId: z.string().min(1).max(100).optional(),
+    adsRemoved: z.boolean().optional(), premium: z.boolean().optional(),
+    hintCredits: z.number().int().min(0).max(10000).optional(),
+    reveal: z.number().int().min(0).max(10000).optional(),
+    scramble: z.number().int().min(0).max(10000).optional(),
+    lock: z.number().int().min(0).max(10000).optional(),
+    streakShields: z.number().int().min(0).max(2).optional(),
+}).refine((v) => Object.keys(v).some((key) => key !== 'reason'), 'Choose a support adjustment');
+adminRouter.post('/admin/players/:id/support', wrap(async (req, res) => {
+    const parsed = supportSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Choose a valid adjustment and provide a reason.' });
+    if (parsed.data.cosmeticId && !(await query('SELECT id FROM cosmetics WHERE id = $1', [parsed.data.cosmeticId])).length) {
+        return res.status(400).json({ error: 'Unknown cosmetic ID' });
+    }
+    await admin.supportPlayer(String(req.params.id), req.session!.userId, req.session!.username, parsed.data);
+    res.json({ ok: true });
 }));
 
 // ─── Players ─────────────────────────────────────────────────────────────────
@@ -162,6 +198,7 @@ adminRouter.post('/admin/players/:id/adjust', wrap(async (req, res) => {
 const roleSchema = z.object({ admin: z.boolean() });
 
 adminRouter.post('/admin/players/:id/role', wrap(async (req, res) => {
+    if (!(await admin.isSuperAdmin(req.session!.userId))) return res.status(403).json({ error: 'Super-admin access required.' });
     const id = String(req.params.id);
     const parsed = roleSchema.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
@@ -200,6 +237,7 @@ const statusSchema = z.object({ status: z.enum(['open', 'reviewed', 'actioned', 
 
 adminRouter.post('/admin/reports/:id/status', wrap(async (req, res) => {
     const id = String(req.params.id);
+    if (!z.string().uuid().safeParse(id).success) return res.status(400).json({ error: 'Invalid report ID' });
     const parsed = statusSchema.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'Invalid status' });
     const { status } = parsed.data;

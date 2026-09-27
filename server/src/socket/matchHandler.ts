@@ -24,7 +24,7 @@ import { persistMatch } from '../services/matchService.js';
 import { awardMatchXp } from '../services/battlePassService.js';
 import { grantCoins, matchCoins } from '../services/coinsService.js';
 import { advanceStreakOnMatchComplete } from '../services/streakService.js';
-import { redeemHint } from '../services/hintService.js';
+import { redeemHint, pickHintPosition } from '../services/hintService.js';
 import { recordMatchResult } from '../services/leaderboardService.js';
 import { updatePeak as updateSeasonPeak } from '../services/rankSeasonService.js';
 import { saveReplay } from '../services/replayService.js';
@@ -57,6 +57,8 @@ interface ActiveMatch {
      *  regardless of payment kind (free/credit/coins). */
     p1HintsUsed: number;
     p2HintsUsed: number;
+    p1Revealed?: Record<number, string>;
+    p2Revealed?: Record<number, string>;
     /** Match mode: 'classic' (rank-aware word) or 'mystery' (player-submitted). */
     mode: 'classic' | 'mystery';
     startedAtMs: number;
@@ -143,7 +145,18 @@ class MatchRegistry {
         return this.byMatchId.size;
     }
 
+    private startingPlayers = new Set<string>();
     async startMatch(io: AppIOServer, args: StartArgs): Promise<void> {
+        const ids = [args.p1UserId, args.p2UserId];
+        if (ids[0] === ids[1] || ids.some((id) => this.byUserId.has(id) || this.startingPlayers.has(id))) {
+            throw new Error('Player already has an active match');
+        }
+        ids.forEach((id) => this.startingPlayers.add(id));
+        try { await this.createMatch(io, args); }
+        finally { ids.forEach((id) => this.startingPlayers.delete(id)); }
+    }
+
+    private async createMatch(io: AppIOServer, args: StartArgs): Promise<void> {
         // Co-location guard. The live match runtime is node-local, so BOTH
         // human sockets must be connected to THIS instance. `io.sockets.sockets`
         // only contains sockets on the local node (the Redis adapter routes
@@ -384,7 +397,16 @@ class MatchRegistry {
      * Note on inventory: we decrement on use (not on award) so failed
      * uses (e.g. tried to scramble after match ended) don't consume.
      */
-    async handlePowerUp(
+    private itemRequests = new Set<string>();
+    async handlePowerUp(io: AppIOServer, socket: AppSocket, kind: 'reveal' | 'scramble' | 'lock', target: number | null): Promise<{ ok: boolean; error?: string }> {
+        const userId = socket.data.session.userId;
+        if (this.itemRequests.has(userId)) return { ok: false, error: 'Wait for the previous item request.' };
+        this.itemRequests.add(userId);
+        try { return await this.usePowerUp(io, socket, kind, target); }
+        finally { this.itemRequests.delete(userId); }
+    }
+
+    private async usePowerUp(
         io: AppIOServer,
         socket: AppSocket,
         kind: 'reveal' | 'scramble' | 'lock',
@@ -404,6 +426,10 @@ class MatchRegistry {
                 error: 'Your powerups are locked. Wait a moment.',
             };
         }
+
+        const revealed = isP1 ? (match.p1Revealed ??= {}) : (match.p2Revealed ??= {});
+        const pick = kind === 'reveal' ? pickHintPosition(isP1 ? match.p1Word : match.p2Word, isP1 ? match.p1Guesses : match.p2Guesses, Object.keys(revealed).map(Number)) : null;
+        if (kind === 'reveal' && !pick) return { ok: false, error: 'No positions left to reveal.' };
 
         // Check + decrement inventory atomically. `kind` is whitelisted below
         // (never trust the wire type at runtime) and mapped to a fixed column
@@ -427,31 +453,14 @@ class MatchRegistry {
 
         const opponentSocketId = isP1 ? match.p2SocketId : match.p1SocketId;
 
-        if (kind === 'reveal') {
-            // Pick one position the requester hasn't already greened.
-            const history = isP1 ? match.p1Guesses : match.p2Guesses;
-            const target = isP1 ? match.p1Word : match.p2Word;
-            const greened = new Set<number>();
-            for (const g of history) {
-                for (let i = 0; i < g.tiles.length; i++) {
-                    if (g.tiles[i] === 'correct') greened.add(i);
-                }
-            }
-            const candidates: { pos: number; letter: string }[] = [];
-            for (let i = 0; i < target.length; i++) {
-                if (!greened.has(i)) {
-                    candidates.push({ pos: i, letter: target[i]! });
-                }
-            }
-            if (candidates.length === 0) {
-                return { ok: false, error: 'No positions left to reveal.' };
-            }
-            const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
-            // Tell only the requester via a dedicated event.
-            socket.emit('powerup_reveal_letter', {
-                position: pick.pos,
-                letter: pick.letter,
-            });
+        // The match can end while the inventory update is waiting on the DB.
+        if (match.ended) {
+            await query(`UPDATE users SET ${col} = ${col} + 1 WHERE id = $1`, [userId]);
+            return { ok: false, error: 'Game not active' };
+        }
+        if (kind === 'reveal' && pick) {
+            revealed[pick.position] = pick.letter;
+            socket.emit('powerup_reveal_letter', pick);
             return { ok: true };
         }
 
@@ -508,6 +517,14 @@ class MatchRegistry {
     }
 
     async handleHint(socket: AppSocket): Promise<HintAck> {
+        const id = socket.data.session.userId;
+        if (this.itemRequests.has(id)) return { ok: false, error: 'Wait for the previous item request.', errorCode: 'PER_MATCH_LIMIT' };
+        this.itemRequests.add(id);
+        try { return await this.useHint(socket); }
+        finally { this.itemRequests.delete(id); }
+    }
+
+    private async useHint(socket: AppSocket): Promise<HintAck> {
         const userId = socket.data.session.userId;
         const matchId = this.byUserId.get(userId);
         if (!matchId) {
@@ -550,6 +567,7 @@ class MatchRegistry {
             matchId: match.id,
             target,
             history,
+            excluded: Object.keys((isP1 ? match.p1Revealed : match.p2Revealed) ?? {}).map(Number),
         });
         if (!result.ok) {
             const message =
@@ -567,6 +585,8 @@ class MatchRegistry {
             };
         }
 
+        const revealed = isP1 ? (match.p1Revealed ??= {}) : (match.p2Revealed ??= {});
+        revealed[result.position] = result.letter;
         // Successful redeem — burn the per-match slot.
         if (isP1) match.p1HintsUsed += 1;
         else match.p2HintsUsed += 1;
@@ -757,6 +777,11 @@ class MatchRegistry {
                 solved: oppHistory[i]!.tiles.every((t) => t === 'correct'),
             });
         }
+        for (const [position, letter] of Object.entries((isP1 ? match.p1Revealed : match.p2Revealed) ?? {})) {
+            socket.emit('powerup_reveal_letter', { position: Number(position), letter });
+        }
+        const lockedUntil = isP1 ? match.p1LockedUntilMs : match.p2LockedUntilMs;
+        if (lockedUntil && lockedUntil > Date.now()) socket.emit('powerup_locked', { durationMs: lockedUntil - Date.now() });
         socket.emit('match_tick', { msRemaining: remaining });
         // Reference io to satisfy the unused-param lint.
         void io;

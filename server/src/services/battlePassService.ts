@@ -1,9 +1,10 @@
+import type { PoolClient } from 'pg';
 // Battle pass logic. Players earn XP per match (win or loss); each
 // `xp_per_tier` XP advances them to the next tier. Tiers grant cosmetics on
 // either the free or premium track. Premium ($3.99/mo) unlocks the premium
 // track for the current season.
 
-import { pool, query } from '../db/pool.js';
+import { pool, query, transaction } from '../db/pool.js';
 import { grantCosmetic } from './cosmeticsService.js';
 
 const XP_PER_WIN = 60;
@@ -77,7 +78,7 @@ export async function awardMatchXp(args: {
         );
 
         await client.query(
-            `UPDATE users SET battle_pass_xp = $1, battle_pass_season = $2, updated_at = now()
+            `UPDATE users SET battle_pass_xp = $1, battle_pass_premium = CASE WHEN battle_pass_season = $2 THEN battle_pass_premium ELSE FALSE END, battle_pass_season = $2, updated_at = now()
              WHERE id = $3`,
             [newXp, season.season_number, args.userId]
         );
@@ -215,11 +216,10 @@ export async function claimTier(args: {
              VALUES ($1, $2, $3, $4)`,
             [args.userId, args.seasonNumber, args.tier, args.track]
         );
-        await client.query('COMMIT');
-
         if (cosmeticId) {
-            await grantCosmetic(args.userId, cosmeticId, 'battle_pass');
+            await grantCosmetic(args.userId, cosmeticId, 'battle_pass', client);
         }
+        await client.query('COMMIT');
         return { granted: true, cosmeticId };
     } catch (err) {
         await client.query('ROLLBACK');
@@ -234,14 +234,14 @@ export async function claimTier(args: {
  * actual payment happens client-side via an IAP — server should verify the
  * receipt before calling this. We accept the call as-is in dev.
  */
-export async function unlockPremium(userId: string): Promise<void> {
+export async function unlockPremium(userId: string, existing?: PoolClient): Promise<void> {
     // The IAP receipt is verified upstream in routes/battlepass.ts
     // (verifyIapPurchase) before this runs.
     const season = await getCurrentSeason();
     if (!season) throw new Error('No active season');
-    await query(
-        `UPDATE users SET battle_pass_premium = TRUE, battle_pass_season = $1, updated_at = now()
+    await transaction(async (client) => { await client.query(
+        `UPDATE users SET battle_pass_xp = CASE WHEN battle_pass_season = $1 THEN battle_pass_xp ELSE 0 END, battle_pass_premium = TRUE, battle_pass_season = $1, updated_at = now()
          WHERE id = $2`,
         [season.season_number, userId]
-    );
+    ); }, existing);
 }

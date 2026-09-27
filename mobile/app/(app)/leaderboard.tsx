@@ -26,6 +26,7 @@ import { leaderboardApi } from '../../src/api/resources';
 import { useAuthStore } from '../../src/store/authStore';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { Avatar } from '../../src/components/ui/Avatar';
+import { Podium } from '../../src/components/ui/Podium';
 import type {
     LeaderboardEntry,
     LeaderboardPeriod,
@@ -219,7 +220,7 @@ export default function LeaderboardScreen() {
                     ListHeaderComponent={
                         top3.length > 0 ? (
                             <Podium
-                                top3={top3}
+                                top3={top3.map((e) => ({ userId: e.userId, username: e.username, score: `${e.wins} W` }))}
                                 meId={me?.id ?? null}
                             />
                         ) : null
@@ -258,123 +259,6 @@ export default function LeaderboardScreen() {
             ) : null}
         </SafeAreaView>
     );
-}
-
-// ─── Podium ────────────────────────────────────────────────────────────────
-
-function Podium({
-    top3,
-    meId,
-}: {
-    top3: LeaderboardEntry[];
-    meId: string | null;
-}) {
-    // Render order: 2nd | 1st | 3rd, classic podium layout.
-    const first = top3[0] ?? null;
-    const second = top3[1] ?? null;
-    const third = top3[2] ?? null;
-
-    return (
-        <View style={styles.podiumWrap}>
-            <View style={styles.podiumRow}>
-                {second ? (
-                    <PodiumColumn
-                        entry={second}
-                        place={2}
-                        height={100}
-                        isMe={second.userId === meId}
-                    />
-                ) : (
-                    <View style={{ flex: 1 }} />
-                )}
-                {first ? (
-                    <PodiumColumn
-                        entry={first}
-                        place={1}
-                        height={130}
-                        isMe={first.userId === meId}
-                    />
-                ) : (
-                    <View style={{ flex: 1 }} />
-                )}
-                {third ? (
-                    <PodiumColumn
-                        entry={third}
-                        place={3}
-                        height={80}
-                        isMe={third.userId === meId}
-                    />
-                ) : (
-                    <View style={{ flex: 1 }} />
-                )}
-            </View>
-        </View>
-    );
-}
-
-const MEDAL_COLOR = {
-    1: '#F4B940', // gold
-    2: '#C0C0C0', // silver
-    3: '#CD7F32', // bronze
-} as const;
-
-function MedalIcon({ place, size = 18 }: { place: 1 | 2 | 3; size?: number }) {
-    return (
-        <Ionicons name="medal" size={size} color={MEDAL_COLOR[place]} />
-    );
-}
-
-function PodiumColumn({
-    entry,
-    place,
-    height,
-    isMe,
-}: {
-    entry: LeaderboardEntry;
-    place: 1 | 2 | 3;
-    height: number;
-    isMe: boolean;
-}) {
-    return (
-        <View style={styles.podiumCol}>
-            <View style={[styles.podiumAvatar, isMe ? styles.podiumAvatarMe : null]}>
-                <Text style={styles.podiumInitial} allowFontScaling={false}>
-                    {entry.username.slice(0, 1).toUpperCase()}
-                </Text>
-            </View>
-            <View style={styles.podiumNameRow}>
-                <MedalIcon place={place} size={14} />
-                <Text
-                    style={styles.podiumName}
-                    numberOfLines={1}
-                    allowFontScaling={false}
-                >
-                    {entry.username}
-                </Text>
-            </View>
-            <View
-                style={[
-                    styles.podiumPlinth,
-                    { height, backgroundColor: plinthColor(place) },
-                ]}
-            >
-                <Text style={styles.podiumPlace} allowFontScaling={false}>
-                    {place}
-                </Text>
-                <Text style={styles.podiumWins} allowFontScaling={false}>
-                    {entry.wins} W
-                </Text>
-            </View>
-        </View>
-    );
-}
-
-function plinthColor(place: 1 | 2 | 3): string {
-    switch (place) {
-        case 1: return 'rgba(244, 185, 64, 0.25)';
-        case 2: return 'rgba(192, 192, 192, 0.20)';
-        case 3: return 'rgba(205, 127, 50, 0.20)';
-    }
 }
 
 // ─── List row ──────────────────────────────────────────────────────────────
@@ -509,74 +393,6 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     listContent: {
         paddingHorizontal: spacing.lg,
         paddingBottom: 80,
-    },
-
-    // ─── Podium ────────────────────────────────────────────────────────────
-    podiumWrap: {
-        marginBottom: spacing.lg,
-    },
-    podiumRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        gap: spacing.sm,
-    },
-    podiumCol: {
-        flex: 1,
-        alignItems: 'center',
-        gap: spacing.xs,
-    },
-    podiumAvatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.surfaceElevated,
-        borderWidth: 2,
-        borderColor: colors.border,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    podiumAvatarMe: {
-        borderColor: colors.primary,
-    },
-    podiumInitial: {
-        fontFamily: typography.familyDisplay,
-        color: colors.text,
-        fontSize: typography.sizes.lg,
-        fontWeight: typography.weights.bold,
-    },
-    podiumNameRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        maxWidth: '100%',
-    },
-    podiumName: {
-        fontFamily: typography.familyDisplay,
-        color: colors.text,
-        fontSize: typography.sizes.xs,
-        fontWeight: typography.weights.bold,
-        maxWidth: 80,
-    },
-    podiumPlinth: {
-        width: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderTopLeftRadius: radius.md,
-        borderTopRightRadius: radius.md,
-        gap: 2,
-    },
-    podiumPlace: {
-        color: colors.text,
-        fontSize: typography.sizes.xxl,
-        fontWeight: typography.weights.black,
-        fontFamily: typography.familyMono,
-    },
-    podiumWins: {
-        fontFamily: typography.familyDisplay,
-        color: colors.textDim,
-        fontSize: 10,
-        letterSpacing: 1,
-        fontWeight: typography.weights.bold,
     },
 
     // ─── List rows ─────────────────────────────────────────────────────────

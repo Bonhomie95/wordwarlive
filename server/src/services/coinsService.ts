@@ -1,8 +1,9 @@
+import type { PoolClient } from 'pg';
 // Coin currency. Coins are GRANTED from earn paths (streak, match win, ads,
 // milestones) and SPENT on hints. Every change goes through grantCoins or
 // spendCoins so the coin_grants audit log captures the source.
 
-import { pool, query } from '../db/pool.js';
+import { pool, query, transaction } from '../db/pool.js';
 
 // ─── Pack catalog ───────────────────────────────────────────────────────────
 //
@@ -136,11 +137,9 @@ export async function grantCoins(args: {
     amount: number;
     source: CoinSource;
     metadata?: Record<string, unknown>;
-}): Promise<number> {
+}, existing?: PoolClient): Promise<number> {
     if (args.amount <= 0) throw new Error('grantCoins: amount must be positive');
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
+    return transaction(async (client) => {
         const r = await client.query<{ coins: number }>(
             `UPDATE users SET coins = coins + $1, updated_at = now()
              WHERE id = $2 RETURNING coins`,
@@ -151,14 +150,8 @@ export async function grantCoins(args: {
              VALUES ($1, $2, $3, $4)`,
             [args.userId, args.amount, args.source, args.metadata ?? {}]
         );
-        await client.query('COMMIT');
         return r.rows[0]?.coins ?? 0;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    }, existing);
 }
 
 /**
@@ -170,11 +163,9 @@ export async function spendCoins(args: {
     amount: number;
     source: CoinSource;
     metadata?: Record<string, unknown>;
-}): Promise<number | null> {
+}, existing?: PoolClient): Promise<number | null> {
     if (args.amount <= 0) throw new Error('spendCoins: amount must be positive');
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
+    return transaction(async (client) => {
         // Conditional UPDATE — only succeeds if the user has enough coins.
         // This avoids the read/check/write race.
         const r = await client.query<{ coins: number }>(
@@ -184,7 +175,6 @@ export async function spendCoins(args: {
             [args.amount, args.userId]
         );
         if (r.rowCount === 0) {
-            await client.query('ROLLBACK');
             return null;
         }
         await client.query(
@@ -192,14 +182,8 @@ export async function spendCoins(args: {
              VALUES ($1, $2, $3, $4)`,
             [args.userId, -args.amount, args.source, args.metadata ?? {}]
         );
-        await client.query('COMMIT');
         return r.rows[0]?.coins ?? 0;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    }, existing);
 }
 
 export async function getCoinBalance(userId: string): Promise<number> {

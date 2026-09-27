@@ -50,6 +50,7 @@ const products = new Map<string, Product>();
 /** >0 while an explicit requestPurchase() is waiting on its own listener, so
  *  the background listener leaves that transaction alone. */
 let explicitPurchasesInFlight = 0;
+let purchaseBusy = false;
 
 /** Lazy-load the native module. Absent in Expo Go (storeClient) — mirrors the
  *  ads module guard so requiring it never throws past a JS try/catch. */
@@ -147,8 +148,8 @@ async function toPayload(p: Purchase): Promise<IapPayload> {
         const m = load();
         // Legacy base64 App Store receipt for the server's /verifyReceipt call;
         // fall back to the unified token if the receipt file isn't present yet.
-        const legacy = m?.getReceiptDataIOS ? await m.getReceiptDataIOS().catch(() => null) : null;
-        receipt = legacy || p.purchaseToken || undefined;
+        const legacy = !p.purchaseToken && m?.getReceiptDataIOS ? await m.getReceiptDataIOS().catch(() => null) : null;
+        receipt = p.purchaseToken || legacy || undefined;
     } else {
         receipt = p.purchaseToken || undefined;
     }
@@ -172,7 +173,7 @@ function isPending(p: Purchase): boolean {
 async function requestNativePurchase(productId: string): Promise<NativePurchase> {
     const m = load();
     if (!m) throw new IapError('In-app purchases are not available here.');
-    await initIap();
+    if (!(await initIap())) throw new IapError('Could not connect to the store. Please try again.');
     explicitPurchasesInFlight += 1;
 
     return new Promise<NativePurchase>((resolve, reject) => {
@@ -243,12 +244,21 @@ async function runPurchase<T>(args: {
     call: (payload: IapPayload) => Promise<T>;
 }): Promise<T> {
     if (!iapAvailable()) {
+        if (!__DEV__) throw new IapError('Purchases require the App Store or Google Play version of WordWar.');
         return args.call({});
     }
-    const { payload, raw } = await requestNativePurchase(args.productId);
-    const result = await args.call(payload); // throws → txn left unfinished
-    await finish(raw, args.consumable);
-    return result;
+    if (purchaseBusy) throw new IapError('Please finish the current purchase first.');
+    purchaseBusy = true;
+    try {
+        if (!products.has(args.productId)) await loadProducts([args.productId]);
+        if (!products.has(args.productId)) throw new IapError('This item is not available in the store yet. Please try again later.');
+        const { payload, raw } = await requestNativePurchase(args.productId);
+        const result = await args.call(payload);
+        await finish(raw, args.consumable);
+        return result;
+    } finally {
+        purchaseBusy = false;
+    }
 }
 
 // ─── Public purchase API ─────────────────────────────────────────────────────
@@ -350,17 +360,20 @@ async function fulfillExisting(p: Purchase): Promise<boolean> {
  * unconsumed Play purchase auto-refunds after 3 days, so this matters).
  * Silent — runs at launch once signed in. Returns the number accepted.
  */
-export async function reconcilePurchases(): Promise<number> {
+export async function reconcilePurchases(strict = false): Promise<number> {
     const m = load();
-    if (!m) return 0;
-    if (!(await initIap())) return 0;
+    if (!m || !(await initIap())) {
+        if (strict) throw new IapError('The store is unavailable. Please try again from your store-installed app.');
+        return 0;
+    }
     let purchases: Purchase[] = [];
     try {
         // iOS: current entitlements only (non-consumables + UNFINISHED
         // consumables) rather than the full StoreKit history, so we don't
         // re-send every coin pack ever bought on each launch.
         purchases = await m.getAvailablePurchases({ onlyIncludeActiveItemsIOS: true });
-    } catch {
+    } catch (err) {
+        if (strict) throw err;
         return 0;
     }
     let accepted = 0;
@@ -377,13 +390,7 @@ export async function reconcilePurchases(): Promise<number> {
  */
 export async function restorePurchases(): Promise<number> {
     const m = load();
-    if (!m) return 0;
-    if (!(await initIap())) return 0;
-    try {
-        await m.restorePurchases();
-    } catch {
-        // iOS sync can fail offline / when the user cancels the Apple ID
-        // prompt — getAvailablePurchases still returns what's cached.
-    }
-    return reconcilePurchases();
+    if (!m || !(await initIap())) throw new IapError('The store is unavailable. Please try again from your store-installed app.');
+    await m.restorePurchases();
+    return reconcilePurchases(true);
 }

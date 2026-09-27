@@ -1,5 +1,6 @@
-import { query, pool } from '../db/pool.js';
-import { grantCoins, spendCoins } from './coinsService.js';
+import type { PoolClient } from 'pg';
+import { query, pool, transaction } from '../db/pool.js';
+import { spendCoins } from './coinsService.js';
 
 export interface CosmeticRow {
     id: string;
@@ -19,12 +20,12 @@ export interface CosmeticRow {
     available_in_shop: boolean;
 }
 
-export async function listShopCosmetics(): Promise<CosmeticRow[]> {
+export async function listShopCosmetics(userId?: string): Promise<CosmeticRow[]> {
     return query<CosmeticRow>(
         `SELECT id, category, name, description, price_cents, price_coins, rarity,
                 render_data, available_in_shop
-         FROM cosmetics WHERE available_in_shop = TRUE
-         ORDER BY category, price_cents ASC`
+         FROM cosmetics WHERE available_in_shop = TRUE OR EXISTS (SELECT 1 FROM user_cosmetics uc WHERE uc.cosmetic_id = cosmetics.id AND uc.user_id = $1)
+         ORDER BY category, price_cents ASC`, [userId ?? null]
     );
 }
 
@@ -57,24 +58,19 @@ export async function purchaseCosmeticWithCoins(
     | { ok: true; coins: number }
     | { ok: false; error: 'NOT_FOUND' | 'NOT_FOR_COINS' | 'ALREADY_OWNED' | 'NOT_AFFORDABLE' }
 > {
-    const cos = await getCosmetic(cosmeticId);
-    if (!cos || !cos.available_in_shop) return { ok: false, error: 'NOT_FOUND' };
-    if (cos.price_coins <= 0) return { ok: false, error: 'NOT_FOR_COINS' };
-    if (await ownsCosmetic(userId, cosmeticId)) return { ok: false, error: 'ALREADY_OWNED' };
-    const coins = await spendCoins({
-        userId,
-        amount: cos.price_coins,
-        source: 'cosmetic_spend',
-        metadata: { cosmeticId },
+    return transaction(async (client) => {
+        const user = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+        if (!user.rowCount) return { ok: false, error: 'NOT_FOUND' };
+        const cos = await getCosmetic(cosmeticId);
+        if (!cos || !cos.available_in_shop) return { ok: false, error: 'NOT_FOUND' };
+        if (cos.price_coins <= 0) return { ok: false, error: 'NOT_FOR_COINS' };
+        const owned = await client.query('SELECT 1 FROM user_cosmetics WHERE user_id = $1 AND cosmetic_id = $2', [userId, cosmeticId]);
+        if (owned.rowCount) return { ok: false, error: 'ALREADY_OWNED' };
+        const coins = await spendCoins({ userId, amount: cos.price_coins, source: 'cosmetic_spend', metadata: { cosmeticId } }, client);
+        if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
+        await grantCosmetic(userId, cosmeticId, 'purchase', client);
+        return { ok: true, coins };
     });
-    if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-    try {
-        await grantCosmetic(userId, cosmeticId, 'purchase');
-    } catch (err) {
-        await grantCoins({ userId, amount: cos.price_coins, source: 'cosmetic_spend', metadata: { refund: cosmeticId } });
-        throw err;
-    }
-    return { ok: true, coins };
 }
 
 export async function listOwnedCosmetics(userId: string): Promise<string[]> {
@@ -95,14 +91,13 @@ export async function listOwnedCosmetics(userId: string): Promise<string[]> {
 export async function grantCosmetic(
     userId: string,
     cosmeticId: string,
-    acquiredVia: 'purchase' | 'battle_pass' | 'season_reward' | 'grant' = 'purchase'
+    acquiredVia: 'purchase' | 'battle_pass' | 'season_reward' | 'grant' = 'purchase',
+    existing?: PoolClient
 ): Promise<void> {
     // For the 'purchase' path the store receipt is verified upstream in
     // routes/cosmetics.ts (verifyIapPurchase) before we get here. Other
     // acquiredVia values are internal grants and don't involve a receipt.
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
+    return transaction(async (client) => {
         const existsRes = await client.query(
             'SELECT 1 FROM cosmetics WHERE id = $1',
             [cosmeticId]
@@ -115,11 +110,5 @@ export async function grantCosmetic(
              ON CONFLICT DO NOTHING`,
             [userId, cosmeticId, acquiredVia]
         );
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    }, existing);
 }

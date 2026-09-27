@@ -8,7 +8,6 @@
 
 import { useEffect, useState } from 'react';
 import {
-    Alert,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -34,6 +33,7 @@ import { makeThemedStyles,
 } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
 const COLOR_BLIND_STORAGE_KEY = 'wordwar.colorblind';
@@ -50,7 +50,7 @@ export default function SettingsScreen() {
     const applyRotatedToken = useAuthStore((s) => s.applyRotatedToken);
 
     const handleDeleteAccount = () => {
-        Alert.alert(
+        appAlert(
             'Delete account?',
             'This permanently deletes your account, rank, coins, cosmetics, and match history. This cannot be undone.',
             [
@@ -64,7 +64,7 @@ export default function SettingsScreen() {
                         } catch {
                             // Even if the call fails, sign out locally; the
                             // account row may already be gone. Surface a notice.
-                            Alert.alert(
+                            appAlert(
                                 'Could not delete',
                                 'Something went wrong. Please try again.'
                             );
@@ -136,7 +136,7 @@ export default function SettingsScreen() {
 
     const [loggingOutAll, setLoggingOutAll] = useState(false);
     function onLogoutEverywhere() {
-        Alert.alert(
+        appAlert(
             'Log out of all devices?',
             'This signs you out everywhere. You stay signed in on this device.',
             [
@@ -151,9 +151,9 @@ export default function SettingsScreen() {
                             // Keep this device signed in with the fresh token —
                             // and rebuild the socket so it uses it.
                             await applyRotatedToken(r.token);
-                            Alert.alert('Done', 'All other sessions were signed out.');
+                            appAlert('Done', 'All other sessions were signed out.');
                         } catch {
-                            Alert.alert('Could not complete', 'Please try again.');
+                            appAlert('Could not complete', 'Please try again.');
                         } finally {
                             setLoggingOutAll(false);
                         }

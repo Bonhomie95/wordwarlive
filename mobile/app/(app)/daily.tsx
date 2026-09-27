@@ -33,6 +33,7 @@ import { buildDailyShareMessage, shareText } from '../../src/share/shareResult';
 import { makeThemedStyles, colors, useThemeStore } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { Podium } from '../../src/components/ui/Podium';
 
 type Cell = string | null;
 
@@ -62,6 +63,7 @@ export default function DailyChallengeScreen() {
     const [myRank, setMyRank] = useState<{ rank: number; guessCount: number; durationMs: number } | null>(null);
     const [solverTotal, setSolverTotal] = useState(0);
     const [showMine, setShowMine] = useState(false);
+    const [boardTick, setBoardTick] = useState(0);
     const [leaderboard, setLeaderboard] = useState<
         { userId: string; username: string; guessCount: number; durationMs: number }[]
     >([]);
@@ -86,12 +88,13 @@ export default function DailyChallengeScreen() {
     useFocusEffect(
         useCallback(() => {
             load();
+            setBoardTick((t) => t + 1); // re-fetch the board on every visit
         }, [load])
     );
 
     useEffect(() => {
         if (attempt?.solved) {
-            // Fetch leaderboard once on solve.
+            // Fetch the board on solve and on every visit.
             dailyApi
                 .leaderboard()
                 .then((r) => {
@@ -101,7 +104,7 @@ export default function DailyChallengeScreen() {
                 })
                 .catch(() => {});
         }
-    }, [attempt?.solved]);
+    }, [attempt?.solved, boardTick]);
 
     function appendLetter(letter: string) {
         if (!meta || attempt?.solved) return;
@@ -359,7 +362,15 @@ export default function DailyChallengeScreen() {
                                 >
                                     Today&apos;s top solvers · {solverTotal}
                                 </Text>
-                                {leaderboard.slice(0, 10).map((e, idx) => (
+                                <Podium
+                                    top3={leaderboard.slice(0, 3).map((e) => ({
+                                        userId: e.userId,
+                                        username: e.username,
+                                        score: `${e.guessCount}G · ${Math.round(e.durationMs / 1000)}S`,
+                                    }))}
+                                    meId={user?.id ?? null}
+                                />
+                                {leaderboard.slice(3, 10).map((e, i) => ({ e, idx: i + 3 })).map(({ e, idx }) => (
                                     <View
                                         key={e.userId}
                                         style={[styles.lbRow, e.userId === user?.id ? styles.lbRowMe : null]}

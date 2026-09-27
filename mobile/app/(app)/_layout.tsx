@@ -11,7 +11,7 @@
 //                         any challenge-result notice, from any tab.
 
 import { useEffect, useRef } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BannerAdView } from '../../src/components/ui/BannerAdView';
@@ -19,6 +19,7 @@ import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { colors, makeThemedStyles, useThemeStore } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 /** Routes the player into the live match screen whenever a match starts,
  *  regardless of which screen they're on (queue screen, friends screen, a
@@ -57,7 +58,7 @@ function ChallengeListener() {
     useEffect(() => {
         if (incoming && shownRef.current !== incoming.challengeId) {
             shownRef.current = incoming.challengeId;
-            Alert.alert(
+            appAlert(
                 'Friend Challenge',
                 `${incoming.fromUsername} wants to play WordWar with you!`,
                 [
@@ -76,7 +77,7 @@ function ChallengeListener() {
 
     useEffect(() => {
         if (notice) {
-            Alert.alert('WordWar', notice, [
+            appAlert('WordWar', notice, [
                 { text: 'OK', onPress: clearNotice },
             ]);
         }

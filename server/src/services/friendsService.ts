@@ -65,13 +65,7 @@ export async function redeemFriendInviteCode(
     );
     if (!friendRows[0]) return { ok: false, error: 'User not found.' };
 
-    // Insert both rows so lookup is symmetric.
-    await query(
-        `INSERT INTO friendships(user_id, friend_id, status)
-         VALUES ($1, $2, 'accepted'), ($2, $1, 'accepted')
-         ON CONFLICT (user_id, friend_id) DO UPDATE SET status = 'accepted'`,
-        [friendId, redeemingUserId]
-    );
+    await befriend(friendId, redeemingUserId);
 
     // Burn the code so it can't be reused.
     await query('DELETE FROM friend_invite_codes WHERE code = $1', [code.toUpperCase()]);
@@ -82,6 +76,16 @@ export async function redeemFriendInviteCode(
         friendUserId: friendId,
         friendUsername: friendRows[0].username,
     };
+}
+
+/** Make two users friends (both directions, idempotent). */
+export async function befriend(a: string, b: string): Promise<void> {
+    await query(
+        `INSERT INTO friendships(user_id, friend_id, status)
+         VALUES ($1, $2, 'accepted'), ($2, $1, 'accepted')
+         ON CONFLICT (user_id, friend_id) DO UPDATE SET status = 'accepted'`,
+        [a, b]
+    );
 }
 
 export interface FriendInfo {

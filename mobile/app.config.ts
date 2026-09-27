@@ -76,7 +76,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         name: config.name ?? 'WordWar',
         slug: config.slug ?? 'wordwar',
         version: VERSION,
-        scheme: ['wordwar', APP_ID],
+        // Reversed Google iOS client id = the OAuth redirect scheme Google
+        // accepts for that client (see src/auth/googleSignIn.ts).
+        scheme: [
+            'wordwar',
+            APP_ID,
+            ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+                ? [`com.googleusercontent.apps.${process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID.replace('.apps.googleusercontent.com', '')}`]
+                : []),
+        ],
         plugins,
         ios: {
             ...config.ios,

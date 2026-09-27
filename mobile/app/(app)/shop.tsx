@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Pressable,
     StyleSheet,
@@ -19,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { CosmeticPreview } from '../../src/components/ui/CosmeticPreview';
 import { Button } from '../../src/components/ui/Button';
 import { EquipTransition, type EquipTarget } from '../../src/components/ui/EquipTransition';
 import { useAuthStore } from '../../src/store/authStore';
@@ -43,6 +43,7 @@ import type { CoinPack, Cosmetic, CosmeticCategory, StarterBundle } from '../../
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { appAlert } from '../../src/components/ui/AppAlert';
 
 const CATEGORY_ORDER: CosmeticCategory[] = [
     'board_theme',
@@ -78,6 +79,7 @@ function rarityColor(rarity: Cosmetic['rarity']): string {
 export default function Shop() {
     const user = useAuthStore((s) => s.user);
     const refreshMe = useAuthStore((s) => s.refreshMe);
+    const [ownedOnly, setOwnedOnly] = useState(false);
     const [items, setItems] = useState<Cosmetic[]>([]);
     const [packs, setPacks] = useState<CoinPack[]>([]);
     const [bundle, setBundle] = useState<StarterBundle | null>(null);
@@ -117,7 +119,7 @@ export default function Shop() {
             ];
             loadProducts(skus).then(() => setPricesLoaded((n) => n + 1));
         } catch (err) {
-            Alert.alert('Could not load shop', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Could not load shop', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setLoading(false);
         }
@@ -129,19 +131,16 @@ export default function Shop() {
         }, [load])
     );
 
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        load();
-    }, [load]);
+
 
     const grouped = useMemo(() => {
         const out: { category: CosmeticCategory; items: Cosmetic[] }[] = [];
         for (const cat of CATEGORY_ORDER) {
-            const subset = items.filter((c) => c.category === cat);
+            const subset = items.filter((c) => c.category === cat && (!ownedOnly || c.owned));
             if (subset.length > 0) out.push({ category: cat, items: subset });
         }
         return out;
-    }, [items]);
+    }, [items, ownedOnly]);
 
     // Currently-equipped cosmetic id for a category (the "before" of a reveal).
     function equippedIdFor(cat: CosmeticCategory): string | null {
@@ -180,7 +179,8 @@ export default function Shop() {
         setBusyId(c.id);
         let equipOk = false;
         try {
-            await purchaseCosmetic(c.id);
+            if (c.priceCents === 0) await cosmeticsApi.purchase(c.id);
+            else await purchaseCosmetic(c.id);
             // Auto-equip the just-purchased cosmetic. UX: you bought it,
             // you almost certainly want to use it right away. Players were
             // confused that "Buy" didn't visually do anything.
@@ -198,7 +198,7 @@ export default function Shop() {
             if (equipOk) showEquipReveal(c, fromId);
         } catch (err) {
             if (!(err instanceof IapCancelled)) {
-                Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
+                appAlert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
             }
         } finally {
             setBusyId(null);
@@ -209,13 +209,13 @@ export default function Shop() {
     async function onPurchaseCoins(c: Cosmetic) {
         const coins = user && 'coins' in user ? user.coins : 0;
         if (coins < c.priceCoins) {
-            Alert.alert(
+            appAlert(
                 'Not enough coins',
                 `${c.name} costs ${c.priceCoins.toLocaleString()} coins and you have ${coins.toLocaleString()}. Win matches, watch a coin ad, or grab a coin pack.`
             );
             return;
         }
-        Alert.alert(c.name, `Buy for ${c.priceCoins.toLocaleString()} coins?`, [
+        appAlert(c.name, `Buy for ${c.priceCoins.toLocaleString()} coins?`, [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Buy',
@@ -234,7 +234,7 @@ export default function Shop() {
                         await Promise.all([load(), refreshMe()]);
                         if (equipOk) showEquipReveal(c, fromId);
                     } catch (err) {
-                        Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
+                        appAlert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
                     } finally {
                         setBusyId(null);
                     }
@@ -249,10 +249,10 @@ export default function Shop() {
         try {
             await purchaseStarterBundle();
             await Promise.all([load(), refreshMe()]);
-            Alert.alert('Welcome aboard!', `+${bundle.coins} coins, Fox avatar and Neon Pulse theme are yours.`);
+            appAlert('Welcome aboard!', `+${bundle.coins} coins, Fox avatar and Neon Pulse theme are yours.`);
         } catch (err) {
             if (!(err instanceof IapCancelled)) {
-                Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
+                appAlert('Purchase failed', err instanceof Error ? err.message : 'Try again.');
             }
         } finally {
             setBundleBusy(false);
@@ -265,7 +265,7 @@ export default function Shop() {
             await boostsApi.buyStreakShield();
             await refreshMe();
         } catch (err) {
-            Alert.alert('Could not buy shield', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Could not buy shield', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setBoostBusy(null);
         }
@@ -277,7 +277,7 @@ export default function Shop() {
             await boostsApi.buyXpBoost();
             await refreshMe();
         } catch (err) {
-            Alert.alert('Could not buy booster', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Could not buy booster', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setBoostBusy(null);
         }
@@ -289,7 +289,7 @@ export default function Shop() {
         try {
             const r = await showRewarded('coin_boost', user.id);
             if (r.unavailable) {
-                Alert.alert('Ads not available', 'Coin ads need the production / dev-client build (not Expo Go).');
+                appAlert('Ads not available', 'Coin ads need the production / dev-client build (not Expo Go).');
                 return;
             }
             if (r.earned) {
@@ -299,9 +299,9 @@ export default function Shop() {
                     /* prod 404 / cap 409 — SSV grants it */
                 }
                 setTimeout(() => refreshMe().catch(() => {}), 1200);
-                Alert.alert('+25 coins incoming', 'Updating your balance…');
+                appAlert('+25 coins incoming', 'Updating your balance…');
             } else if (r.error) {
-                Alert.alert('Ad not available', r.error);
+                appAlert('Ad not available', r.error);
             }
         } finally {
             setAdBusy(false);
@@ -318,7 +318,7 @@ export default function Shop() {
             await load();
             showEquipReveal(c, fromId);
         } catch (err) {
-            Alert.alert('Equip failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Equip failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setBusyId(null);
         }
@@ -334,7 +334,7 @@ export default function Shop() {
     const removeAdsPrice = storePrice(REMOVE_ADS_PRODUCT_ID) ?? '$4.99';
 
     async function onRemoveAds() {
-        Alert.alert(
+        appAlert(
             'Remove Ads',
             `One-time ${removeAdsPrice} — removes all interstitial and banner ads forever. Rewarded ads (Daily Bonus, XP Boost) stay available since they're opt-in.` +
                 devNote,
@@ -349,7 +349,7 @@ export default function Shop() {
                             await refreshMe();
                         } catch (err) {
                             if (!(err instanceof IapCancelled)) {
-                                Alert.alert('Purchase failed', err instanceof Error ? err.message : '');
+                                appAlert('Purchase failed', err instanceof Error ? err.message : '');
                             }
                         } finally {
                             setRemoveAdsBusy(false);
@@ -379,7 +379,7 @@ export default function Shop() {
     const bundlePrice = bundle ? storePrice(STARTER_BUNDLE_PRODUCT_ID) ?? `$${bundle.priceUsd.toFixed(2)}` : '';
 
     async function onPackPurchase(pack: CoinPack) {
-        Alert.alert(
+        appAlert(
             pack.name,
             `${pack.coins.toLocaleString()} coins for ${packPrice(pack)}.` + devNote,
             [
@@ -391,10 +391,10 @@ export default function Shop() {
                         try {
                             await purchaseCoinPack(pack.id);
                             await refreshMe();
-                            Alert.alert('Coins added', `+${pack.coins.toLocaleString()} coins`);
+                            appAlert('Coins added', `+${pack.coins.toLocaleString()} coins`);
                         } catch (err) {
                             if (!(err instanceof IapCancelled)) {
-                                Alert.alert(
+                                appAlert(
                                     'Purchase failed',
                                     err instanceof Error ? err.message : 'Try again.'
                                 );
@@ -414,14 +414,14 @@ export default function Shop() {
         try {
             const n = await restorePurchases();
             await Promise.all([load(), refreshMe()]);
-            Alert.alert(
+            appAlert(
                 'Restore complete',
                 n > 0
                     ? `Restored ${n} purchase${n === 1 ? '' : 's'}.`
                     : 'No previous purchases to restore.'
             );
         } catch (err) {
-            Alert.alert('Restore failed', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Restore failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setRestoring(false);
         }
@@ -457,14 +457,18 @@ export default function Shop() {
             <View style={styles.header}>
                 <Text style={styles.title} allowFontScaling={false}>Shop</Text>
                 <Text style={styles.subtitle} allowFontScaling={false}>
-                    Cosmetic only. Power-ups are earned through play.
+                    Cosmetics, coins and boosts. Power-ups are earned.
                 </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+                <Button label="Shop" variant={ownedOnly ? 'secondary' : 'primary'} onPress={() => setOwnedOnly(false)} style={{ flex: 1 }} />
+                <Button label={`My items (${items.filter((c) => c.owned).length})`} variant={ownedOnly ? 'primary' : 'secondary'} onPress={() => setOwnedOnly(true)} style={{ flex: 1 }} />
             </View>
             <FlatList
                 data={grouped}
                 keyExtractor={(g) => g.category}
                 contentContainerStyle={styles.listContent}
-                ListHeaderComponent={
+                ListHeaderComponent={ownedOnly ? null :
                     <View>
                         {bundle && !starterOwned ? (
                             <View style={styles.bundleCard}>
@@ -535,8 +539,7 @@ export default function Shop() {
                                     </Text>
                                 </View>
                                 <Text style={styles.coinHeaderSub} allowFontScaling={false}>
-                                    Spend on hints (50 coins each) and future
-                                    consumables. Earned by playing too — no need
+                                    Spend on hints, cosmetics, streak shields and XP boosts. Earned by playing too — no need
                                     to buy.
                                 </Text>
                                 {showCoinAd ? (
@@ -717,9 +720,9 @@ function ShopItem({
 
     return (
         <View style={styles.itemCard}>
-            <View
-                style={[styles.preview, swatchStyle(cosmetic)]}
-            />
+            <View style={[styles.preview, { alignItems: 'center', justifyContent: 'center' }]}>
+                <CosmeticPreview category={cosmetic.category} id={cosmetic.id} renderData={cosmetic.renderData} size={44} />
+            </View>
             <View style={styles.itemBody}>
                 <View style={styles.itemHeader}>
                     <Text style={styles.itemName} allowFontScaling={false}>
@@ -850,7 +853,7 @@ function CoinPackCard({
                     {pack.featured ? (
                         <View style={styles.bestValueBadge}>
                             <Text style={styles.bestValueText} allowFontScaling={false}>
-                                BEST VALUE
+                                POPULAR
                             </Text>
                         </View>
                     ) : null}
@@ -872,24 +875,6 @@ function CoinPackCard({
             </View>
         </Pressable>
     );
-}
-
-/** Render a small preview swatch from the cosmetic's render_data. */
-function swatchStyle(c: Cosmetic): { backgroundColor: string } {
-    const data = c.renderData ?? {};
-    if (c.category === 'board_theme') {
-        return { backgroundColor: (data['bg'] as string) ?? colors.surfaceElevated };
-    }
-    if (c.category === 'avatar') {
-        return { backgroundColor: (data['color'] as string) ?? colors.textDim };
-    }
-    if (c.category === 'nameplate') {
-        return { backgroundColor: (data['color'] as string) ?? colors.surfaceElevated };
-    }
-    if (c.category === 'profile_border') {
-        return { backgroundColor: (data['color'] as string) ?? colors.surfaceElevated };
-    }
-    return { backgroundColor: colors.surfaceElevated };
 }
 
 const styles = makeThemedStyles(() => StyleSheet.create({

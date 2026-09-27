@@ -115,6 +115,9 @@ interface GameState {
     markInterstitialShown: () => void;
     reset: () => void;
 
+    /** Join a friend's match by code. On success the match starts for both
+     *  players and MatchAutoRouter opens the match screen. */
+    joinPrivateMatch: (code: string) => Promise<{ ok: boolean; error?: string }>;
     /** Challenge a friend to a live match. Resolves with the server ack. */
     challengeFriend: (
         friendId: string,
@@ -669,6 +672,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     clearHintToast: () => set({ hintToast: null }),
 
     // ─── Friend-challenge actions ────────────────────────────────────────
+    joinPrivateMatch: (code) => {
+        const sock = getSocket();
+        if (!sock) return Promise.resolve({ ok: false, error: 'Not connected. Try again in a moment.' });
+        return new Promise((resolve) => {
+            sock.timeout(10_000).emit(
+                'private_join',
+                { code },
+                (err: Error | null, resp: { ok: boolean; error?: string } = { ok: false }) => {
+                    resolve(err ? { ok: false, error: 'Network timeout.' } : resp);
+                }
+            );
+        });
+    },
+
     challengeFriend: (friendId, friendName) => {
         const sock = getSocket();
         if (!sock) {

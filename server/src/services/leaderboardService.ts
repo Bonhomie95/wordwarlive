@@ -11,6 +11,7 @@
 import { pool } from '../db/pool.js';
 import { redis } from '../db/redis.js';
 import { logger } from '../utils/logger.js';
+import { syntheticLeaderboard } from './syntheticPlayers.js';
 
 export type LeaderboardPeriod = 'all_time' | 'monthly' | 'weekly' | 'daily';
 
@@ -268,5 +269,23 @@ export async function getLeaderboard(args: {
         }
     }
 
-    return { period: args.period, bucket, entries, you };
+    // Blend in the shared computer-player population (see syntheticPlayers).
+    // Their numbers are derived per day, so every period stays consistent.
+    const synth = syntheticLeaderboard(args.period, mode);
+    const merged: LeaderboardEntry[] = [
+        ...entries,
+        ...synth.map((e) => ({ ...e, avatarId: null, profileBorderId: null, rankInLeaderboard: 0 })),
+    ]
+        .sort((a, b) => b.wins - a.wins || b.rankPoints - a.rankPoints)
+        .slice(0, limit)
+        .map((e, i) => ({ ...e, rankInLeaderboard: i + 1 }));
+    if (you) {
+        const me = you;
+        const ahead = synth.filter(
+            (e) => e.wins > me.wins || (e.wins === me.wins && e.rankPoints > me.rankPoints)
+        ).length;
+        you = { ...me, rankInLeaderboard: me.rankInLeaderboard + ahead };
+    }
+
+    return { period: args.period, bucket, entries: merged, you };
 }

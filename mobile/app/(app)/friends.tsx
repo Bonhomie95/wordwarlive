@@ -1,8 +1,8 @@
 // Friends screen.
 // - Shows your friend list
 // - Tap an online friend to CHALLENGE them to a live match
-// - Generate an invite code to share / redeem someone else's code
-// - Generate a private-match code
+// - Play with a friend by code: generate + share a code; when they enter it the
+//   match starts for both of you and you become friends
 //
 // Live challenge flow: tapping an online friend fires a real-time invite.
 // They get a prompt instantly; if they accept, both players drop straight
@@ -12,7 +12,6 @@
 import { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Modal,
     Pressable,
     ScrollView,
@@ -33,6 +32,7 @@ import { useGameStore } from '../../src/store/gameStore';
 import { colors, makeThemedStyles, type RankTier } from '../../src/theme/colors';
 import { typography, radius, spacing } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
+import { AlertHost, appAlert } from '../../src/components/ui/AppAlert';
 
 export default function FriendsScreen() {
     const router = useRouter();
@@ -43,6 +43,7 @@ export default function FriendsScreen() {
     const [challenging, setChallenging] = useState(false);
 
     const challengeFriend = useGameStore((s) => s.challengeFriend);
+    const joinPrivateMatch = useGameStore((s) => s.joinPrivateMatch);
     const cancelChallenge = useGameStore((s) => s.cancelChallenge);
     const pendingChallenge = useGameStore((s) => s.pendingChallenge);
 
@@ -67,10 +68,10 @@ export default function FriendsScreen() {
     async function onGenerateCode() {
         setBusy(true);
         try {
-            const r = await friendsApi.createCode();
+            const r = await friendsApi.createPrivateMatch(null);
             setMyCode(r.code);
         } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Try again.');
+            appAlert('Error', err instanceof Error ? err.message : 'Try again.');
         } finally {
             setBusy(false);
         }
@@ -80,52 +81,27 @@ export default function FriendsScreen() {
         if (!myCode) return;
         try {
             await Share.share({
-                message: `Add me on WordWar! My friend code is ${myCode}. Open WordWar -> Friends -> Redeem.`,
+                message: `Play me on WordWar! Open WordWar → Friends → Join a friend and enter ${myCode}`,
             });
         } catch {
             // user cancelled — no-op
         }
     }
 
-    async function onRedeem() {
+    async function onJoin() {
         const code = redeemCode.trim().toUpperCase();
         if (!code) return;
         setBusy(true);
         try {
-            const r = await friendsApi.redeem(code);
+            const r = await joinPrivateMatch(code);
             if (!r.ok) {
-                Alert.alert('Could not redeem', r.error ?? 'Try again.');
+                appAlert('Could not join', r.error ?? 'Try again.');
                 return;
             }
-            Alert.alert('Friend added', `${r.friendUsername} is now your friend.`);
             setRedeemCode('');
-            await load();
-        } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Try again.');
+            // match_found arrives next; MatchAutoRouter opens the match.
         } finally {
             setBusy(false);
-        }
-    }
-
-    async function onPrivateMatch() {
-        try {
-            const r = await friendsApi.createPrivateMatch(null);
-            Alert.alert(
-                'Private Match Code',
-                `Share this code with your friend. It expires in 15 minutes.\n\n${r.code}`,
-                [
-                    { text: 'Done' },
-                    {
-                        text: 'Share',
-                        onPress: () =>
-                            Share.share({
-                                message: `Join me in a WordWar private match! Code: ${r.code}`,
-                            }).catch(() => {}),
-                    },
-                ]
-            );
-        } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Try again.');
         }
     }
 
@@ -133,7 +109,7 @@ export default function FriendsScreen() {
     async function onChallengeFriend(f: FriendInfo) {
         if (challenging || pendingChallenge) return;
         if (!f.isOnline) {
-            Alert.alert(
+            appAlert(
                 `${f.username} is offline`,
                 'They need the WordWar app open to receive your challenge. Try again when they are online.'
             );
@@ -143,7 +119,7 @@ export default function FriendsScreen() {
         try {
             const ack = await challengeFriend(f.userId, f.username);
             if (!ack.ok) {
-                Alert.alert('Could not challenge', ack.error);
+                appAlert('Could not challenge', ack.error);
             }
             // On success, pendingChallenge is set in the store and the
             // waiting overlay below appears automatically. When the friend
@@ -154,7 +130,7 @@ export default function FriendsScreen() {
     }
 
     async function onRemoveFriend(f: FriendInfo) {
-        Alert.alert(
+        appAlert(
             'Remove friend?',
             `Remove ${f.username} from your friends list.`,
             [
@@ -167,7 +143,7 @@ export default function FriendsScreen() {
                             await friendsApi.remove(f.userId);
                             await load();
                         } catch (err) {
-                            Alert.alert(
+                            appAlert(
                                 'Error',
                                 err instanceof Error ? err.message : 'Try again.'
                             );
@@ -196,10 +172,10 @@ export default function FriendsScreen() {
                     </Text>
                 </View>
 
-                {/* My code */}
+                {/* Play with a friend */}
                 <View style={styles.card}>
                     <Text style={styles.cardLabel} allowFontScaling={false}>
-                        YOUR FRIEND CODE
+                        PLAY WITH A FRIEND
                     </Text>
                     {myCode ? (
                         <>
@@ -207,29 +183,27 @@ export default function FriendsScreen() {
                                 {myCode}
                             </Text>
                             <Text style={styles.hint} allowFontScaling={false}>
-                                Expires in 15 minutes. Tap Share to send it.
+                                Keep WordWar open. The match starts the moment your
+                                friend enters this code, and you become friends.
+                                Expires in 15 minutes.
                             </Text>
-                            <Button label="SHARE" onPress={onShareCode} />
+                            <Button label="SHARE CODE" onPress={onShareCode} icon="share-social" />
                         </>
                     ) : (
                         <>
                             <Text style={styles.hint} allowFontScaling={false}>
-                                Generate a code to share with a friend so they
-                                can add you.
+                                Get a code, send it to a friend, and play them 1v1
+                                as soon as they enter it.
                             </Text>
-                            <Button
-                                label="GENERATE CODE"
-                                onPress={onGenerateCode}
-                                busy={busy}
-                            />
+                            <Button label="GENERATE CODE" onPress={onGenerateCode} busy={busy} />
                         </>
                     )}
                 </View>
 
-                {/* Redeem */}
+                {/* Join a friend */}
                 <View style={styles.card}>
                     <Text style={styles.cardLabel} allowFontScaling={false}>
-                        ADD A FRIEND
+                        JOIN A FRIEND
                     </Text>
                     <TextInput
                         value={redeemCode}
@@ -239,26 +213,15 @@ export default function FriendsScreen() {
                         style={styles.input}
                         autoCapitalize="characters"
                         autoCorrect={false}
-                        maxLength={6}
+                        maxLength={8}
+                        accessibilityLabel="Friend's match code"
                     />
                     <Button
-                        label="REDEEM"
-                        onPress={onRedeem}
+                        label="JOIN MATCH"
+                        onPress={onJoin}
                         busy={busy}
                         disabled={redeemCode.trim().length < 4}
                     />
-                </View>
-
-                {/* Private match */}
-                <View style={styles.card}>
-                    <Text style={styles.cardLabel} allowFontScaling={false}>
-                        PRIVATE MATCH
-                    </Text>
-                    <Text style={styles.hint} allowFontScaling={false}>
-                        Challenge a specific person. Generate a code, share it
-                        with them, and when they enter it the match starts.
-                    </Text>
-                    <Button label="CREATE MATCH CODE" onPress={onPrivateMatch} />
                 </View>
 
                 {/* Friend list */}
@@ -268,7 +231,7 @@ export default function FriendsScreen() {
                     </Text>
                     {friends.length === 0 ? (
                         <Text style={styles.empty} allowFontScaling={false}>
-                            No friends yet. Generate a code above and share it.
+                            No friends yet. Play someone with a code above and they&apos;ll show up here.
                         </Text>
                     ) : (
                         <>
@@ -384,6 +347,7 @@ export default function FriendsScreen() {
                         />
                     </View>
                 </View>
+                <AlertHost scoped />
             </Modal>
         </SafeAreaView>
     );

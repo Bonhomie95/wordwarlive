@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useAuth } from '../auth';
 import { api } from '../api';
 import { Loading, ErrorNote, Badge, Modal, StatCard } from '../components/ui';
 import { num, dateTime, dateOnly, winPct, tierBadgeClass, pct } from '../format';
@@ -26,6 +27,7 @@ interface Detail {
         banned_reason: string | null;
         banned_at: string | null;
         is_admin: boolean;
+        is_super_admin: boolean;
         is_bot: boolean;
         created_at: string;
         last_play_date: string | null;
@@ -52,10 +54,11 @@ interface Detail {
     hintsUsed: number;
 }
 
-type ActionKind = 'ban' | 'unban' | 'adjust' | 'role' | 'delete' | null;
+type ActionKind = 'ban' | 'unban' | 'adjust' | 'role' | 'delete' | 'support' | null;
 
 export default function PlayerDetail() {
     const { id } = useParams();
+    const { me } = useAuth();
     const nav = useNavigate();
     const [d, setD] = useState<Detail | null>(null);
     const [err, setErr] = useState('');
@@ -79,7 +82,7 @@ export default function PlayerDetail() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <h2 style={{ margin: 0, fontSize: 24 }}>{u.username}</h2>
                         {u.banned && <Badge tone="red">Banned</Badge>}
-                        {u.is_admin && <Badge tone="green">Admin</Badge>}
+                        {u.is_admin && <Badge tone="green">{u.is_super_admin ? 'Super admin' : 'Admin'}</Badge>}
                         {u.is_bot && <Badge tone="gray">Bot</Badge>}
                         {u.battle_pass_premium && <Badge tone="gold">Premium</Badge>}
                         {u.ads_removed && <Badge tone="blue">Ad-free</Badge>}
@@ -100,10 +103,11 @@ export default function PlayerDetail() {
                         <button className="btn danger" onClick={() => setAction('ban')}>Ban</button>
                     )}
                     <button className="btn" onClick={() => setAction('adjust')}>Adjust</button>
-                    <button className="btn" onClick={() => setAction('role')}>
+                    {me?.superAdmin && !u.is_super_admin && <button className="btn" onClick={() => setAction('role')}>
                         {u.is_admin ? 'Revoke admin' : 'Make admin'}
-                    </button>
-                    <button className="btn danger" onClick={() => setAction('delete')}>Delete</button>
+                    </button>}
+                    <button className="btn" onClick={() => setAction('support')}>Support / entitlements</button>
+                    {!u.is_super_admin && <button className="btn danger" onClick={() => setAction('delete')}>Delete</button>}
                 </div>
             </div>
 
@@ -256,6 +260,8 @@ function ActionModal({
     onDone: (deleted: boolean) => void;
 }) {
     const [reason, setReason] = useState('');
+    const [supportField, setSupportField] = useState('hintCredits');
+    const [supportValue, setSupportValue] = useState('');
     const [coinsDelta, setCoinsDelta] = useState('');
     const [rankPoints, setRankPoints] = useState('');
     const [confirmText, setConfirmText] = useState('');
@@ -266,7 +272,8 @@ function ActionModal({
         setBusy(true);
         setErr('');
         try {
-            if (kind === 'ban') await api.post(`/admin/players/${user.id}/ban`, { reason });
+            if (kind === 'support') await api.post(`/admin/players/${user.id}/support`, { reason, [supportField]: ['adsRemoved', 'premium'].includes(supportField) ? supportValue === 'true' : supportField === 'cosmeticId' ? supportValue : Number(supportValue) });
+            else if (kind === 'ban') await api.post(`/admin/players/${user.id}/ban`, { reason });
             else if (kind === 'unban') await api.post(`/admin/players/${user.id}/unban`);
             else if (kind === 'role') await api.post(`/admin/players/${user.id}/role`, { admin: !user.is_admin });
             else if (kind === 'adjust')
@@ -284,6 +291,7 @@ function ActionModal({
     }
 
     const cfg = {
+        support: { title: `Support ${user.username}`, cta: 'Apply adjustment', danger: false },
         ban: { title: `Ban ${user.username}?`, cta: 'Ban player', danger: true },
         unban: { title: `Unban ${user.username}?`, cta: 'Unban player', danger: false },
         adjust: { title: `Adjust ${user.username}`, cta: 'Apply changes', danger: false },
@@ -303,13 +311,21 @@ function ActionModal({
                     <button
                         className={`btn ${cfg.danger ? 'danger' : 'primary'}`}
                         onClick={run}
-                        disabled={busy || deleteLocked}
+                        disabled={busy || deleteLocked || (kind === 'support' && (reason.trim().length < 3 || !supportValue))}
                     >
                         {busy ? 'Working…' : cfg.cta}
                     </button>
                 </>
             }
         >
+            {kind === 'support' && <>
+                <p>Restore a missing item or correct an entitlement. Numeric values replace the current balance. Every change requires an audit reason.</p>
+                <div className="field"><label>Adjustment</label><select className="input" value={supportField} onChange={(e) => { setSupportField(e.target.value); setSupportValue(''); }}>
+                    {Object.entries({ hintCredits: 'Hint credits', reveal: 'Reveal charges', scramble: 'Scramble charges', lock: 'Lock charges', streakShields: 'Streak shields (0–2)', cosmeticId: 'Grant cosmetic ID', adsRemoved: 'Remove ads', premium: 'Current season premium' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select></div>
+                <div className="field"><label>Value</label>{['adsRemoved', 'premium'].includes(supportField) ? <select className="input" value={supportValue} onChange={(e) => setSupportValue(e.target.value)}><option value="">Choose…</option><option value="true">Enabled</option><option value="false">Disabled</option></select> : <input className="input" type={supportField === 'cosmeticId' ? 'text' : 'number'} min="0" value={supportValue} onChange={(e) => setSupportValue(e.target.value)} />}</div>
+                <div className="field"><label>Reason / complaint reference</label><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></div>
+            </>}
             {kind === 'ban' && (
                 <>
                     <p>Their live sessions are dropped immediately and they can't sign back in until unbanned.</p>
