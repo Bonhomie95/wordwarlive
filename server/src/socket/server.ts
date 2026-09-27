@@ -90,6 +90,23 @@ export function createSocketServer(http: HttpServer): AppIOServer {
     const subClient = redis.duplicate();
     io.adapter(createAdapter(pubClient, subClient));
 
+    // Revocation reaches every node. Validate the current DB version rather than
+    // blindly disconnecting newly rotated sessions when delivery is delayed.
+    subClient.subscribe('wordwar:session-revoked').catch((err) => logger.error({ err }, 'Revocation subscription failed'));
+    subClient.on('message', (channel, userId) => {
+        if (channel !== 'wordwar:session-revoked') return;
+        void getSessionState(userId).then((state) => {
+            for (const socket of io.sockets.sockets.values()) {
+                if (socket.data.session.userId !== userId) continue;
+                if (state && !state.banned && state.tokenVersion === socket.data.session.tokenVersion) continue;
+                socket.emit('session_revoked', { suspended: state?.banned ?? false });
+                if (state?.banned) void matchRegistry.handleQuit(io, socket).catch((err) => logger.error({ err }, 'Banned match cleanup failed'));
+                socket.disconnect(true);
+            }
+        }).catch((err) => logger.error({ err }, 'Revocation check failed'));
+    });
+    io.on('close', () => subClient.disconnect());
+
     io.use(async (socket, next) => {
         const tok = (socket.handshake.auth as { token?: string } | undefined)
             ?.token;
@@ -98,6 +115,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
             const session = verifySession(tok);
             // Reject revoked or banned sessions (see requireAuth for rationale).
             const state = await getSessionState(session.userId);
+            if (state?.banned) return next(new Error('Account suspended'));
             if (state === null || state.tokenVersion !== session.tokenVersion) {
                 return next(new Error('Session expired'));
             }
@@ -115,6 +133,21 @@ export function createSocketServer(http: HttpServer): AppIOServer {
     io.on('connection', (socket) => {
         logger.info({ userId: socket.data.session.userId }, 'Socket connected');
         markOnline(socket.data.session.userId, socket.id).catch(() => {});
+
+        // Fail closed per incoming command, including when Redis revocation
+        // delivery was unavailable. A connected socket is not permanent auth.
+        socket.use(async (_packet, next) => {
+            try {
+                const state = await getSessionState(socket.data.session.userId);
+                if (!state || state.banned || state.tokenVersion !== socket.data.session.tokenVersion) {
+                    socket.emit('session_revoked', { suspended: state?.banned ?? false });
+                    socket.disconnect(true);
+                    return next(new Error('Session revoked'));
+                }
+                next();
+            } catch { next(new Error('Auth temporarily unavailable')); }
+        });
+        socket.on('error', (err) => logger.warn({ err }, 'Socket command rejected'));
 
         socket.on('queue_join', () => {
             matchmakingHub.enqueue(io, socket).catch((err) => {

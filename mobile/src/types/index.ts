@@ -272,6 +272,7 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+    session_revoked: (payload: { suspended: boolean }) => void;
     queue_status: (payload: QueueStatus) => void;
     mystery_queue_status: (payload: MysteryQueueStatus) => void;
     match_found: (payload: MatchFound) => void;

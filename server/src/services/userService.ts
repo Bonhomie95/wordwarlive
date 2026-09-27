@@ -1,3 +1,5 @@
+import { redis } from '../db/redis.js';
+import { logger } from '../utils/logger.js';
 import { query, pool } from '../db/pool.js';
 import { tierFromPoints } from '../game/ranks.js';
 import { revokeAppleRefreshToken } from '../auth/apple.js';
@@ -250,6 +252,7 @@ export async function bumpTokenVersion(userId: string): Promise<number> {
          WHERE id = $1 RETURNING token_version`,
         [userId]
     );
+    await redis.publish('wordwar:session-revoked', userId).catch((err) => logger.error({ err, userId }, 'Session revocation broadcast failed'));
     return rows[0]?.token_version ?? 0;
 }
 
@@ -363,6 +366,7 @@ export async function deleteAccount(userId: string): Promise<void> {
         // leaderboard entries, mystery submissions, iap_transactions, etc.
         await client.query('DELETE FROM users WHERE id = $1', [userId]);
         await client.query('COMMIT');
+        await redis.publish('wordwar:session-revoked', userId).catch((err) => logger.error({ err, userId }, 'Session revocation broadcast failed'));
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;

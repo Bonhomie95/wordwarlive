@@ -62,6 +62,12 @@ export function ensureSocket(token: string): AppSocket {
     // the server sends via `next(new Error(...))`; matching them precisely means
     // an ordinary transient network `connect_error` (e.g. 'websocket error')
     // never trips a sign-out. We stop the retry loop and hand off to the store.
+    socket.on('session_revoked', ({ suspended }) => {
+        if (suspended) onAuthError?.('suspended');
+        // Expired sessions are rejected on their next HTTP request or reconnect.
+        // Do not race the logout-all response that rotates this device's token.
+    });
+
     socket.on('connect_error', (err) => {
         if (err.message === 'Account suspended') {
             onAuthError?.('suspended');

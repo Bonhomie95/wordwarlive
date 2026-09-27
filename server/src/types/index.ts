@@ -159,6 +159,7 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+    session_revoked: (payload: { suspended: boolean }) => void;
     queue_status: (payload: QueueStatus) => void;
     /** Mystery-queue-specific status. Pushed each tick while the player is
      *  waiting. Lets the UI show a countdown to bot-fallback. */
