@@ -313,19 +313,22 @@ const NOUNS = [
     'leaf','reed','pine','oak','peak','crest','ember','spark','wave','shore',
 ];
 
+let rng: () => number = Math.random;
+
 function pick<T>(arr: readonly T[]): T {
-    return arr[Math.floor(Math.random() * arr.length)]!;
+    return arr[Math.floor(rng() * arr.length)]!;
 }
 
 function randInt(lo: number, hi: number): number {
-    return Math.floor(lo + Math.random() * (hi - lo + 1));
+    return Math.floor(lo + rng() * (hi - lo + 1));
 }
 
 /**
  * Generates a single random realistic-looking username. Caller is responsible
  * for handling collisions (see createBotUser below).
  */
-export function generateBotUsername(): string {
+export function generateBotUsername(rand: () => number = Math.random): string {
+    rng = rand;
     const patterns: Array<() => string> = [
         // alex42, sam283, taylor7
         () => `${pick(FIRST_NAMES)}${randInt(2, 999)}`,
@@ -350,7 +353,9 @@ export function generateBotUsername(): string {
         // x_first: x_alex (gamer-style prefix)
         () => `x_${pick(FIRST_NAMES)}`,
     ];
-    return pick(patterns)().slice(0, 16);
+    const name = pick(patterns)().slice(0, 16);
+    rng = Math.random;
+    return name;
 }
 
 /**

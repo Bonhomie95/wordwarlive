@@ -254,7 +254,7 @@ export interface RewardedShowResult {
 
 /** How long a tap waits for the ad to be ready before giving up. The load
  *  itself keeps running so the next tap can use it. */
-const REWARDED_SHOW_TIMEOUT_MS = 20_000;
+const REWARDED_SHOW_TIMEOUT_MS = 30_000;
 
 /** Last-resort watchdog AFTER show() is called. If AdMob never fires
  *  CLOSED or ERROR (seen with mid-play SDK errors / activity teardown),
@@ -318,6 +318,8 @@ function ensureSlotAd(m: AdsModule, slot: RewardedSlot, userId: string): SlotAd 
     ad.addAdEventListener(m.AdEventType.CLOSED, () => {
         log(`${slot} closed`);
         settle({ earned: s.earned, unavailable: false });
+        // Repeatable slots: fetch the next ad now so the next tap is instant.
+        if (slot !== 'daily_bonus') setTimeout(() => preloadRewarded(slot, userId), 1000);
     });
     ad.addAdEventListener(m.AdEventType.ERROR, (err) => {
         const message = (err as { message?: string } | undefined)?.message ?? 'ad error';
@@ -386,12 +388,17 @@ export async function showRewarded(
     const s = ensureSlotAd(m, slot, userId);
     return new Promise<RewardedShowResult>((resolve) => {
         const timer = setTimeout(() => {
+            // Only give up while still LOADING. Once the ad is loaded/showing,
+            // the user may be mid-ad — bailing here would drop their reward
+            // (CLOSED would settle with nobody waiting). SHOW_WATCHDOG_MS
+            // still guarantees the promise settles.
+            if (s.state !== 'loading') return;
             log(`${slot} not ready after ${REWARDED_SHOW_TIMEOUT_MS}ms (loading ${Date.now() - s.startedAt}ms)`);
             s.waiters = s.waiters.filter((fn) => fn !== waiter);
             resolve({
                 earned: false,
                 unavailable: false,
-                error: "The ad isn't ready yet. Please try again in a moment.",
+                error: 'The ad is still loading. Try again in a few seconds.',
             });
         }, REWARDED_SHOW_TIMEOUT_MS);
         const waiter = (r: RewardedShowResult) => {

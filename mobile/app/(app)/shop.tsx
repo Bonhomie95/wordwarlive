@@ -301,7 +301,7 @@ export default function Shop() {
                 setTimeout(() => refreshMe().catch(() => {}), 1200);
                 Alert.alert('+25 coins incoming', 'Updating your balance…');
             } else if (r.error) {
-                Alert.alert('Ad error', r.error);
+                Alert.alert('Ad not available', r.error);
             }
         } finally {
             setAdBusy(false);

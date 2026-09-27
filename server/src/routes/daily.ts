@@ -50,7 +50,6 @@ dailyRouter.post('/daily/guess', requireAuth, async (req, res) => {
     res.json(result);
 });
 
-dailyRouter.get('/daily/board', requireAuth, async (_req, res) => {
-    const entries = await todaysLeaderboard(50);
-    res.json({ entries });
+dailyRouter.get('/daily/board', requireAuth, async (req, res) => {
+    res.json(await todaysLeaderboard(50, req.session!.userId));
 });

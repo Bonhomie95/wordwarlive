@@ -14,6 +14,7 @@ import { isValidWord, pickRandomWord } from '../game/words.js';
 import { scoreGuess, validateGuess, type GuessResult } from '../game/engine.js';
 import { redeemHint, type HintResult, type HintError } from './hintService.js';
 import { grantCoins } from './coinsService.js';
+import { visibleSyntheticSolvers } from './dailySynthetic.js';
 import { logger } from '../utils/logger.js';
 
 /** Coins for solving the day's word. Once per day; a hint costs 50. */
@@ -285,18 +286,21 @@ export async function redeemDailyHint(
 }
 
 /**
- * Daily challenge leaderboard for today. Solvers ranked by guess count, then
- * by duration. Unsolved attempts excluded.
+ * Daily challenge leaderboard for today: real solvers merged with the day's
+ * computer solvers, ranked by guess count then time. Also returns the
+ * caller's own rank so the client can show it when they're outside the top.
  */
-export async function todaysLeaderboard(limit = 50): Promise<
-    {
-        userId: string;
-        username: string;
-        guessCount: number;
-        durationMs: number;
-    }[]
-> {
+export async function todaysLeaderboard(
+    limit = 50,
+    userId?: string
+): Promise<{
+    entries: { userId: string; username: string; guessCount: number; durationMs: number }[];
+    me: { rank: number; guessCount: number; durationMs: number } | null;
+    total: number;
+}> {
     const date = todayUtc();
+    // ponytail: merges every real solver in memory; move ranking into SQL
+    // once daily solvers reach the tens of thousands.
     const rows = await query<{
         user_id: string;
         username: string;
@@ -307,15 +311,29 @@ export async function todaysLeaderboard(limit = 50): Promise<
          FROM daily_challenge_attempts a
          JOIN users u ON u.id = a.user_id
          WHERE a.challenge_date = $1 AND a.solved = TRUE
-           AND u.auth_subject NOT LIKE 'bot-%'
-         ORDER BY a.guess_count ASC, a.duration_ms ASC
-         LIMIT $2`,
-        [date, limit]
+           AND u.auth_subject NOT LIKE 'bot-%'`,
+        [date]
     );
-    return rows.map((r) => ({
-        userId: r.user_id,
-        username: r.username,
-        guessCount: r.guess_count,
-        durationMs: r.duration_ms,
-    }));
+    const all = [
+        ...rows.map((r) => ({
+            userId: r.user_id,
+            username: r.username,
+            guessCount: r.guess_count,
+            durationMs: r.duration_ms,
+        })),
+        ...visibleSyntheticSolvers(date).map(({ userId, username, guessCount, durationMs }) => ({
+            userId,
+            username,
+            guessCount,
+            durationMs,
+        })),
+    ].sort((a, b) => a.guessCount - b.guessCount || a.durationMs - b.durationMs);
+
+    const idx = userId ? all.findIndex((e) => e.userId === userId) : -1;
+    const mine = idx >= 0 ? all[idx]! : null;
+    return {
+        entries: all.slice(0, limit),
+        me: mine ? { rank: idx + 1, guessCount: mine.guessCount, durationMs: mine.durationMs } : null,
+        total: all.length,
+    };
 }

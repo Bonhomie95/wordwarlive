@@ -178,7 +178,7 @@ export default function Pass() {
                 }, 1200);
                 Alert.alert('+50 XP incoming', 'Updating your battle pass…');
             } else if (r.error) {
-                Alert.alert('Ad error', r.error);
+                Alert.alert('Ad not available', r.error);
             }
         } finally {
             setAdBusy(false);

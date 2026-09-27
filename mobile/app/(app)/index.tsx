@@ -136,7 +136,7 @@ export default function Home() {
                 setTimeout(() => refreshMe().catch(() => {}), 1200);
                 Alert.alert('Reward incoming', '+30 coins, +75 BP XP, and a power-up. Updating…');
             } else if (r.error) {
-                Alert.alert('Ad error', r.error);
+                Alert.alert('Ad not available', r.error);
                 setDailyLocallyClaimed(false);
             } else {
                 setDailyLocallyClaimed(false);

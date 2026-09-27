@@ -218,6 +218,8 @@ export const dailyApi = {
                 guessCount: number;
                 durationMs: number;
             }[];
+            me: { rank: number; guessCount: number; durationMs: number } | null;
+            total: number;
         }>('/api/daily/board'),
 };
 

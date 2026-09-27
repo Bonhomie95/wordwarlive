@@ -59,6 +59,9 @@ export default function DailyChallengeScreen() {
     const [cursor, setCursor] = useState(0);
     const [submitting, setSubmitting] = useState(false);
     const [lastError, setLastError] = useState<string | null>(null);
+    const [myRank, setMyRank] = useState<{ rank: number; guessCount: number; durationMs: number } | null>(null);
+    const [solverTotal, setSolverTotal] = useState(0);
+    const [showMine, setShowMine] = useState(false);
     const [leaderboard, setLeaderboard] = useState<
         { userId: string; username: string; guessCount: number; durationMs: number }[]
     >([]);
@@ -91,7 +94,11 @@ export default function DailyChallengeScreen() {
             // Fetch leaderboard once on solve.
             dailyApi
                 .leaderboard()
-                .then((r) => setLeaderboard(r.entries))
+                .then((r) => {
+                    setLeaderboard(r.entries);
+                    setMyRank(r.me);
+                    setSolverTotal(r.total);
+                })
                 .catch(() => {});
         }
     }, [attempt?.solved]);
@@ -350,10 +357,13 @@ export default function DailyChallengeScreen() {
                                     style={styles.lbHeader}
                                     allowFontScaling={false}
                                 >
-                                    Today&apos;s top solvers
+                                    Today&apos;s top solvers · {solverTotal}
                                 </Text>
                                 {leaderboard.slice(0, 10).map((e, idx) => (
-                                    <View key={e.userId} style={styles.lbRow}>
+                                    <View
+                                        key={e.userId}
+                                        style={[styles.lbRow, e.userId === user?.id ? styles.lbRowMe : null]}
+                                    >
                                         <Text
                                             style={styles.lbRank}
                                             allowFontScaling={false}
@@ -375,6 +385,32 @@ export default function DailyChallengeScreen() {
                                         </Text>
                                     </View>
                                 ))}
+                                {myRank && myRank.rank > 10 ? (
+                                    showMine ? (
+                                        <View style={[styles.lbRow, styles.lbRowMe]}>
+                                            <Text style={styles.lbRank} allowFontScaling={false}>
+                                                {myRank.rank}
+                                            </Text>
+                                            <Text style={styles.lbName} allowFontScaling={false} numberOfLines={1}>
+                                                You
+                                            </Text>
+                                            <Text style={styles.lbScore} allowFontScaling={false}>
+                                                {myRank.guessCount}g · {Math.round(myRank.durationMs / 1000)}s
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <Pressable
+                                            onPress={() => setShowMine(true)}
+                                            accessibilityRole="button"
+                                            accessibilityLabel="Show my position"
+                                            style={styles.myPosBtn}
+                                        >
+                                            <Text style={styles.myPosText} allowFontScaling={false}>
+                                                Show my position
+                                            </Text>
+                                        </Pressable>
+                                    )
+                                ) : null}
                             </View>
                         ) : null}
                     </View>
@@ -461,6 +497,25 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: colors.primary,
         fontSize: typography.sizes.xl,
         fontWeight: typography.weights.black,
+    },
+    lbRowMe: {
+        backgroundColor: 'rgba(0,224,144,0.12)',
+        borderRadius: radius.sm,
+    },
+    myPosBtn: {
+        alignSelf: 'center',
+        marginTop: spacing.sm,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.lg,
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        borderColor: colors.primary,
+    },
+    myPosText: {
+        color: colors.primary,
+        fontFamily: typography.familyMono,
+        fontSize: typography.sizes.sm,
+        fontWeight: typography.weights.bold,
     },
     solvedCoins: {
         color: colors.warning,

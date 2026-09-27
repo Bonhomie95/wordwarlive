@@ -36,8 +36,10 @@ Mystery-mode words are filtered for offensive content and reviewed on report.
 ## 4. Matchmaking and bots
 To keep matches available at all times — especially at off-peak hours and for
 new players — the App may match you against computer-controlled opponents
-("bots"). Bots are excluded from leaderboards and do not affect other players'
-records.
+("bots"). Bots are excluded from the ranked leaderboards and do not affect
+other players' records. The Daily Challenge board also lists computer-generated
+solvers alongside real players so the daily ranking stays lively; they never
+receive rewards.
 
 ## 5. Virtual items and purchases
 - The App offers virtual items (coins, cosmetics, battle pass, ad removal) for
