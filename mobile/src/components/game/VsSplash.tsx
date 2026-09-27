@@ -7,7 +7,7 @@
 // the gameStore flips to 'playing' on its own when the server sends
 // match_start.
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Animated,
     Easing,
@@ -28,9 +28,9 @@ interface Props {
 }
 
 export const VsSplash: React.FC<Props> = ({ me, opponent }) => {
-    const meSlide = useRef(new Animated.Value(-100)).current;
-    const oppSlide = useRef(new Animated.Value(100)).current;
-    const vsScale = useRef(new Animated.Value(0)).current;
+    const meSlide = useState(() => new Animated.Value(-100))[0];
+    const oppSlide = useState(() => new Animated.Value(100))[0];
+    const vsScale = useState(() => new Animated.Value(0))[0];
 
     useEffect(() => {
         // Players slide in from opposite sides; VS punches in last.
@@ -121,7 +121,7 @@ function winPct(wins: number, losses: number): number {
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     root: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: colors.bg,
         zIndex: 100,
         alignItems: 'center',

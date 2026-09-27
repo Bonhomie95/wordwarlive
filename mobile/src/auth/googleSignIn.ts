@@ -38,6 +38,9 @@ export function useGoogleSignIn(): GoogleSignInHook {
         ((tok: string | null) => void) | null
     >(null);
 
+    // Resolving the pending sign-in promise from the response effect is the
+    // intended pattern for expo-auth-session.
+    /* eslint-disable react-hooks/set-state-in-effect */
     useEffect(() => {
         if (!response || !pendingResolver) return;
         if (response.type === 'success' && response.params?.id_token) {
@@ -45,7 +48,7 @@ export function useGoogleSignIn(): GoogleSignInHook {
             setPendingResolver(null);
             setInProgress(false);
         } else if (response.type === 'error') {
-            setError(response.error?.message ?? 'Google sign-in failed');
+            setError(response.error?.description ?? 'Google sign-in failed');
             pendingResolver(null);
             setPendingResolver(null);
             setInProgress(false);
@@ -55,6 +58,7 @@ export function useGoogleSignIn(): GoogleSignInHook {
             setInProgress(false);
         }
     }, [response, pendingResolver]);
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     const signIn = async (): Promise<string | null> => {
         if (!available) {

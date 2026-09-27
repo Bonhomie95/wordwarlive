@@ -20,7 +20,7 @@
 // Don't pass `visible` permanently — the showRewarded / showInterstitial
 // helpers should set it true, await ad close, set it false.
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Animated,
     Easing,
@@ -41,7 +41,7 @@ export const AdLoadingOverlay: React.FC<Props> = ({
     visible,
     label = 'Loading ad…',
 }) => {
-    const spin = useRef(new Animated.Value(0)).current;
+    const spin = useState(() => new Animated.Value(0))[0];
 
     useEffect(() => {
         if (!visible) return;
@@ -83,7 +83,7 @@ export const AdLoadingOverlay: React.FC<Props> = ({
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     backdrop: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(0,0,0,0.85)',
         alignItems: 'center',
         justifyContent: 'center',

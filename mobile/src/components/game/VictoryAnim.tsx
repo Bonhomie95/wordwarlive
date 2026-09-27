@@ -135,8 +135,8 @@ function Lightning() {
 }
 
 const styles = StyleSheet.create({
-    fill: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
-    centered: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+    fill: { ...StyleSheet.absoluteFill, zIndex: 50 },
+    centered: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
     ring: {
         width: 240,
         height: 240,

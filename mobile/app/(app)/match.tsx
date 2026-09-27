@@ -151,6 +151,7 @@ export default function Match() {
     // Keying on matchId restarts the splash whenever a new match begins.
     useEffect(() => {
         if (!matchFound) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setShowSplash(true);
         const t = setTimeout(() => setShowSplash(false), 2500);
         return () => clearTimeout(t);
@@ -234,6 +235,7 @@ export default function Match() {
         user && 'powerups' in user
             ? user.powerups
             : { reveal: 0, scramble: 0, lock: 0 };
+    // eslint-disable-next-line react-hooks/purity
     const powerLocked = !!lockedUntilMs && Date.now() < lockedUntilMs;
     const hintCredits = user && 'hintCredits' in user ? user.hintCredits : 0;
     const lifetimeHintsUsed =
@@ -500,7 +502,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginBottom: spacing.xs,
     },
     scrambledOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(15,17,21,0.85)',
         alignItems: 'center',
         justifyContent: 'center',

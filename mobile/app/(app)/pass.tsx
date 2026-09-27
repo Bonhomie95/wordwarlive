@@ -186,6 +186,7 @@ export default function Pass() {
     }
 
     const boostUntil = user && 'boosts' in user ? user.boosts.xpBoostUntil : null;
+    // eslint-disable-next-line react-hooks/purity
     const boosterActive = !!boostUntil && new Date(boostUntil).getTime() > Date.now();
 
     return (

@@ -163,12 +163,11 @@ accounts/keys.
   in both stores, set up the GDPR/US-state messages in AdMob → Privacy &
   messaging, and set **App settings → Ad content rating → T** in the AdMob
   console to match the in-app cap.
-- **iOS SDK:** builds are pinned to an **Xcode 26** EAS image (`eas.json` →
-  `ios.image`). Expo SDK 54 has no UIScene life cycle, and apps built with the
-  iOS 27 SDK (Xcode 27) refuse to launch on iOS 27 ("UIScene life cycle is
-  required"). Do not build store binaries with Xcode 27 until the app is on
-  Expo SDK 57+ with `ios.enableSceneSupport`. Apple usually mandates the newest
-  SDK from the following April, so plan that upgrade before then.
+- **iOS SDK:** Expo **SDK 57** with the UIKit scene life cycle enabled
+  (`expo-build-properties` → `ios.enableSceneSupport`), so binaries built with
+  Xcode 27 / the iOS 27 SDK launch on iOS 27. EAS iOS builds are pinned to an
+  Xcode 26 image in `eas.json` until EAS publishes an Xcode 27 image; either
+  SDK is accepted by App Store Connect today.
 - **In-app purchases:** through StoreKit / Play Billing (`expo-iap`, Play
   Billing Library 8.x). Prices in the UI come from the store (localized). iOS
   transactions are verified server-side from the StoreKit 2 signed JWS (Apple

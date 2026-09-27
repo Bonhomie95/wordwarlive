@@ -130,6 +130,7 @@ export default function Shop() {
     );
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         load();
     }, [load]);
 
@@ -364,6 +365,7 @@ export default function Shop() {
     const shields = user && 'boosts' in user ? user.boosts.streakShields : 0;
     const shieldMax = user && 'boosts' in user ? user.boosts.streakShieldMax : 2;
     const xpBoostUntil = user && 'boosts' in user ? user.boosts.xpBoostUntil : null;
+    // eslint-disable-next-line react-hooks/purity
     const xpBoostActive = !!xpBoostUntil && new Date(xpBoostUntil).getTime() > Date.now();
     const starterOwned = user && 'bundles' in user ? user.bundles.starterOwned : true;
     const coinAdsLeft =
