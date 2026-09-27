@@ -1,9 +1,11 @@
 # Word bank generation
 
-This folder holds tooling for expanding WordWar's word bank. Two pieces:
+This folder holds tooling for expanding WordWar's word bank. Main tools:
 
 1. **The AI prompt** below — paste into your local LLM (Llama, GPT, whatever) once per length you want.
 2. **`upload-words.mjs`** — uploads a JSON file to Postgres, skipping duplicates.
+3. **`npm run migrate`** — imports the checked-in `src/data/words.json` seed.
+   Keep permanent additions there so new deployments and CI receive them.
 
 The bank is keyed by length; each length is a separate JSON array. The DB
 column `length` is what the rank-aware picker uses to choose word size at
@@ -69,7 +71,7 @@ node scripts/upload-words.mjs raw-5-1.json raw-5-2.json raw-9-batch.json
 ```
 
 The script:
-- Validates every word matches the format rules (right length, ASCII, no proper nouns flagged via simple heuristics)
+- Validates every word matches the format rules (4–10 letters and ASCII; vocabulary quality still needs human review)
 - Deduplicates within the input AND against what's already in the DB
 - Uploads in batches of 500 with `ON CONFLICT DO NOTHING`
 - Prints how many were added per length and how many were skipped
@@ -86,3 +88,22 @@ If you want to back up the current bank before clearing:
 ```bash
 node scripts/upload-words.mjs --dump > word-bank-backup.json
 ```
+
+## September 2026 expansion and integrity checks
+
+The canonical seed now contains 6,742 unique words, including 417 new words
+across food, nature, household items, activities, and everyday concepts. It also
+preserves the words previously present only in the development database.
+Normalization removed 52 duplicate seed entries and derives each bucket from
+actual spelling length rather than trusting the original bucket label.
+
+Migration `026_word_bank_normalization.sql` merges duplicate case/space variants,
+repairs stored lengths, and adds a database constraint requiring uppercase ASCII
+words of 4–10 letters with a matching length. `word_bank.word` remains unique.
+Repeated `npm run migrate` calls add no duplicate words. The seed tests enforce
+these rules in CI. The server caches the bank at startup; reload/restart after
+imports to make new words available to live games.
+
+The ranked-season integration tests use a temporary private schema and relative
+DB timestamps. They do not depend on an active production season or modify the
+seasons used by a running local server.

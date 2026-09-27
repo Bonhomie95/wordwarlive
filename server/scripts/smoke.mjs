@@ -84,6 +84,10 @@ try {
     const word = Array.from({ length: 5 }, (_, i) => letters[i]).join('');
     assert.equal((await ack(a, 'guess_submit', { guess: word })).ok, true);
     await Promise.all([doneA, doneB]);
+    const replay = await api(0, `/replays/${ma.matchId}`);
+    assert.equal(replay.yourGuesses[0].guess, word);
+    assert.equal(replay.youWon, true);
+    assert.equal(replay.tied, false);
     console.log('PASS private match, hidden answer, reveal/scramble/lock, hint cap, reconnect, solve and reward persistence');
 
     const invite = event(b, 'friend_challenge_incoming');

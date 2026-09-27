@@ -2,7 +2,10 @@
 // faint neon aura bleeding down from the top, plus safe-area insets. Wrap every
 // screen's content in this so the backdrop is consistent everywhere.
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useIsFocused } from '@react-navigation/native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,6 +27,15 @@ export const Screen: React.FC<Props> = ({
     noGlow,
     style,
 }) => {
+    const focused = useIsFocused();
+    const reduced = useReducedMotion();
+    const reveal = useSharedValue(1);
+    useEffect(() => {
+        if (!focused || reduced) { reveal.value = 1; return; }
+        reveal.value = 0;
+        reveal.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
+    }, [focused, reduced, reveal]);
+    const arrival = useAnimatedStyle(() => ({ opacity: 0.65 + reveal.value * 0.35, transform: [{ translateY: (1 - reveal.value) * 8 }] }));
     // Re-read on theme bump so the aura recolors with the active theme.
     useThemeStore((s) => s.bump);
     return (
@@ -36,7 +48,7 @@ export const Screen: React.FC<Props> = ({
                 />
             ) : null}
             <SafeAreaView style={[styles.safe, style]} edges={edges}>
-                {children}
+                <Animated.View style={[{ flex: 1 }, arrival]}>{children}</Animated.View>
             </SafeAreaView>
         </View>
     );

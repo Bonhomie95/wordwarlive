@@ -3,7 +3,7 @@
 // they're playing for). Purely a visual revamp — all logic is unchanged.
 
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
@@ -12,6 +12,8 @@ import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
 import { Screen } from '../../src/components/ui/Screen';
 import { TopBar } from '../../src/components/ui/TopBar';
 import { Card, MonoLabel, StatTile } from '../../src/components/ui/primitives';
+import { MotionPressable } from '../../src/components/ui/MotionPressable';
+import { ProgressBar } from '../../src/components/ui/ProgressBar';
 import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGameStore } from '../../src/store/gameStore';
@@ -174,14 +176,7 @@ export default function Home() {
                             </Text>
                         </View>
                     </View>
-                    <View style={styles.progressTrack}>
-                        <View
-                            style={[
-                                styles.progressFill,
-                                { width: `${Math.min(100, Math.max(4, progress * 100))}%` },
-                            ]}
-                        />
-                    </View>
+                    <ProgressBar progress={progress} label="Progress to next rank" />
                     <View style={styles.rankMeta}>
                         <MonoLabel color={colors.primary}>{points} RP</MonoLabel>
                         <MonoLabel>
@@ -231,7 +226,7 @@ export default function Home() {
                         />
                     </Card>
                 ) : (
-                    <Pressable
+                    <MotionPressable
                         onPress={onPlay}
                         accessibilityRole="button"
                         accessibilityLabel="Play a ranked match"
@@ -248,7 +243,7 @@ export default function Home() {
                         <Text style={styles.playSub} allowFontScaling={false}>
                             RANKED 1V1
                         </Text>
-                    </Pressable>
+                    </MotionPressable>
                 )}
 
                 {/* Modes */}
@@ -273,7 +268,7 @@ export default function Home() {
                                 </Text>
                             </View>
                         </View>
-                        <Pressable
+                        <MotionPressable
                             onPress={onDailyBonus}
                             disabled={adBusy}
                             accessibilityRole="button"
@@ -286,7 +281,7 @@ export default function Home() {
                             <Text style={styles.claimText} allowFontScaling={false}>
                                 CLAIM
                             </Text>
-                        </Pressable>
+                        </MotionPressable>
                     </Card>
                 ) : null}
             </ScrollView>
@@ -304,7 +299,7 @@ function ModeCard({
     onPress: () => void;
 }) {
     return (
-        <Pressable
+        <MotionPressable
             onPress={onPress}
             accessibilityRole="button"
             accessibilityLabel={label}
@@ -317,7 +312,7 @@ function ModeCard({
             <Text style={styles.modeLabel} allowFontScaling={false}>
                 {label}
             </Text>
-        </Pressable>
+        </MotionPressable>
     );
 }
 

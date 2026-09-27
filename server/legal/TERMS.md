@@ -34,12 +34,10 @@ you don't want to be matched with (Settings → Blocked users). Usernames and
 Mystery-mode words are filtered for offensive content and reviewed on report.
 
 ## 4. Matchmaking and bots
-To keep matches available at all times — especially at off-peak hours and for
-new players — the App may match you against computer-controlled opponents
-("bots"). Bots are excluded from the ranked leaderboards and do not affect
-other players' records. The leaderboards (Ranks and the Daily Challenge board)
-also list computer-generated players alongside real players so the rankings
-stay lively; they never receive rewards.
+At off-peak times the App may match you against a computer-controlled opponent,
+identified as “Computer” in the match. These games may change your rank and
+rewards. Public leaderboards contain recorded human results only; computer
+accounts and generated scores are excluded.
 
 ## 5. Virtual items and purchases
 - The App offers virtual items (coins, cosmetics, battle pass, ad removal) for

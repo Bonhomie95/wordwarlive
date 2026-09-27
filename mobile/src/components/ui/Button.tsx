@@ -1,7 +1,6 @@
 import React from 'react';
 import {
     ActivityIndicator,
-    Pressable,
     StyleSheet,
     Text,
     View,
@@ -11,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
+import { MotionPressable } from './MotionPressable';
 import { glow } from '../../theme/effects';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -37,7 +37,7 @@ export const Button: React.FC<Props> = ({
 }) => {
     const isDisabled = disabled || busy;
     return (
-        <Pressable
+        <MotionPressable
             onPress={onPress}
             disabled={isDisabled}
             accessibilityRole="button"
@@ -47,7 +47,7 @@ export const Button: React.FC<Props> = ({
                 styles.base,
                 variantStyle(variant),
                 variant === 'primary' && !isDisabled ? glow(colors.primary, 16, 0.5) : null,
-                pressed && !isDisabled ? { opacity: 0.9, transform: [{ scale: 0.98 }] } : null,
+                pressed && !isDisabled ? { opacity: 0.9 } : null,
                 isDisabled ? { opacity: 0.45 } : null,
                 style,
             ]}
@@ -61,13 +61,13 @@ export const Button: React.FC<Props> = ({
                     ) : null}
                     <Text
                         style={[styles.label, { color: textColor(variant) }]}
-                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.4}
                     >
                         {label}
                     </Text>
                 </View>
             )}
-        </Pressable>
+        </MotionPressable>
     );
 };
 
@@ -87,7 +87,8 @@ function textColor(variant: Variant): string {
 const styles = makeThemedStyles(() =>
     StyleSheet.create({
         base: {
-            height: 54,
+            minHeight: 54,
+            paddingVertical: spacing.sm,
             paddingHorizontal: spacing.lg,
             borderRadius: radius.md,
             alignItems: 'center',

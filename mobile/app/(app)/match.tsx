@@ -308,7 +308,7 @@ export default function Match() {
                     hitSlop={6}
                 >
                     <Text style={[styles.playerLabel, { color: colors.danger }]} allowFontScaling={false}>
-                        NEMESIS
+                        {opponent.isBot ? 'COMPUTER' : 'OPPONENT'}
                     </Text>
                     <PlayerName
                         username={opponent.username}

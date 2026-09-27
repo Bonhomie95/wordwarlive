@@ -20,7 +20,7 @@ const ADMOB_TEST_ANDROID_APP_ID = 'ca-app-pub-3940256099942544~3347511713';
 const APP_ID = 'dev.bonhomieinc.wordwar';
 const VERSION = '1.0.0';
 
-const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production';
+const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production' || process.env.WORDWAR_RELEASE === '1';
 
 function requireProdEnv(names: string[]): void {
     const missing = names.filter((n) => !process.env[n]);
@@ -44,6 +44,10 @@ if (isProductionBuild) {
         'EXPO_PUBLIC_ADMOB_REWARDED_IOS_ID',
         'EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID',
     ]);
+    const adUnits = Object.entries(process.env).filter(([key]) => key.startsWith('EXPO_PUBLIC_ADMOB_') && key.endsWith('_ID'));
+    if (adUnits.some(([, value]) => !/^ca-app-pub-\d{16}\/\d{10}$/.test(value ?? '') || value?.includes('3940256099942544'))) {
+        throw new Error('[app.config] Release ad units must be valid, non-sample AdMob unit IDs.');
+    }
     if (!/^https:\/\//.test(process.env.EXPO_PUBLIC_API_URL ?? '')) {
         throw new Error('[app.config] EXPO_PUBLIC_API_URL must be an https:// URL in production.');
     }

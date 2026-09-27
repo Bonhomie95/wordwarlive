@@ -795,6 +795,7 @@ class MatchRegistry {
         return {
             id: u.id,
             username: u.username,
+            isBot: u.auth_subject.startsWith('bot-'),
             provider: u.auth_provider,
             rankPoints: u.rank_points,
             rankTier: u.rank_tier as PublicUser['rankTier'],
@@ -1202,14 +1203,12 @@ function userToPublic(
     return {
         id: u.id,
         username: u.username,
+            isBot: u.auth_subject.startsWith('bot-'),
         provider: u.auth_provider,
         rankPoints: u.rank_points,
         rankTier: u.rank_tier as PublicUser['rankTier'],
         wins: u.wins,
         losses: u.losses,
-        // isBot intentionally omitted — server keeps tracking p1_is_bot /
-        // p2_is_bot in the matches table for analytics, but we never tell
-        // the human which is which on the wire.
         equipped: {
             boardTheme: u.equipped_board_theme,
             victoryAnim: u.equipped_victory_anim,

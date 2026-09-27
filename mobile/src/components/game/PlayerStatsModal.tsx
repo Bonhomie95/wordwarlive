@@ -30,7 +30,7 @@ interface Props {
 
 function confirmBlock(player: PublicUser, onDone: () => void) {
     appAlert(
-        `Block ${player.username}?`,
+        `Block ${player.username}{player.isBot ? ' · Computer' : ''}?`,
         "You won't be matched with this player again, and they can't challenge you. You can unblock them later in Settings.",
         [
             { text: 'Cancel', style: 'cancel' },
@@ -40,7 +40,7 @@ function confirmBlock(player: PublicUser, onDone: () => void) {
                 onPress: async () => {
                     try {
                         await blocksApi.block(player.id);
-                        appAlert('Blocked', `You've blocked ${player.username}.`);
+                        appAlert('Blocked', `You've blocked ${player.username}{player.isBot ? ' · Computer' : ''}.`);
                         onDone();
                     } catch {
                         appAlert('Could not block', 'Please try again later.');
@@ -53,7 +53,7 @@ function confirmBlock(player: PublicUser, onDone: () => void) {
 
 function reportPlayer(player: PublicUser) {
     appAlert(
-        `Report ${player.username}?`,
+        `Report ${player.username}{player.isBot ? ' · Computer' : ''}?`,
         'Report this player for an offensive username or bad behavior. Our team will review it.',
         [
             { text: 'Cancel', style: 'cancel' },
@@ -132,7 +132,7 @@ export const PlayerStatsModal: React.FC<Props> = ({
                             />
                             <View style={{ flex: 1 }}>
                                 <PlayerName
-                                    username={player.username}
+                                    username={player.username}{player.isBot ? ' · Computer' : ''}
                                     nameplateId={player.equipped?.nameplate}
                                     style={styles.username}
                                     numberOfLines={1}
@@ -160,7 +160,7 @@ export const PlayerStatsModal: React.FC<Props> = ({
                                 <Pressable
                                     onPress={() => reportPlayer(player)}
                                     accessibilityRole="button"
-                                    accessibilityLabel={`Report ${player.username}`}
+                                    accessibilityLabel={`Report ${player.username}{player.isBot ? ' · Computer' : ''}`}
                                     style={({ pressed }) => [
                                         styles.reportBtn,
                                         pressed ? { opacity: 0.7 } : null,
@@ -181,7 +181,7 @@ export const PlayerStatsModal: React.FC<Props> = ({
                                         })
                                     }
                                     accessibilityRole="button"
-                                    accessibilityLabel={`Block ${player.username}`}
+                                    accessibilityLabel={`Block ${player.username}{player.isBot ? ' · Computer' : ''}`}
                                     style={({ pressed }) => [
                                         styles.reportBtn,
                                         pressed ? { opacity: 0.7 } : null,

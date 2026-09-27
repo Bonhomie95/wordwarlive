@@ -2,6 +2,8 @@
 // gates the (auth) and (app) groups based on token presence. Expo Router's
 // Redirect component handles the bounce.
 
+import { ReducedMotionConfig, ReduceMotion } from 'react-native-reanimated';
+import { useReducedMotion } from '../src/hooks/useReducedMotion';
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
@@ -60,6 +62,7 @@ function useAuthGate() {
 
 export default function RootLayout() {
     const router = useRouter();
+    const reducedMotion = useReducedMotion();
     const [fontsLoaded] = useFonts({
         SpaceGrotesk_500Medium,
         SpaceGrotesk_600SemiBold,
@@ -135,12 +138,13 @@ export default function RootLayout() {
         <ErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
                 <SafeAreaProvider>
+                    <ReducedMotionConfig mode={reducedMotion ? ReduceMotion.Always : ReduceMotion.Never} />
                     <StatusBar style="light" />
                     <Stack
                         screenOptions={{
                             headerShown: false,
                             contentStyle: { backgroundColor: colors.bg },
-                            animation: 'fade',
+                            animation: reducedMotion ? 'none' : 'fade',
                         }}
                     >
                         <Stack.Screen name="(auth)" />

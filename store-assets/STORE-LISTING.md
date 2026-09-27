@@ -105,7 +105,7 @@ Jump in and race your first opponent!
 |---|---|---|---|
 | App icon (in-app) | `../mobile/assets/icon.png` | 1024² | Already wired in app.json (Expo builds iOS/Android sizes) |
 | Android adaptive fg | `../mobile/assets/adaptive-icon.png` | 1024², transparent, on `#0F1115` | app.json |
-| Splash | `../mobile/assets/splash-icon.png` | 1024², on `#0F1115` | app.json |
+| Splash | `../mobile/assets/splash-logo.png` | 1024², on `#0F1115` | app.json |
 | Web favicon | `../mobile/assets/favicon.png` | 196² | app.json |
 | App Store icon | `icons/app-store-icon-1024.png` | 1024², **no alpha** | App Store Connect (usually auto-pulled from build) |
 | Play icon | `icons/play-store-icon-512.png` | 512², no alpha | Play Console → Store listing → App icon |

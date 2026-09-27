@@ -145,7 +145,7 @@ function ReplayDetail({ replay, onClose }: { replay: ReplayMeta; onClose: () => 
                     const guesses = rows as ReplayData['yourGuesses'];
                     return <View key={name as string} style={{ gap: spacing.sm }}>
                         <Text style={styles.opponent}>{name as string}</Text>
-                        {guesses.length ? <Grid wordLength={replay.wordLength} guesses={guesses} inputCells={[]} maxRows={guesses.length} /> : <Text style={styles.metaText}>No guesses submitted.</Text>}
+                        {guesses.length ? <Grid wordLength={replay.wordLength} guesses={guesses} inputCells={[]} inputCursor={0} maxRows={guesses.length} /> : <Text style={styles.metaText}>No guesses submitted.</Text>}
                     </View>;
                 })}
             </ScrollView>

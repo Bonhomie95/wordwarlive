@@ -34,8 +34,8 @@ export interface PublicUser {
     rankTier: RankTier;
     wins: number;
     losses: number;
-    // No isBot on the wire — bots present as regular players (product
-    // decision); bot tracking lives server-side only.
+    /** Explicitly disclosed computer-controlled opponent. */
+    isBot?: boolean;
     equipped?: {
         boardTheme: string | null;
         victoryAnim: string | null;

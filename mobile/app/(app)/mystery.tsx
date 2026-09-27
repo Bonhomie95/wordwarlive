@@ -195,8 +195,7 @@ export default function MysteryScreen() {
                             1. Submit a word{'\n'}
                             2. We match you with someone who submitted a word of
                             the same length{'\n'}
-                            3. Both of you guess the SAME word — randomly one of
-                            yours{'\n'}
+                            3. You guess their word while they guess yours{'\n'}
                             4. Fastest solver wins
                         </Text>
                     </View>

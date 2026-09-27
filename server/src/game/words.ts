@@ -22,6 +22,10 @@ export async function loadWordBank(): Promise<void> {
         'SELECT word, length, difficulty FROM word_bank'
     );
 
+    byLength.clear();
+    wordSet.clear();
+    difficultyByWord.clear();
+
     for (const row of rows) {
         const w = row.word.toUpperCase();
         wordSet.add(w);

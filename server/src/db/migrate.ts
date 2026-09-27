@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool, query } from './pool.js';
 import { logger } from '../utils/logger.js';
+import { normalizeWordBank } from '../game/wordBankSeed.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, '../../migrations');
@@ -54,17 +55,8 @@ async function seedWordBank() {
     const existingRows = await query<{ word: string }>('SELECT word FROM word_bank');
     const existing = new Set(existingRows.map((r) => r.word));
 
-    // Gather words from JSON that AREN'T in the DB yet.
-    const toInsert: { word: string; length: number }[] = [];
-    for (const [lengthStr, words] of Object.entries(data)) {
-        const length = Number(lengthStr);
-        for (const word of words) {
-            const upper = word.toUpperCase();
-            if (!existing.has(upper)) {
-                toInsert.push({ word: upper, length });
-            }
-        }
-    }
+    // Normalize and deduplicate across every bucket before querying Postgres.
+    const toInsert = normalizeWordBank(data).filter(({ word }) => !existing.has(word));
 
     if (toInsert.length === 0) {
         logger.info(

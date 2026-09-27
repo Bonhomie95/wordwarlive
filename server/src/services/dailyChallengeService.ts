@@ -14,7 +14,6 @@ import { isValidWord, pickRandomWord } from '../game/words.js';
 import { scoreGuess, validateGuess, type GuessResult } from '../game/engine.js';
 import { redeemHint, type HintResult, type HintError } from './hintService.js';
 import { grantCoins } from './coinsService.js';
-import { visibleSyntheticSolvers } from './dailySynthetic.js';
 import { logger } from '../utils/logger.js';
 
 /** Coins for solving the day's word. Once per day; a hint costs 50. */
@@ -301,8 +300,8 @@ export async function redeemDailyHint(
 }
 
 /**
- * Daily challenge leaderboard for today: real solvers merged with the day's
- * computer solvers, ranked by guess count then time. Also returns the
+ * Daily challenge leaderboard for today: recorded human solves, ranked by
+ * guess count then time. Also returns the
  * caller's own rank so the client can show it when they're outside the top.
  */
 export async function todaysLeaderboard(
@@ -335,12 +334,6 @@ export async function todaysLeaderboard(
             username: r.username,
             guessCount: r.guess_count,
             durationMs: r.duration_ms,
-        })),
-        ...visibleSyntheticSolvers(date).map(({ userId, username, guessCount, durationMs }) => ({
-            userId,
-            username,
-            guessCount,
-            durationMs,
         })),
     ].sort((a, b) => a.guessCount - b.guessCount || a.durationMs - b.durationMs);
 
