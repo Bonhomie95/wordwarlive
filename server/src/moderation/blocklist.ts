@@ -42,9 +42,14 @@ const BANNED_SUBSTRINGS: readonly string[] = [
     'sex',
 ];
 
+// Exact benign words whose spelling overlaps a blocked substring. Never strip
+// these from arbitrary text, which would let appended abuse bypass moderation.
+const BENIGN_WORDS = new Set(['grape', 'grapes', 'grapefruit', 'drape', 'draped', 'drapes', 'drapery', 'scrape', 'scraped', 'scraper', 'scrapes', 'spice', 'spices', 'spicy', 'special', 'specialist', 'suspicion', 'suspicions', 'suspicious']);
+
 /** True if the text contains banned content. */
 export function containsProfanity(text: string): boolean {
     const n = normalize(text);
+    if (BENIGN_WORDS.has(n)) return false;
     return BANNED_SUBSTRINGS.some((bad) => n.includes(bad));
 }
 

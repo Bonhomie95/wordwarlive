@@ -63,6 +63,10 @@ function reportPlayer(player: PublicUser) {
                     submitReport(player, 'offensive_name'),
             },
             {
+                text: 'Suspected cheating',
+                onPress: () => submitReport(player, 'cheating'),
+            },
+            {
                 text: 'Harassment',
                 style: 'destructive',
                 onPress: () => submitReport(player, 'harassment'),
@@ -73,7 +77,7 @@ function reportPlayer(player: PublicUser) {
 
 async function submitReport(
     player: PublicUser,
-    reason: 'offensive_name' | 'harassment'
+    reason: 'offensive_name' | 'harassment' | 'cheating'
 ) {
     try {
         await reportsApi.submit({

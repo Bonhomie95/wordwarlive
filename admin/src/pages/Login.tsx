@@ -32,10 +32,12 @@ export default function Login() {
                     </div>
                 </div>
                 <div className="field">
-                    <label>Email</label>
+                    <label htmlFor="admin-email">Email</label>
                     <input
                         className="input"
+                        id="admin-email"
                         type="email"
+                        required
                         autoComplete="username"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
@@ -44,10 +46,12 @@ export default function Login() {
                     />
                 </div>
                 <div className="field">
-                    <label>Password</label>
+                    <label htmlFor="admin-password">Password</label>
                     <input
                         className="input"
+                        id="admin-password"
                         type="password"
+                        required
                         autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}

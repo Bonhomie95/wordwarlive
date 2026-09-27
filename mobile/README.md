@@ -1,6 +1,6 @@
 # WordWar Mobile
 
-The Expo SDK 54 React Native client for WordWar. Renders the live grid, captures input, and reacts to socket events from the server. The server is the source of truth — this app never knows the target word until `match_over`.
+The Expo SDK 57 React Native client for WordWar. Renders the live grid, captures input, and reacts to socket events from the server. The server is the source of truth — this app never knows the target word until `match_over`.
 
 ## Run it
 
@@ -13,7 +13,8 @@ npm install
 npx expo start
 ```
 
-Press `i` for iOS simulator, `a` for Android, or scan the QR code from the Expo Go app on a real device.
+Press `i` for iOS simulator, `a` for Android, or use an installed development build on a real device. Native IAP and ads
+require a development/release build; Expo Go cannot verify those integrations.
 
 The server has to be running and reachable at `EXPO_PUBLIC_API_URL`. See `../server/README.md`.
 
@@ -67,19 +68,22 @@ The auth gate in `app/_layout.tsx` redirects between `(auth)` and `(app)` groups
 
 **Shop & battle pass.** Both screens load real data from the server and round-trip purchases / claims / equips. Cosmetic previews use the `render_data` blob from the server, so adding new cosmetics doesn't require an app update.
 
-## Scaffolded surfaces (you'll want to polish these)
+## Inventory, purchases, and reconnect
 
-**Power-up UI.** The `gameStore.scrambled` flag and the scramble overlay are wired, but Reveal and Lock buttons aren't on the screen yet. Add a power-up bar to `match.tsx` that shows the player's inventory and emits `powerup_use` over the socket. Server-side effects are also stubbed — see `server/README.md`.
+Reveal, Scramble, and Lock controls use server-owned inventory and effects.
+Board themes, avatars, borders, and name effects are rendered from catalog data.
+Shop → My items includes owned exclusive rewards and supports equipping them.
+Reconnect restores match history, reveals, and remaining lock duration.
 
-**Cosmetic application during a match.** The equipped board theme isn't yet applied to the tile colors at render time; tiles use the default palette in `theme/colors.ts`. Plumbing it through is straightforward: read `user.equipped.boardTheme`, look up the cosmetic in a cached map, and pass its `render_data` colors to `<Tile>`.
+The native IAP client loads the store catalog, sends purchase tokens/JWS to the
+API, then finishes transactions after successful fulfillment. Missing native
+billing or unavailable products produce an error instead of a release-mode
+fake purchase. Restore surfaces failures and refreshes the player profile.
+Real Apple sandbox and Google Play license-tester transactions still need to
+be exercised with the configured store accounts; see [QA report](../QA-REPORT.md).
 
-**Reconnect.** If the network blips mid-match the socket auto-reconnects (see `socket/client.ts`), but `gameStore` doesn't yet rehydrate match state from the server. Either treat any disconnect as a forfeit (matches the current server behavior) or build a `match_state` event for resync.
-
-**Push notifications.** Not yet wired. `expo-notifications` would slot in for "your opponent has played" and "battle pass tier unlocked" pings.
-
-**Empty state polish.** Profile / Shop / Pass have basic loading and empty states, but no skeletons or shimmer effects yet.
-
-**Asset pipeline.** No app icon or splash artwork — only colors are configured. Drop assets into `/assets` and reference them in `app.json` when ready.
+Push registration, app artwork, accessibility settings, and daily challenges
+are implemented. External provider delivery and OAuth require device testing.
 
 ## Configuration cheat sheet
 
@@ -97,5 +101,5 @@ Apple Sign-In requires no client-side keys; the server uses `APPLE_BUNDLE_ID` to
 ## Development tips
 
 - The protocol types in `src/types/index.ts` are a *literal copy* of `server/src/types/index.ts`. When you change the wire format, change both files. (No monorepo tool by design — keeps each side independent.)
-- `npm run lint` does a strict `tsc --noEmit`. Use it before pushing.
-- Reanimated requires the Babel plugin to be the *last* plugin. Expo's babel-preset-expo handles this for SDK 54.
+- Run `npx tsc --noEmit` and `npm run lint` before pushing.
+- Reanimated requires the Babel plugin to be the *last* plugin. Expo's babel-preset-expo handles this for SDK 57.

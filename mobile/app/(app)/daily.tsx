@@ -271,7 +271,7 @@ export default function DailyChallengeScreen() {
                     inputCursor={cursor}
                     onTilePress={(pos) => setCursor(pos)}
                     hintsRevealed={hintsRevealed}
-                    maxRows={Math.max(6, guesses.length + 1)}
+                    maxRows={attempt?.solved ? guesses.length : Math.max(6, guesses.length + 1)}
                 />
 
                 {!attempt?.solved ? (

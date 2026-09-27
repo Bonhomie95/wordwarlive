@@ -97,11 +97,11 @@ export default function PlayerDetail() {
                     )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {u.banned ? (
+                    {!u.is_super_admin && (u.banned ? (
                         <button className="btn" onClick={() => setAction('unban')}>Unban</button>
                     ) : (
                         <button className="btn danger" onClick={() => setAction('ban')}>Ban</button>
-                    )}
+                    ))}
                     <button className="btn" onClick={() => setAction('adjust')}>Adjust</button>
                     {me?.superAdmin && !u.is_super_admin && <button className="btn" onClick={() => setAction('role')}>
                         {u.is_admin ? 'Revoke admin' : 'Make admin'}

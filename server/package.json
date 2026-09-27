@@ -1,7 +1,7 @@
 {
   "name": "wordwar-server",
   "version": "0.1.0",
-  "description": "WordWar game server — real-time 1v1 word racing",
+  "description": "WordWar game server \u2014 real-time 1v1 word racing",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "migrate": "tsx src/db/migrate.ts",
     "make-admin": "tsx src/scripts/makeAdmin.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:integration": "node --import dotenv/config ./node_modules/vitest/vitest.mjs run",
+    "test:smoke": "node --import tsx --import dotenv/config scripts/smoke.mjs"
   },
   "keywords": [],
   "author": "",

@@ -18,7 +18,11 @@ npm run migrate             # idempotent — also seeds the word bank
 npm run dev                 # http://localhost:4000
 ```
 
-Run tests with `npm test`. Type-check only with `npm run lint`.
+Run unit tests with `npm test`. Use `npm run test:integration` to load `.env`
+and include real database tests against a disposable local/test database.
+With the local server running and mobile dependencies installed,
+`npm run test:smoke` exercises HTTP and two-player socket flows using temporary
+accounts. Type-check with `npm run lint`.
 
 ## What's in the box
 
@@ -33,7 +37,7 @@ src/
 ├── routes/            # REST endpoints (auth, users, matches, cosmetics, battle pass)
 ├── socket/            # Socket.io server, matchmaking, in-flight match handler
 ├── ai/                # Groq client, daily-word curator, bot opponent
-└── data/words.json    # curated 5–8 letter word bank, loaded on migrate
+└── data/words.json    # curated 4–10 letter word bank, loaded on migrate
 ```
 
 ## Polished surfaces
@@ -46,25 +50,32 @@ src/
 
 **Match handler.** Server is the source of truth. The target word is never sent until `match_over`. Guesses are rate-limited to one per 2 s via Redis `SET NX EX`. The clock is server-driven.
 
-**Bot.** Groq picks from a **pre-filtered** candidate list — every candidate already satisfies the tile constraints from the bot's history, so the model can't "cheat" or pick something illegal. Falls back to a clean heuristic if `GROQ_API_KEY` is missing. Bot usernames start with `bot-` and the `isBot` flag is sent to clients per the brief.
+**Bots.** Guesses are selected from candidates consistent with previous feedback,
+with a heuristic fallback if Groq is unavailable. Identity/disclosure behavior
+is documented in the root README.
 
-## Scaffolded surfaces (you'll want to flesh these out)
+## Purchases, inventory, and operations
 
-**Power-ups.** The protocol is wired (`powerup_use` event, ack envelope) but the server-side effects are stubbed. To finish:
+- Apple JWS / legacy receipts and Google Play tokens are verified server-side.
+  Receipt reservation and entitlement fulfillment share one transaction.
+  Duplicate delivery cannot credit twice, even under concurrent requests.
+- Production requires IAP enforcement; development shortcuts are not proof of
+  store verification. Purchase records label their verification provenance.
+- Coin cosmetics, shields, streak rewards, hints, premium upgrades, and pass
+  reward claims use atomic balance/inventory writes. Hint caps are one per
+  short match or two for words of eight or more letters.
+- Reveal avoids already green/revealed positions. Scramble and Lock have real
+  server effects and inventory deductions. Reconnect restores match state.
+- Redis session revocation disconnects banned/deleted/stale sessions, including
+  idle sockets. Incoming socket actions also re-check account validity.
+- Admin has protected super-admin roles, support adjustments, reports, audit
+  logs, and verified-purchase/rewarded-ad metrics. See [admin README](../admin/README.md).
+- Migrations 024 and 025 add super-admin access and purchase provenance, retaining
+  receipt tombstones after account deletion to prevent receipt reuse.
 
-- **Reveal**: pick an unrevealed letter from `match.word`, send `{kind:'reveal', letter, position}` to *only* the requester
-- **Scramble**: emit `opponent_scramble` to the opposing socket; the client renders the visual effect
-- **Lock**: server-side flag preventing the opponent's `powerup_use` for N seconds
-
-Inventory tracking belongs in a `user_powerups` table (or denormalized columns on `users`). See `game/powerups.ts` for the earn rules.
-
-**IAP receipt verification.** `cosmeticsService.grantCosmetic` and `battlePassService.unlockPremium` both have `TODO(prod)` — they accept the client's claim as-is. Before launch, plug in [App Store Server API](https://developer.apple.com/documentation/appstoreserverapi) and [Google Play Developer API](https://developers.google.com/android-publisher) receipt verification.
-
-**Daily words.** `ai/dailyWord.ts` is wired but isn't called from anywhere yet. Either expose it on a route (`GET /api/daily-word`) or run it in a daily cron and use it as the word for a "Daily" match mode.
-
-**Persistence on disconnect.** Disconnect = forfeit immediately. Many games give a 10-15 s reconnect grace period; that's a `setTimeout` away in `matchHandler.handleDisconnect`.
-
-**Socket scaling.** Single-process today. To scale across multiple servers, add the [`@socket.io/redis-adapter`](https://socket.io/docs/v4/redis-adapter/) — Redis is already a dependency.
+See [QA-REPORT.md](../QA-REPORT.md) for verification and remaining store checks.
+The Redis adapter and per-node matchmaking are implemented; consult the root
+README before adding match-serving nodes.
 
 ## API reference (cheat sheet)
 
@@ -122,7 +133,7 @@ Server → client:
 
 **Coins** — earned currency. Sources: match wins (+5), daily play streak (+10/day), milestone bonuses (50–1000 at days 5/10/25/50/100), rewarded ad daily bonus, and IAP packs ($0.99–$49.99). Spent on hints (50/each) at the moment.
 
-**Hints** — reveal one correct letter in its correct position. **Hard cap of 1 hint per match**, regardless of payment kind — players can't spam coins for unlimited hints. The first hint a user EVER takes (across all matches) is FREE; every subsequent hint costs 50 coins, or 1 hint_credit if they have any (granted at streak milestones). The picker only suggests positions the player hasn't already greened.
+**Hints** — reveal one correct letter in its correct position. **Hard cap of 1 hint per short match, or 2 for words of 8+ letters**, regardless of payment kind — players can't spam coins for unlimited hints. The first hint a user EVER takes (across all matches) is FREE; every subsequent hint costs 50 coins, or 1 hint_credit if they have any (granted at streak milestones). The picker only suggests positions the player hasn't already greened.
 
 **Leaderboards** — pre-aggregated per period (daily / weekly ISO / monthly / all-time) and bucketed by ISO date so top-N reads are index-only. Updated on every match completion (bots filtered). Top 3 get gold/silver/bronze medal display. Each entry stores a snapshot of the player's rank_points so two players tied on wins are ordered by skill.
 

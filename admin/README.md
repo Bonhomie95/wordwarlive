@@ -1,7 +1,7 @@
 # WordWar Admin
 
 A Vite + React admin dashboard for operating WordWar: player management,
-moderation, economy, and full read access to every player's data.
+moderation, economy, and support access to player data. Authentication secrets are never returned.
 
 ## What you can do
 
@@ -10,18 +10,20 @@ moderation, economy, and full read access to every player's data.
 - **Players** — searchable, filterable (real / bots / banned / premium / admins),
   sortable table with rank position, points + tier, W/L, win %, play streak,
   best streak, coins, last played, and status. Click any row for the dossier.
-- **Player detail** — every field on the account: rank + global position,
+- **Player detail** — operational account fields: rank + global position,
   record + win rate, streaks + percentile, coins, hint credits, battle-pass XP,
   join/last-played, equipped cosmetics, plus recent matches, the full coin
   ledger, cosmetics owned, purchases, reports for/against, and battle-pass claims.
   Actions: **ban / unban**, **adjust coins & rank**, **grant / revoke admin**,
-  and **permanent delete** (with a type-to-confirm guard).
+  **support / entitlements** (cosmetics, premium, remove ads, hints, power-ups,
+  shields with a required reason), and **permanent delete** (with a type-to-confirm guard).
 - **Leaderboard** — top 100 by rank points (bots excluded).
 - **Matches** — the 100 most recent completed matches.
 - **Reports** — the moderation queue with status filters; action or dismiss.
 - **Economy** — coins in circulation, all-time granted/spent, and a per-source
-  breakdown of the coin economy.
-- **Purchases** — recent verified in-app purchases.
+  breakdown of the coin economy, plus 30-day verified purchase/buyer/product
+  counts and rewarded-ad completions. Net cash revenue remains in store reports.
+- **Purchases** — recent purchases labeled Store verified or Test/legacy.
 - **Audit log** — every mutating admin action (who, what, when, details).
 
 Bans take effect immediately: the server drops the player's live socket and
@@ -44,8 +46,11 @@ npm run make-admin -- you@wordwar.app
 ```
 
 The account must have signed up with **email auth** (it needs a password to log
-in here). After that, admins can promote/demote others from the player detail
-page.
+in here). The bootstrap and CLI grant **super-admin**. Only super-admins can promote or
+demote ordinary admins; ordinary admins cannot modify admin accounts. Super-admin
+accounts cannot be banned, deleted, or demoted through the panel. Migration 024
+promotes pre-existing admins to super-admin, so review that list when deploying.
+Store cash refunds are handled in the Apple/Google consoles.
 
 ## Running it
 
@@ -70,3 +75,5 @@ hash routing, so no server rewrite rules are required.
 
 The bearer token is stored in `localStorage`; a 401/403 clears it and returns
 to the login screen.
+
+Audit session: `VITE_API_TARGET=http://localhost:6011 npm run dev -- --port 5174`.

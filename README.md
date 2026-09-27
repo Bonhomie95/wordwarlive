@@ -7,10 +7,11 @@ Real-time 1v1 word game. Two players, same hidden word, one shared clock — fir
 ```
 wordwar/
 ├── server/    Node + Express + TypeScript + Socket.io + Postgres + Redis
-└── mobile/    Expo SDK 54 + React Native + TypeScript
+├── mobile/    Expo SDK 57 + React Native + TypeScript
+└── admin/     Vite + React + TypeScript operations dashboard
 ```
 
-The two folders are independent projects. Shared protocol types are mirrored in `server/src/types/index.ts` and `mobile/src/types/index.ts` — keep them in sync when you change the wire format.
+The three folders are independent projects. Shared protocol types are mirrored in `server/src/types/index.ts` and `mobile/src/types/index.ts` — keep them in sync when you change the wire format.
 
 ## Quick start
 
@@ -30,7 +31,7 @@ npm install
 npm start                  # opens Expo dev server
 ```
 
-## Day-1 build status
+## Implemented features
 
 | Step                                            | Status |
 |-------------------------------------------------|--------|
@@ -40,6 +41,12 @@ npm start                  # opens Expo dev server
 | 4. WebSocket wiring — multiplayer               | ✅     |
 | 5. Matchmaking + ranks + profiles               | ✅     |
 | 6. Cosmetics + battle pass                      | ✅     |
+
+## Local audit and running ports
+
+See [QA-REPORT.md](QA-REPORT.md) for verified behavior, fixes, and remaining
+store/device checks. This audit uses API **6011**, mobile Metro **8082**, and
+admin **5174**; the example defaults above remain configurable.
 
 ## Auth
 

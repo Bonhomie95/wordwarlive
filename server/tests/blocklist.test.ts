@@ -4,6 +4,7 @@ import { containsProfanity, moderationError } from '../src/moderation/blocklist.
 describe('containsProfanity', () => {
     it('flags obvious slurs and profanity', () => {
         expect(containsProfanity('fuckyou')).toBe(true);
+        expect(containsProfanity('grape_fuck')).toBe(true);
         expect(containsProfanity('a_bitch_99')).toBe(true);
     });
 
@@ -13,7 +14,7 @@ describe('containsProfanity', () => {
     });
 
     it('does not flag innocent names (no Scunthorpe false positives)', () => {
-        for (const ok of ['player_123', 'wordwizard', 'grandmaster', 'assistant_pro', 'analyst']) {
+        for (const ok of ['player_123', 'wordwizard', 'grandmaster', 'assistant_pro', 'analyst', 'GRAPE', 'scraped', 'spicy', 'special']) {
             expect(containsProfanity(ok)).toBe(false);
         }
     });

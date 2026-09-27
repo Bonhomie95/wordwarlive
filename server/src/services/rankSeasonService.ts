@@ -7,13 +7,13 @@
 //
 // Mechanics:
 //   - Soft reset: rank_points -= soft_reset_delta (default 200), floored
-//     at 1000 (the bottom of Bronze) so no one drops to Stone tier from
-//     a reset alone.
+//     at 1000; players already below the floor keep their points.
 //   - Peak rank: tracked in rank_season_results so end-of-season rewards
 //     reflect the highest rank achieved, not the final rank.
 //   - Reset is idempotent: gated by users.last_rank_season_reset_id.
 
-import { query } from '../db/pool.js';
+import { tierFromPoints } from '../game/ranks.js';
+import { query, transaction } from '../db/pool.js';
 import { logger } from '../utils/logger.js';
 
 export interface RankSeason {
@@ -72,77 +72,75 @@ export async function applyResetIfNeeded(userId: string): Promise<{
     const season = await getCurrentSeason();
     if (!season) return { resetApplied: false };
 
-    const userRows = await query<{
-        last_reset_id: number | null;
-        rank_points: number;
-        rank_tier: string;
-    }>(
-        `SELECT last_rank_season_reset_id AS last_reset_id, rank_points, rank_tier
-         FROM users WHERE id = $1`,
-        [userId]
-    );
-    const u = userRows[0];
-    if (!u) return { resetApplied: false };
-    if (u.last_reset_id === season.id) return { resetApplied: false };
-
-    // Determine the previous season this player was last in, so we can
-    // record their final state there.
-    let previousResult: {
-        seasonId: number;
-        peakPoints: number;
-        finalPoints: number;
-        finalTier: string;
-    } | undefined;
-    if (u.last_reset_id !== null) {
-        // last_reset_id is the season they were last *reset for* — i.e., the
-        // season they just finished. Record their final.
-        const prevSeasonId = u.last_reset_id;
-        // Peak comes from the rank_season_results table (we update it on
-        // every match win); fall back to current points if no row.
-        const peakRows = await query<{ peak: number }>(
-            `SELECT peak_points AS peak FROM rank_season_results
-             WHERE season_id = $1 AND user_id = $2`,
-            [prevSeasonId, userId]
+    return transaction(async (client) => {
+        const query = async <T = any>(sql: string, values?: unknown[]): Promise<T[]> => (await client.query(sql, values)).rows;
+        const userRows = await query<{
+            last_reset_id: number | null;
+            rank_points: number;
+            rank_tier: string;
+        }>(
+            `SELECT last_rank_season_reset_id AS last_reset_id, rank_points, rank_tier
+             FROM users WHERE id = $1 FOR UPDATE`,
+            [userId]
         );
-        const peakPoints = peakRows[0]?.peak ?? u.rank_points;
+        const u = userRows[0];
+        if (!u) return { resetApplied: false };
+        if (u.last_reset_id === season.id) return { resetApplied: false };
+
+        // Determine the previous season this player was last in, so we can
+        // record their final state there.
+        let previousResult: {
+            seasonId: number;
+            peakPoints: number;
+            finalPoints: number;
+            finalTier: string;
+        } | undefined;
+        if (u.last_reset_id !== null) {
+            // last_reset_id is the season they were last *reset for* — i.e., the
+            // season they just finished. Record their final.
+            const prevSeasonId = u.last_reset_id;
+            // Peak comes from the rank_season_results table (we update it on
+            // every match win); fall back to current points if no row.
+            const peakRows = await query<{ peak: number }>(
+                `SELECT peak_points AS peak FROM rank_season_results
+                 WHERE season_id = $1 AND user_id = $2`,
+                [prevSeasonId, userId]
+            );
+            const peakPoints = peakRows[0]?.peak ?? u.rank_points;
+            await query(
+                `INSERT INTO rank_season_results
+                    (season_id, user_id, peak_points, final_points, final_tier)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (season_id, user_id) DO UPDATE SET
+                    final_points = EXCLUDED.final_points,
+                    final_tier = EXCLUDED.final_tier`,
+                [prevSeasonId, userId, peakPoints, u.rank_points, u.rank_tier]
+            );
+            previousResult = {
+                seasonId: prevSeasonId,
+                peakPoints,
+                finalPoints: u.rank_points,
+                finalTier: u.rank_tier,
+            };
+        }
+
+        // Apply the soft reset.
+        const newPoints = Math.min(u.rank_points, Math.max(MIN_POST_RESET_POINTS, u.rank_points - season.softResetDelta));
         await query(
-            `INSERT INTO rank_season_results
-                (season_id, user_id, peak_points, final_points, final_tier)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (season_id, user_id) DO UPDATE SET
-                final_points = EXCLUDED.final_points,
-                final_tier = EXCLUDED.final_tier`,
-            [prevSeasonId, userId, peakPoints, u.rank_points, u.rank_tier]
+            `UPDATE users SET
+                rank_points = $1,
+                rank_tier = $4,
+                last_rank_season_reset_id = $2,
+                updated_at = now()
+             WHERE id = $3`,
+            [newPoints, season.id, userId, tierFromPoints(newPoints)]
         );
-        previousResult = {
-            seasonId: prevSeasonId,
-            peakPoints,
-            finalPoints: u.rank_points,
-            finalTier: u.rank_tier,
-        };
-    }
-
-    // Apply the soft reset.
-    const newPoints = Math.max(
-        MIN_POST_RESET_POINTS,
-        u.rank_points - season.softResetDelta
-    );
-    await query(
-        `UPDATE users SET
-            rank_points = $1,
-            last_rank_season_reset_id = $2,
-            updated_at = now()
-         WHERE id = $3`,
-        [newPoints, season.id, userId]
-    );
-    // Re-tier them. We don't import ranks.ts here to keep the dep simple —
-    // tier will fix itself the next time the user's rank changes (a match
-    // result triggers retier).
-    logger.info(
-        { userId, oldPoints: u.rank_points, newPoints, seasonId: season.id },
-        'rank season soft-reset applied'
-    );
-    return { resetApplied: true, previousSeasonResult: previousResult };
+        logger.info(
+            { userId, oldPoints: u.rank_points, newPoints, seasonId: season.id },
+            'rank season soft-reset applied'
+        );
+        return { resetApplied: true, previousSeasonResult: previousResult };
+    });
 }
 
 /**

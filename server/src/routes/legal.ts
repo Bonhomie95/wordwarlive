@@ -108,7 +108,8 @@ const DELETE_HTML = page(
     'Delete your account',
     `<h1>Delete your WordWar account</h1>
 <p>Deleting your account permanently removes your profile, username, rank, coins,
-cosmetics, purchases record, friends, and match history. This cannot be undone.</p>
+cosmetics, friends, and match history. Purchase verification identifiers are retained
+without an account link to prevent receipt reuse. This cannot be undone.</p>
 <h2>Option 1 — in the app (instant)</h2>
 <div class="box">Open WordWar → <strong>Profile</strong> → <strong>Settings &amp; Theme</strong> →
 <strong>Account</strong> → <strong>Delete account</strong>, then confirm.</div>
@@ -122,7 +123,7 @@ delete the account within 30 days, then confirm by reply.</div>
 <li>Your account and sign-in identifiers (email / Apple / Google identifier / guest device id).</li>
 <li>Rank, coins, cosmetics, battle-pass progress, streaks, friends, blocks, and reports you filed.</li>
 <li>Your matches, guesses, and replays. Opponents keep their own aggregate win/loss counts.</li>
-<li>Push-notification tokens and the purchase-verification ledger for your account.</li>
+<li>Push-notification tokens and the account link on purchase-verification records.</li>
 </ul>
 <p>Apple / Google keep your store purchase history under their own policies;
 we do not receive card or payment details. See the <a href="/legal/privacy">Privacy Policy</a>.</p>`

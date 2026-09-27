@@ -99,6 +99,22 @@ describe.skipIf(!process.env.DATABASE_URL)('purchase and inventory reliability',
         expect(u).toEqual({ battle_pass_xp: 60, battle_pass_premium: true });
     });
 
+    it('serializes rank season resets and updates the displayed tier without raising low ranks', async () => {
+        const userId = await player();
+        const { getCurrentSeason, applyResetIfNeeded } = await import('../../src/services/rankSeasonService.js');
+        const { tierFromPoints } = await import('../../src/game/ranks.js');
+        const season = await getCurrentSeason();
+        expect(season).not.toBeNull();
+        await pool.query("UPDATE users SET rank_points = 1500, rank_tier = 'gold', last_rank_season_reset_id = NULL WHERE id = $1", [userId]);
+        const results = await Promise.all(Array.from({ length: 6 }, () => applyResetIfNeeded(userId)));
+        expect(results.filter((r) => r.resetApplied)).toHaveLength(1);
+        const expected = Math.min(1500, Math.max(1000, 1500 - season!.softResetDelta));
+        expect((await pool.query('SELECT rank_points, rank_tier FROM users WHERE id = $1', [userId])).rows[0]).toEqual({ rank_points: expected, rank_tier: tierFromPoints(expected) });
+        await pool.query("UPDATE users SET rank_points = 850, rank_tier = 'stone', last_rank_season_reset_id = NULL WHERE id = $1", [userId]);
+        await applyResetIfNeeded(userId);
+        expect((await pool.query('SELECT rank_points FROM users WHERE id = $1', [userId])).rows[0].rank_points).toBe(850);
+    });
+
     it('includes owned exclusive cosmetics in the equip catalog', async () => {
         const userId = await player();
         const { grantCosmetic, listShopCosmetics } = await import('../../src/services/cosmeticsService.js');

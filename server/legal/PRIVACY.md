@@ -1,6 +1,6 @@
 # WordWar — Privacy Policy
 
-_Last updated: 2026-09-24_
+_Last updated: 2026-09-27_
 
 WordWar ("the app", "we") is a real-time word game published by Bonhomie Inc.
 This policy explains what we collect, why, and how to exercise your rights.
@@ -72,7 +72,10 @@ has created an account, contact us and we will delete it.
 ## Data retention
 
 Account data is kept until you delete your account. Server logs are retained
-for a limited period. Aggregate, anonymized statistics may be kept longer.
+for a limited period. After account deletion, purchase transaction identifiers,
+product identifiers, platform, and verification status remain with the account
+link removed to prevent the same receipt being redeemed again. Aggregate,
+anonymized statistics may be kept longer.
 
 ## Security
 
