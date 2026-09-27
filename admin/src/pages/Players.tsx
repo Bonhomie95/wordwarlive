@@ -108,7 +108,8 @@ export default function Players() {
                 >
                     <input
                         className="input"
-                        placeholder="Search username, email, or player id…"
+                        aria-label="Search players"
+                        placeholder="Search username, email, or player id — press Enter"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                     />
@@ -147,7 +148,7 @@ export default function Players() {
                     </thead>
                     <tbody>
                         {data?.rows.map((r) => (
-                            <tr key={r.id} className="row-click" onClick={() => nav(`/players/${r.id}`)}>
+                            <tr key={r.id} className="row-click" tabIndex={0} aria-label={`View player ${r.username}`} onClick={() => nav(`/players/${r.id}`)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nav(`/players/${r.id}`); } }}>
                                 <td className="mono muted">{r.rank_position}</td>
                                 <td>
                                     <div style={{ fontWeight: 600 }}>{r.username}</div>

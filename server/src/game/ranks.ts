@@ -121,3 +121,8 @@ export const RANK_FLOOR = 0;
 export function applyDelta(currentPoints: number, delta: number): number {
     return Math.max(RANK_FLOOR, currentPoints + delta);
 }
+
+/** Seasonal drop never increases points for players already below the floor. */
+export function softResetPoints(points: number, delta: number): number {
+    return Math.min(points, Math.max(1000, points - Math.max(0, delta)));
+}

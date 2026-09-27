@@ -1,10 +1,8 @@
-// Replays list. Shows recent matches you played with outcome + opponent +
-// duration. Tapping a row could later open a full board-fill replay view
-// (deferred — backend supports it via /api/replays/:matchId).
-
 import { useCallback, useState } from 'react';
 import {
     FlatList,
+    Modal,
+    ScrollView,
     Pressable,
     StyleSheet,
     Text,
@@ -12,6 +10,8 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Grid } from '../../src/components/game/Grid';
+import { Button } from '../../src/components/ui/Button';
 import { Screen } from '../../src/components/ui/Screen';
 import { replaysApi, type ReplayMeta } from '../../src/api/resources';
 import { makeThemedStyles, colors } from '../../src/theme/colors';
@@ -21,14 +21,18 @@ export default function ReplaysScreen() {
     const router = useRouter();
     const [replays, setReplays] = useState<ReplayMeta[]>([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [selected, setSelected] = useState<ReplayMeta | null>(null);
+
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
             const r = await replaysApi.list();
             setReplays(r.replays);
+            setError('');
         } catch {
-            // soft fail
+            setError('Could not load your replays. Pull down or retry.');
         } finally {
             setLoading(false);
         }
@@ -53,6 +57,10 @@ export default function ReplaysScreen() {
                 </Text>
             </View>
 
+            {!!error && <View style={{ padding: spacing.md, gap: spacing.sm }}>
+                <Text style={{ color: colors.danger }}>{error}</Text>
+                <Button label="Retry" onPress={load} />
+            </View>}
             {loading && replays.length === 0 ? (
                 <Text style={styles.loading} allowFontScaling={false}>
                     Loading…
@@ -74,18 +82,21 @@ export default function ReplaysScreen() {
                     data={replays}
                     keyExtractor={(r) => r.matchId}
                     contentContainerStyle={styles.list}
-                    renderItem={({ item }) => <ReplayRow replay={item} />}
+                    refreshing={loading}
+                    onRefresh={load}
+                    renderItem={({ item }) => <ReplayRow replay={item} onPress={() => setSelected(item)} />}
                 />
             )}
+            {selected && <ReplayDetail key={selected.matchId} replay={selected} onClose={() => setSelected(null)} />}
         </Screen>
     );
 }
 
-const ReplayRow: React.FC<{ replay: ReplayMeta }> = ({ replay }) => {
-    const color = replay.youWon ? colors.primary : colors.danger;
-    const label = replay.youWon ? 'WIN' : 'LOSS';
+const ReplayRow: React.FC<{ replay: ReplayMeta; onPress: () => void }> = ({ replay, onPress }) => {
+    const color = replay.tied ? colors.textDim : replay.youWon ? colors.primary : colors.danger;
+    const label = replay.tied ? 'DRAW' : replay.youWon ? 'WIN' : 'LOSS';
     return (
-        <View style={styles.row}>
+        <Pressable style={styles.row} onPress={onPress} accessibilityRole="button" accessibilityLabel={`View replay versus ${replay.opponentUsername}, ${label}`}>
             <View style={[styles.outcomeBadge, { borderColor: color }]}>
                 <Text style={[styles.outcomeLabel, { color }]} allowFontScaling={false}>
                     {label}
@@ -103,9 +114,44 @@ const ReplayRow: React.FC<{ replay: ReplayMeta }> = ({ replay }) => {
             <Text style={styles.word} allowFontScaling={false}>
                 {replay.word}
             </Text>
-        </View>
+        </Pressable>
     );
 };
+
+type ReplayData = Awaited<ReturnType<typeof replaysApi.get>>;
+
+function ReplayDetail({ replay, onClose }: { replay: ReplayMeta; onClose: () => void }) {
+    const [data, setData] = useState<ReplayData | null>(null);
+    const [error, setError] = useState('');
+    const load = useCallback(async () => {
+        setError('');
+        try { setData(await replaysApi.get(replay.matchId)); }
+        catch { setError('Could not load this replay. Please retry.'); }
+    }, [replay.matchId]);
+    useFocusEffect(useCallback(() => { void load(); }, [load]));
+    return <Modal visible onRequestClose={onClose} presentationStyle="pageSheet">
+        <Screen edges={['top', 'bottom']}>
+            <View style={[styles.header, { justifyContent: 'space-between' }]}>
+                <Text style={styles.opponent}>Match replay</Text>
+                <Button variant="ghost" label="Close" onPress={onClose} />
+            </View>
+            <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}>
+                <Text style={styles.opponent}>vs {replay.opponentUsername}</Text>
+                <Text style={styles.metaText}>Your answer: {replay.word} · {Math.round(replay.durationMs / 1000)}s</Text>
+                {replay.mode === 'mystery' && <Text style={styles.metaText}>Each player solved a different word.</Text>}
+                {!!error && <><Text style={{ color: colors.danger }}>{error}</Text><Button label="Retry" onPress={load} /></>}
+                {!data && !error && <Text style={styles.metaText}>Loading replay…</Text>}
+                {data && [['You', data.yourGuesses], [replay.opponentUsername, data.opponentGuesses]].map(([name, rows]) => {
+                    const guesses = rows as ReplayData['yourGuesses'];
+                    return <View key={name as string} style={{ gap: spacing.sm }}>
+                        <Text style={styles.opponent}>{name as string}</Text>
+                        {guesses.length ? <Grid wordLength={replay.wordLength} guesses={guesses} inputCells={[]} maxRows={guesses.length} /> : <Text style={styles.metaText}>No guesses submitted.</Text>}
+                    </View>;
+                })}
+            </ScrollView>
+        </Screen>
+    </Modal>;
+}
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },

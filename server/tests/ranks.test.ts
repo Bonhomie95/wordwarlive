@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     tierFromPoints,
+    softResetPoints,
     nextTierThreshold,
     computeRankDelta,
     applyDelta,
@@ -136,5 +137,14 @@ describe('applyDelta', () => {
     it('never drops below the floor', () => {
         expect(applyDelta(10, -50)).toBe(RANK_FLOOR);
         expect(applyDelta(0, -1)).toBe(RANK_FLOOR);
+    });
+});
+
+describe('season soft reset', () => {
+    it('drops high ranks, respects the floor, and never raises low ranks', () => {
+        expect(softResetPoints(1500, 200)).toBe(1300);
+        expect(softResetPoints(1100, 200)).toBe(1000);
+        expect(softResetPoints(850, 200)).toBe(850);
+        expect(softResetPoints(1500, -200)).toBe(1500);
     });
 });

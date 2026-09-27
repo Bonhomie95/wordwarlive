@@ -19,6 +19,7 @@ export interface ReplayMeta {
     wordLength: number;
     opponentUsername: string;
     youWon: boolean;
+    tied: boolean;
     outcome: string; // 'p1_solved' | 'p2_solved' | 'time_up' | 'disconnect'
     durationMs: number;
     createdAt: string;
@@ -125,6 +126,7 @@ export async function listReplaysForUser(
             wordLength: r.word_length,
             opponentUsername,
             youWon,
+            tied: r.winner === 'tie',
             outcome: r.outcome,
             durationMs: r.duration_ms,
             createdAt: r.created_at.toISOString(),
@@ -171,6 +173,7 @@ export async function getReplay(
         wordLength: r.word_length,
         opponentUsername: isP1 ? r.p2_username : r.p1_username,
         youWon: (isP1 && r.winner === 'p1') || (!isP1 && r.winner === 'p2'),
+        tied: r.winner === 'tie',
         outcome: r.outcome,
         durationMs: r.duration_ms,
         createdAt: r.created_at.toISOString(),

@@ -12,7 +12,7 @@
 //     reflect the highest rank achieved, not the final rank.
 //   - Reset is idempotent: gated by users.last_rank_season_reset_id.
 
-import { tierFromPoints } from '../game/ranks.js';
+import { tierFromPoints, softResetPoints } from '../game/ranks.js';
 import { query, transaction } from '../db/pool.js';
 import { logger } from '../utils/logger.js';
 
@@ -23,8 +23,6 @@ export interface RankSeason {
     endsAt: string;
     softResetDelta: number;
 }
-
-const MIN_POST_RESET_POINTS = 1000;
 
 /** Get the currently-active season (the one we're inside). */
 export async function getCurrentSeason(): Promise<RankSeason | null> {
@@ -125,7 +123,7 @@ export async function applyResetIfNeeded(userId: string): Promise<{
         }
 
         // Apply the soft reset.
-        const newPoints = Math.min(u.rank_points, Math.max(MIN_POST_RESET_POINTS, u.rank_points - season.softResetDelta));
+        const newPoints = softResetPoints(u.rank_points, season.softResetDelta);
         await query(
             `UPDATE users SET
                 rank_points = $1,

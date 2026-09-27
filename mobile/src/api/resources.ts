@@ -313,6 +313,7 @@ export interface ReplayMeta {
     wordLength: number;
     opponentUsername: string;
     youWon: boolean;
+    tied?: boolean;
     outcome: string;
     durationMs: number;
     createdAt: string;
@@ -323,8 +324,8 @@ export const replaysApi = {
     get: (matchId: string) =>
         apiRequest<
             ReplayMeta & {
-                yourGuesses: { guess: string; tiles: string[] }[];
-                opponentGuesses: { guess: string; tiles: string[] }[];
+                yourGuesses: { guess: string; tiles: import('../types/index').Tile[] }[];
+                opponentGuesses: { guess: string; tiles: import('../types/index').Tile[] }[];
             }
         >(`/api/replays/${matchId}`),
 };
