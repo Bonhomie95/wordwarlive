@@ -34,12 +34,24 @@ try {
         players.push({ ...u, token });
         await pool.query('UPDATE users SET powerup_reveal = 12, powerup_lock = 2, powerup_scramble = 2, coins = 1000 WHERE id = $1', [u.id]);
         const socket = io(base, { auth: { token }, transports: ['websocket'], reconnection: false });
+        socket.on('connect_error', (error) => console.error('Socket connection failed:', error.message));
         sockets.push(socket);
         await event(socket, 'connect');
     }
     const [a, b] = sockets;
     for (const path of ['/me','/cosmetics','/me/cosmetics','/coins/packs','/streak','/battlepass/current','/leaderboard','/matches/recent','/replays','/friends','/blocks','/settings','/daily','/daily/board','/seasons/current','/mystery/pending']) await api(0, path);
     console.log('PASS authenticated screen APIs');
+    for (const period of ['daily', 'weekly', 'monthly', 'all_time']) {
+        for (const mode of ['classic', 'mystery', 'overall']) {
+            const board = await api(0, `/leaderboard?period=${period}&mode=${mode}`);
+            // A just-reset daily board can legitimately be empty until games finish.
+            if (period !== 'daily') assert.ok(board.entries.some((row) => row.userId.startsWith('synthetic:')));
+            assert.equal(new Set(board.entries.map((row) => row.userId)).size, board.entries.length);
+            board.entries.forEach((row, index) => assert.equal(row.rankInLeaderboard, index + 1));
+        }
+    }
+    console.log('PASS all 12 ranked boards: shared fillers, unique entries and contiguous ranks');
+
     const { code } = await api(0, '/private-match/code', { wordLength: 5 });
     const foundA = event(a, 'match_found');
     const foundB = event(b, 'match_found');

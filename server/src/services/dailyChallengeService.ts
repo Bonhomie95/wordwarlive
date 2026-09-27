@@ -9,6 +9,7 @@
 // the leaderboard mixes different words. UTC is the simplest fair choice;
 // the client can show "fresh in X hours" in local time.
 
+import { visibleSyntheticSolvers } from './dailySynthetic.js';
 import { query } from '../db/pool.js';
 import { isValidWord, pickRandomWord } from '../game/words.js';
 import { scoreGuess, validateGuess, type GuessResult } from '../game/engine.js';
@@ -300,7 +301,7 @@ export async function redeemDailyHint(
 }
 
 /**
- * Daily challenge leaderboard for today: recorded human solves, ranked by
+ * Daily challenge leaderboard for today: recorded and seeded solves, ranked by
  * guess count then time. Also returns the
  * caller's own rank so the client can show it when they're outside the top.
  */
@@ -335,7 +336,8 @@ export async function todaysLeaderboard(
             guessCount: r.guess_count,
             durationMs: r.duration_ms,
         })),
-    ].sort((a, b) => a.guessCount - b.guessCount || a.durationMs - b.durationMs);
+        ...visibleSyntheticSolvers(date).map(({ userId, username, guessCount, durationMs }) => ({ userId, username, guessCount, durationMs })),
+    ].sort((a, b) => a.guessCount - b.guessCount || a.durationMs - b.durationMs || a.userId.localeCompare(b.userId));
 
     const idx = userId ? all.findIndex((e) => e.userId === userId) : -1;
     const mine = idx >= 0 ? all[idx]! : null;

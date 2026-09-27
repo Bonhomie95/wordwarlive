@@ -34,8 +34,6 @@ export interface PublicUser {
     rankTier: RankTier;
     wins: number;
     losses: number;
-    /** Explicitly disclosed computer-controlled opponent. */
-    isBot?: boolean;
     equipped?: {
         boardTheme: string | null;
         victoryAnim: string | null;

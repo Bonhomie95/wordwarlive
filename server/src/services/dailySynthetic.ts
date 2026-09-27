@@ -1,11 +1,11 @@
 // Computer-generated Daily Challenge solvers, so an early player isn't alone
 // on the board. Deterministic per UTC date (same names + scores for everyone,
-// no DB rows), arriving in 30-minute batches, and tuned to be beatable:
+// no DB rows), arriving in randomly spaced 30–60 minute waves, and tuned to be beatable:
 // no synthetic ever solves in 1 guess, a 2-guess solve is rare, and the bulk
 // sits at 4-5 guesses — a good 3-guess solve lands in roughly the top 15%.
 // Disclosed in TERMS §4.
 
-import { hashStr as hashDate, population, seeded } from './syntheticPlayers.js';
+import { hashStr as hashDate, population, seeded, HISTORY_START } from './syntheticPlayers.js';
 
 export interface SyntheticSolver {
     userId: string;
@@ -21,16 +21,12 @@ const GUESS_WEIGHTS: [number, number][] = [
     [2, 1], [3, 16], [4, 37], [5, 29], [6, 14], [7, 3],
 ];
 
-const SLOT_MS = 30 * 60_000;
-const SLOTS_PER_DAY = 48;
+const MINUTE_MS = 60_000;
 
-/**
- * The whole day's computer solvers, in arrival order. At 00:00 UTC the first
- * batch of 200-400 lands; every 30 minutes after that another 10-30 join.
- * Everything is seeded from the date (and the slot), so every device sees the
- * identical board at the same moment.
- */
+/** Same schedule for every viewer. Small groups finish every 30–60 minutes;
+ * nobody appears before enough time has elapsed to solve the challenge. */
 export function syntheticSolvers(date: string): SyntheticSolver[] {
+    if (date < HISTORY_START) return [];
     const dayStart = Date.parse(`${date}T00:00:00Z`);
     const total = GUESS_WEIGHTS.reduce((n, [, w]) => n + w, 0);
     const out: SyntheticSolver[] = [];
@@ -42,9 +38,11 @@ export function syntheticSolvers(date: string): SyntheticSolver[] {
         const j = Math.floor(sh() * (i + 1));
         [order[i], order[j]] = [order[j]!, order[i]!];
     }
-    for (let slot = 0; slot < SLOTS_PER_DAY; slot++) {
+    const schedule = seeded(hashDate(`${date}#daily-waves-v3`));
+    let minute = 30 + Math.floor(schedule() * 31);
+    for (let slot = 0; minute < 1440; slot++) {
         const r = seeded(hashDate(`${date}#${slot}`));
-        const count = slot === 0 ? 200 + Math.floor(r() * 201) : 10 + Math.floor(r() * 21);
+        const count = 8 + Math.floor(r() * 23);
         for (let i = 0; i < count; i++) {
             let roll = r() * total;
             let guesses = 4;
@@ -61,11 +59,12 @@ export function syntheticSolvers(date: string): SyntheticSolver[] {
                 username: p.username,
                 guessCount: guesses,
                 durationMs,
-                solvedAtMs: dayStart + slot * SLOT_MS,
+                solvedAtMs: dayStart + minute * MINUTE_MS,
             });
         }
+        minute += 30 + Math.floor(schedule() * 31);
     }
-    return out;
+    return out.sort((a, b) => a.solvedAtMs - b.solvedAtMs || a.userId.localeCompare(b.userId));
 }
 
 /** Solvers who have "finished" by `nowMs`. */

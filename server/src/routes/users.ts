@@ -40,7 +40,6 @@ async function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>)
     return {
         id: u.id,
         username: u.username,
-        isBot: u.auth_subject.startsWith('bot-'),
         provider: u.auth_provider,
         rankPoints: u.rank_points,
         rankTier: u.rank_tier,
@@ -108,7 +107,6 @@ function shapePublic(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>) {
     return {
         id: u.id,
         username: u.username,
-        isBot: u.auth_subject.startsWith('bot-'),
         rankPoints: u.rank_points,
         rankTier: u.rank_tier,
         wins: u.wins,

@@ -795,7 +795,6 @@ class MatchRegistry {
         return {
             id: u.id,
             username: u.username,
-            isBot: u.auth_subject.startsWith('bot-'),
             provider: u.auth_provider,
             rankPoints: u.rank_points,
             rankTier: u.rank_tier as PublicUser['rankTier'],
@@ -813,7 +812,10 @@ class MatchRegistry {
 
     private scheduleBotGuess(io: AppIOServer, match: ActiveMatch): void {
         if (match.ended) return;
-        const delay = thinkTimeMs(match.botDifficulty ?? 'medium');
+        const delay = thinkTimeMs(match.botDifficulty ?? 'medium', {
+            wordLength: (match.p1IsBot ? match.p1Word : match.p2Word).length,
+            guessCount: (match.p1IsBot ? match.p1Guesses : match.p2Guesses).length,
+        });
         match.botTimerHandle = setTimeout(() => this.botStep(io, match), delay);
     }
 
@@ -1203,7 +1205,6 @@ function userToPublic(
     return {
         id: u.id,
         username: u.username,
-            isBot: u.auth_subject.startsWith('bot-'),
         provider: u.auth_provider,
         rankPoints: u.rank_points,
         rankTier: u.rank_tier as PublicUser['rankTier'],

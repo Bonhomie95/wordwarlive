@@ -33,11 +33,12 @@ offensive content or behavior in-app (tap a player to report) and block players
 you don't want to be matched with (Settings → Blocked users). Usernames and
 Mystery-mode words are filtered for offensive content and reviewed on report.
 
-## 4. Matchmaking and bots
-At off-peak times the App may match you against a computer-controlled opponent,
-identified as “Computer” in the match. These games may change your rank and
-rewards. Public leaderboards contain recorded human results only; computer
-accounts and generated scores are excluded.
+## 4. Matchmaking and seeded competition
+The App uses automated matchmaking and seeded participants to keep competition
+available while the player population grows. They use the same in-game player
+presentation. Matches may change your rank and rewards. Daily and ranked
+leaderboards combine recorded player results with generated results; generated
+results do not represent prize eligibility or cash earnings.
 
 ## 5. Virtual items and purchases
 - The App offers virtual items (coins, cosmetics, battle pass, ad removal) for

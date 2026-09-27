@@ -132,7 +132,7 @@ export const PlayerStatsModal: React.FC<Props> = ({
                             />
                             <View style={{ flex: 1 }}>
                                 <PlayerName
-                                    username={`${player.username}${player.isBot ? ' · Computer' : ''}`}
+                                    username={player.username}
                                     nameplateId={player.equipped?.nameplate}
                                     style={styles.username}
                                     numberOfLines={1}

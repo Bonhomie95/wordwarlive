@@ -59,7 +59,7 @@ export interface RecentResultsSummary {
  *   - 4+ wins of last 5     → bump UP   (sustained good form)
  *   - 4+ losses of last 5   → drop DOWN (player needs a confidence win)
  *
- * Shifts stack independently and clamp to ['easy', 'hard'].
+ * Correlated streak and recent-form signals move at most ONE level per match.
  */
 export function adaptiveDifficulty(
     rankPoints: number,
@@ -79,17 +79,24 @@ export function adaptiveDifficulty(
         shift -= 1;
     }
 
-    const finalIdx = Math.max(0, Math.min(order.length - 1, baseIdx + shift));
+    const finalIdx = Math.max(0, Math.min(order.length - 1, baseIdx + Math.sign(shift)));
     return order[finalIdx]!;
 }
 
 /**
  * How long to wait before submitting the next guess. Hard bots think faster.
  */
-export function thinkTimeMs(difficulty: BotDifficulty): number {
+export function thinkTimeMs(difficulty: BotDifficulty, options: {
+    wordLength?: number; guessCount?: number; random?: () => number;
+} = {}): number {
+    const random = options.random ?? Math.random;
     const span = BOT_THINK_MAX_MS - BOT_THINK_MIN_MS;
     const factor = difficulty === 'easy' ? 1 : difficulty === 'medium' ? 0.75 : 0.5;
-    return Math.round(BOT_THINK_MIN_MS + Math.random() * span * factor);
+    const lengthFactor = 1 + (Math.max(4, Math.min(10, options.wordLength ?? 5)) - 5) * 0.055;
+    const familiarity = 1 - Math.min(5, Math.max(0, options.guessCount ?? 0)) * 0.045;
+    const pause = random() < 0.12 ? 1.25 : 1;
+    return Math.round(Math.max(12_000, Math.min(90_000,
+        (BOT_THINK_MIN_MS + random() * span * factor) * lengthFactor * familiarity * pause)));
 }
 
 interface BotChoiceArgs {
@@ -108,7 +115,7 @@ interface GroqGuessResponse {
 }
 
 /**
- * Pick the bot's next guess. Deterministic fallback if Groq is off.
+ * Pick the bot's next guess. Feedback-based fallback if Groq is off.
  */
 export async function chooseBotGuess(args: BotChoiceArgs): Promise<string> {
     // First guess: just pick a strong opener.
@@ -119,7 +126,9 @@ export async function chooseBotGuess(args: BotChoiceArgs): Promise<string> {
     if (isGroqEnabled()) {
         try {
             const choice = await groqPickGuess(args);
-            if (choice && isValidWord(choice) && choice.length === args.wordLength) {
+            if (choice && isValidWord(choice) && choice.length === args.wordLength &&
+                !args.history.some((h) => h.guess === choice.toUpperCase()) &&
+                filterCandidates([choice], args.history).length > 0) {
                 return choice.toUpperCase();
             }
         } catch (err) {
@@ -138,9 +147,8 @@ const OPENERS_BY_LEN: Record<number, string[]> = {
 
 function pickOpener(wordLength: number, candidates: string[]): string {
     const preferred = OPENERS_BY_LEN[wordLength] ?? [];
-    for (const o of preferred) {
-        if (isValidWord(o)) return o;
-    }
+    const valid = preferred.filter((word) => isValidWord(word) && candidates.includes(word));
+    if (valid.length) return valid[Math.floor(Math.random() * valid.length)]!;
     if (candidates.length > 0) {
         return candidates[Math.floor(Math.random() * candidates.length)]!.toUpperCase();
     }
@@ -153,10 +161,20 @@ function pickOpener(wordLength: number, candidates: string[]): string {
  * one.
  */
 function heuristicPick(args: BotChoiceArgs): string {
-    const filtered = filterCandidates(args.candidates, args.history);
-    const pool = filtered.length > 0 ? filtered : args.candidates;
+    const tried = new Set(args.history.map((h) => h.guess.toUpperCase()));
+    const available = args.candidates.filter((word) => !tried.has(word.toUpperCase()));
+    const filtered = filterCandidates(available, args.history);
+    const pool = filtered.length > 0 ? filtered : available;
     if (pool.length === 0) return pickRandomWord(args.wordLength).toUpperCase();
-    return pool[Math.floor(Math.random() * pool.length)]!.toUpperCase();
+    if (args.difficulty === 'easy') return pool[Math.floor(Math.random() * pool.length)]!.toUpperCase();
+    // Prefer useful letters, using ONLY the remaining candidates and prior feedback.
+    // Medium retains more exploratory guesses; hard concentrates on useful candidates.
+    const frequency = new Map<string, number>();
+    for (const word of pool) for (const letter of new Set(word)) frequency.set(letter, (frequency.get(letter) ?? 0) + 1);
+    const scored = pool.map((word) => ({ word, score: [...new Set(word)].reduce((total, letter) => total + frequency.get(letter)!, 0) }))
+        .sort((a, b) => b.score - a.score || a.word.localeCompare(b.word));
+    const count = Math.max(1, Math.ceil(scored.length * (args.difficulty === 'hard' ? 0.15 : 0.5)));
+    return scored[Math.floor(Math.random() * count)]!.word.toUpperCase();
 }
 
 /**
@@ -313,14 +331,8 @@ const NOUNS = [
     'leaf','reed','pine','oak','peak','crest','ember','spark','wave','shore',
 ];
 
-let rng: () => number = Math.random;
-
-function pick<T>(arr: readonly T[]): T {
-    return arr[Math.floor(rng() * arr.length)]!;
-}
-
 function randInt(lo: number, hi: number): number {
-    return Math.floor(lo + rng() * (hi - lo + 1));
+    return Math.floor(lo + Math.random() * (hi - lo + 1));
 }
 
 /**
@@ -328,7 +340,8 @@ function randInt(lo: number, hi: number): number {
  * for handling collisions (see createBotUser below).
  */
 export function generateBotUsername(rand: () => number = Math.random): string {
-    rng = rand;
+    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)]!;
+    const randInt = (lo: number, hi: number): number => Math.floor(lo + rand() * (hi - lo + 1));
     const patterns: Array<() => string> = [
         // alex42, sam283, taylor7
         () => `${pick(FIRST_NAMES)}${randInt(2, 999)}`,
@@ -354,7 +367,6 @@ export function generateBotUsername(rand: () => number = Math.random): string {
         () => `x_${pick(FIRST_NAMES)}`,
     ];
     const name = pick(patterns)().slice(0, 16);
-    rng = Math.random;
     return name;
 }
 

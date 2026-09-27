@@ -4,7 +4,7 @@
 // play habit; their results for a given UTC day come from a seeded draw.
 // Weekly / monthly / all-time are SUMS of those same days, so the boards are
 // always consistent: nobody shows up in monthly without playing days inside
-// it, and all-time ≥ monthly ≥ weekly ≥ daily for every player.
+// it. Weekly and monthly overlap but are not nested at month boundaries.
 // Nothing is stored — everything is recomputed from seeds (memoized per day).
 // Disclosed in TERMS §4.
 
@@ -80,37 +80,76 @@ export function population(): SyntheticPlayer[] {
 export interface DayTally { cw: number; cl: number; mw: number; ml: number }
 const EMPTY: DayTally = { cw: 0, cl: 0, mw: 0, ml: 0 };
 
-const SLOT_MS = 30 * 60_000;
+const DAY_MS = 86_400_000;
+const SLOT_MS = 60_000;
 const dayMemo = new Map<string, DayTally[]>();
 
-/** Each player's tally for `date`. Past days are complete; today only counts
- *  games finished by the current 30-minute slot, so boards grow in steps. */
+const activityMemo = new Map<string, RankedActivity[]>();
+
+export interface RankedActivity { waveStartedAtMs: number; atMs: number; playerIndex: number; win: boolean; mystery: boolean }
+
+/** Seeded waves introduce 8–15 players who have not played today, alongside
+ * varied groups of returning players. Actual matches finish individually. */
+export function rankedActivity(date: string): RankedActivity[] {
+    if (date < HISTORY_START) return [];
+    const cached = activityMemo.get(date);
+    if (cached) return cached;
+    const start = Date.parse(`${date}T00:00:00Z`);
+    const random = seeded(hashStr(`${date}#ranked-waves-v3`));
+    const players = population();
+    const counts = players.map(() => 0);
+    const events: RankedActivity[] = [];
+    // Weighted order favors regular players without excluding casual players.
+    const order = players.map((p) => ({ index: p.index, weight: -Math.log(Math.max(1e-9, random())) / p.playDayProb }))
+        .sort((a, b) => a.weight - b.weight).map((p) => p.index);
+    let next = 0;
+    let minute = 60 + Math.floor(random() * 181);
+    while (minute < 24 * 60 - 18) {
+        const newcomers = order.slice(next, next + 8 + Math.floor(random() * 8));
+        next += newcomers.length;
+        const returning = order.slice(0, next - newcomers.length)
+            .filter((i) => counts[i]! < players[i]!.gamesMax)
+            .map((index) => ({ index, weight: random() }))
+            .sort((a, b) => a.weight - b.weight)
+            .slice(0, [2, 4, 10, 20, 50][Math.floor(random() * 5)]!)
+            .map((p) => p.index);
+        for (const index of [...newcomers, ...returning]) {
+            const p = players[index]!;
+            const games = Math.min(p.gamesMax - counts[index]!, 1 + Math.floor(random() * 3));
+            let finish = minute * 60000;
+            for (let game = 0; game < games; game++) {
+                finish += 60000 + Math.floor(random() * 300000);
+                counts[index]!++;
+                events.push({ waveStartedAtMs: start + minute * 60000, atMs: start + finish, playerIndex: index, win: random() < p.winRate, mystery: random() < p.mysteryShare });
+            }
+        }
+        minute += 60 + Math.floor(random() * 181);
+    }
+    events.sort((a, b) => a.atMs - b.atMs || a.playerIndex - b.playerIndex);
+    if (activityMemo.size >= 128) activityMemo.delete(activityMemo.keys().next().value!);
+    activityMemo.set(date, events);
+    return events;
+}
+
+/** All periods consume this same completed-match ledger. Reading the board
+ * never advances a player; only elapsed UTC time reveals another result. */
 export function dayTallies(date: string, nowMs = Date.now()): DayTally[] {
     const dayStart = Date.parse(`${date}T00:00:00Z`);
     const elapsed = nowMs - dayStart;
-    if (elapsed < 0) return population().map(() => EMPTY);
-    const complete = elapsed >= 86_400_000;
-    const slotFrac = complete ? 1 : (Math.floor(elapsed / SLOT_MS) + 1) / 48;
-    const key = complete ? date : `${date}@${slotFrac}`;
+    if (date < HISTORY_START || elapsed < 0) return population().map(() => EMPTY);
+    const complete = elapsed >= DAY_MS;
+    const cutoff = complete ? DAY_MS : Math.floor(elapsed / SLOT_MS) * SLOT_MS;
+    const key = complete ? date : `${date}@${cutoff}`;
     const hit = dayMemo.get(key);
     if (hit) return hit;
-
-    const out = population().map((p) => {
-        const r = seeded(hashStr(`${date}#p${p.index}`));
-        if (r() > p.playDayProb) return EMPTY;
-        const games = p.gamesMin + Math.floor(r() * (p.gamesMax - p.gamesMin + 1));
-        const played = Math.floor(games * slotFrac);
-        const t: DayTally = { cw: 0, cl: 0, mw: 0, ml: 0 };
-        for (let g = 0; g < games; g++) {
-            const win = r() < p.winRate;
-            const mystery = r() < p.mysteryShare;
-            if (g >= played) continue; // draw consumed so later slots stay identical
-            if (mystery) win ? t.mw++ : t.ml++;
-            else win ? t.cw++ : t.cl++;
-        }
-        return t;
-    });
-    if (dayMemo.size > 400) dayMemo.clear(); // ponytail: crude cap; ~1 year of days
+    const out = population().map(() => ({ cw: 0, cl: 0, mw: 0, ml: 0 }));
+    for (const event of rankedActivity(date)) {
+        if (event.atMs > dayStart + cutoff) break;
+        const tally = out[event.playerIndex]!;
+        if (event.mystery) event.win ? tally.mw++ : tally.ml++;
+        else event.win ? tally.cw++ : tally.cl++;
+    }
+    if (dayMemo.size >= 512) dayMemo.delete(dayMemo.keys().next().value!);
     dayMemo.set(key, out);
     return out;
 }
@@ -141,8 +180,18 @@ export interface SyntheticEntry {
     rankPoints: number;
 }
 
+/** Stable total ordering shared by synthetic and persisted standings. */
+export function compareStandings(a: Pick<SyntheticEntry, 'wins' | 'rankPoints' | 'userId'>, b: Pick<SyntheticEntry, 'wins' | 'rankPoints' | 'userId'>): number {
+    return b.wins - a.wins || b.rankPoints - a.rankPoints || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0);
+}
+
+const boardMemo = new Map<string, SyntheticEntry[]>();
+
 /** Everyone who has played in the period, with wins/losses for the mode. */
 export function syntheticLeaderboard(period: Period, mode: Mode, nowMs = Date.now()): SyntheticEntry[] {
+    const cacheKey = `${period}:${mode}:${Math.floor(nowMs / SLOT_MS)}`;
+    const cached = boardMemo.get(cacheKey);
+    if (cached) return cached;
     const today = new Date(nowMs).toISOString().slice(0, 10);
     const players = population();
     const sum = players.map(() => ({ w: 0, l: 0 }));
@@ -166,5 +215,8 @@ export function syntheticLeaderboard(period: Period, mode: Mode, nowMs = Date.no
         const rankPoints = Math.max(0, p.basePoints + 6 * life[i]!);
         out.push({ userId: p.userId, username: p.username, rankTier: tierFromPoints(rankPoints), wins: s.w, losses: s.l, rankPoints });
     });
-    return out.sort((a, b) => b.wins - a.wins || b.rankPoints - a.rankPoints);
+    out.sort(compareStandings);
+    if (boardMemo.size >= 36) boardMemo.delete(boardMemo.keys().next().value!);
+    boardMemo.set(cacheKey, out);
+    return out;
 }

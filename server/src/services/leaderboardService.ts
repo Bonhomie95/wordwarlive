@@ -8,6 +8,7 @@
 //
 // Updated on every match completion (winner gets +1 win; loser gets +1 loss).
 
+import { syntheticLeaderboard, compareStandings } from './syntheticPlayers.js';
 import { pool } from '../db/pool.js';
 import { redis } from '../db/redis.js';
 import { logger } from '../utils/logger.js';
@@ -156,7 +157,7 @@ export async function getLeaderboard(args: {
     /** Optional caller's user id — if provided we also return their own rank. */
     requesterId?: string;
 }): Promise<LeaderboardResponse> {
-    const limit = Math.min(args.limit ?? 50, 100);
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
     const bucket = bucketFor(args.period);
     const mode = args.mode ?? 'overall';
 
@@ -193,12 +194,12 @@ export async function getLeaderboard(args: {
                 le.rank_points,
                 u.equipped_avatar,
                 u.equipped_profile_border,
-                ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC) AS rank_in_leaderboard
+                ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC, le.user_id ASC) AS rank_in_leaderboard
              FROM leaderboard_entries le
              JOIN users u ON u.id = le.user_id
              WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
                AND u.auth_subject NOT LIKE 'bot-%' AND u.banned = false
-             ORDER BY le.wins DESC, le.rank_points DESC
+             ORDER BY le.wins DESC, le.rank_points DESC, le.user_id ASC
              LIMIT $4`,
             [args.period, bucket, mode, limit]
         );
@@ -243,7 +244,7 @@ export async function getLeaderboard(args: {
                     le.rank_points,
                     u.equipped_avatar,
                     u.equipped_profile_border,
-                    ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC) AS rank_in_leaderboard
+                    ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC, le.user_id ASC) AS rank_in_leaderboard
                  FROM leaderboard_entries le
                  JOIN users u ON u.id = le.user_id
                  WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
@@ -268,6 +269,14 @@ export async function getLeaderboard(args: {
         }
     }
 
-    // Public standings contain recorded human results only.
-    return { period: args.period, bucket, entries, you };
+    const fillers = syntheticLeaderboard(args.period, mode);
+    const merged: LeaderboardEntry[] = [
+        ...entries,
+        ...fillers.map((entry) => ({ ...entry, avatarId: null, profileBorderId: null, rankInLeaderboard: 0 })),
+    ].sort(compareStandings).slice(0, limit).map((entry, i) => ({ ...entry, rankInLeaderboard: i + 1 }));
+    if (you) {
+        const player = you;
+        you = { ...player, rankInLeaderboard: player.rankInLeaderboard + fillers.filter((entry) => compareStandings(entry, player) < 0).length };
+    }
+    return { period: args.period, bucket, entries: merged, you };
 }
