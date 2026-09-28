@@ -1,0 +1,23 @@
+name: Check public release endpoints
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Public HTTPS staging or production API URL
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  endpoints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check API readiness and legal pages
+        env:
+          EXPO_PUBLIC_API_URL: ${{ inputs.api_url }}
+        run: node mobile/scripts/check-release.mjs

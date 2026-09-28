@@ -16,7 +16,8 @@
     "lint": "tsc --noEmit",
     "test:integration": "node --import dotenv/config ./node_modules/vitest/vitest.mjs run",
     "test:smoke": "node --import tsx --import dotenv/config scripts/smoke.mjs",
-    "test:recovery": "node --import tsx --import dotenv/config scripts/recovery-smoke.mjs"
+    "test:recovery": "node --import tsx --import dotenv/config scripts/recovery-smoke.mjs",
+    "test:load:local": "node --import tsx --import dotenv/config scripts/load-local.mjs"
   },
   "keywords": [],
   "author": "",

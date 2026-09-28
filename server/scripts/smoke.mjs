@@ -39,8 +39,9 @@ try {
         await event(socket, 'connect');
     }
     const [a, b] = sockets;
-    for (const path of ['/me','/cosmetics','/me/cosmetics','/coins/packs','/streak','/battlepass/current','/leaderboard','/matches/recent','/replays','/friends','/blocks','/settings','/daily','/daily/board','/seasons/current','/mystery/pending']) await api(0, path);
-    console.log('PASS authenticated screen APIs');
+    for (const path of ['/me','/style-bundle','/cosmetics','/me/cosmetics','/coins/packs','/streak','/battlepass/current','/leaderboard','/matches/recent','/replays','/friends','/blocks','/settings','/daily','/daily/board','/seasons/current','/mystery/pending']) await api(0, path);
+    await api(0, '/events', { event: 'shop_view', offer: '' });
+    console.log('PASS authenticated screen APIs, style offer and product events');
     for (const period of ['daily', 'weekly', 'monthly', 'all_time']) {
         for (const mode of ['classic', 'mystery', 'overall']) {
             const board = await api(0, `/leaderboard?period=${period}&mode=${mode}`);

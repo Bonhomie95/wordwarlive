@@ -106,14 +106,19 @@ export default function Shop() {
 
     const load = useCallback(async () => {
         try {
-            const [shopRes, packsRes] = await Promise.all([
+            const [shopRes, packsRes, styleRes] = await Promise.all([
                 cosmeticsApi.list(),
                 coinsApi.listPacks(),
+                // An optional offer must not block the catalog or store prices.
+                apiRequest<{ name: string; priceCoins: number; owned: boolean }>('/api/style-bundle').catch((error) => {
+                    if (__DEV__) console.warn('[shop] style offer unavailable', error);
+                    return null;
+                }),
             ]);
             setItems(shopRes.cosmetics);
             setPacks(packsRes.packs);
             setBundle(packsRes.starterBundle ?? null);
-            setStyleOffer(await apiRequest('/style-bundle'));
+            setStyleOffer(styleRes);
             // Localized prices from the store for everything on this screen.
             const skus = [
                 REMOVE_ADS_PRODUCT_ID,
@@ -484,7 +489,7 @@ export default function Shop() {
                                 track('offer_view',{offer:'neon_fox'});
                                 appAlert('Neon Fox style set',`Spend ${styleOffer.priceCoins} coins on your missing items?`,[{text:'Cancel',style:'cancel'},{text:'Buy set',onPress:async()=>{
                                     setStyleBusy(true);track('purchase_attempt',{offer:'neon_fox'});
-                                    try{await apiRequest('/style-bundle',{method:'POST',body:{expectedPrice:styleOffer.priceCoins},retries:0});track('purchase_completed',{offer:'neon_fox'});await load();await refreshMe();appAlert('Style set unlocked','Open My items to equip your new look.');}
+                                    try{await apiRequest('/api/style-bundle',{method:'POST',body:{expectedPrice:styleOffer.priceCoins},retries:0});track('purchase_completed',{offer:'neon_fox'});await load();await refreshMe();appAlert('Style set unlocked','Open My items to equip your new look.');}
                                     catch(e){appAlert('Could not buy set',e instanceof Error?e.message:'Try again.');}finally{setStyleBusy(false);}
                                 }}]);
                             }}/>

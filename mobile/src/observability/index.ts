@@ -46,7 +46,7 @@ export function track(
             console.log('[track]', event, props ?? '');
         }
         if (['shop_view','offer_view','purchase_attempt','purchase_completed','tutorial_started','tutorial_completed','tutorial_skipped'].includes(event)) {
-            void apiRequest('/events', { method: 'POST', body: {event, offer: typeof props?.offer === 'string' ? props.offer : ''}, retries: 0, timeoutMs: 4000 }).catch(() => {});
+            void apiRequest('/api/events', { method: 'POST', body: {event, offer: typeof props?.offer === 'string' ? props.offer : ''}, retries: 0, timeoutMs: 4000 }).catch(() => {});
         }
     } catch {
         // never let tracking throw

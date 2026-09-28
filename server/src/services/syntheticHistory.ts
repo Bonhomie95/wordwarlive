@@ -212,7 +212,25 @@ export async function updateSynthetic(
         );
     });
 }
+// Share simultaneous reads without retaining results after completion. An admin
+// pause or a newly completed activity is therefore visible on the next read.
+const pendingBoards = new Map<string, Promise<SyntheticEntry[]>>();
 export async function persistedSyntheticLeaderboard(
+    period: Period,
+    mode: Mode,
+    now = Date.now(),
+): Promise<SyntheticEntry[]> {
+    const minute = Math.floor(now / 60000) * 60000;
+    const key = `${period}:${mode}:${minute}`;
+    const pending = pendingBoards.get(key);
+    if (pending) return pending;
+    const result = readSyntheticLeaderboard(period, mode, minute);
+    pendingBoards.set(key, result);
+    try { return await result; }
+    finally { pendingBoards.delete(key); }
+}
+
+async function readSyntheticLeaderboard(
     period: Period,
     mode: Mode,
     now = Date.now(),
