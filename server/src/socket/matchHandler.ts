@@ -1,3 +1,5 @@
+import type { PoolClient } from 'pg';
+import { inTransactionScope, pool as checkpointPool, query as checkpointQuery } from '../db/pool.js';
 // Per-match runtime state. The server owns the target word and the clock;
 // clients see only their own letters and the opponent's tile colors. Guesses
 // are rate-limited via Redis so a malicious client can't hammer the engine.
@@ -37,6 +39,8 @@ import type { GuessAck, HintAck, MatchOver, PublicUser } from '../types/index.js
  *  for the bot side. */
 
 interface ActiveMatch {
+    checkpointVersion?: number;
+    pendingEnd?: {reason:'time_up'|'engine_decided'|'disconnect';forfeitedSlot?:1|2};
     id: string;
     /** Per-player target words, server-only — never sent until match_over.
      *  Classic matches use the same word for both. Mystery matches give each
@@ -107,7 +111,20 @@ interface StartArgs {
     mode?: 'classic' | 'mystery';
 }
 
-class MatchRegistry {
+// Wait for every branch before rolling back a shared transaction: Promise.all
+// rejects early and could leave sibling writes running after ROLLBACK.
+async function allRequired<T extends readonly unknown[] | []>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+    const results = await Promise.allSettled(values);
+    const failure = results.find(r => r.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+    return results.map(r => (r as PromiseFulfilledResult<unknown>).value) as { -readonly [P in keyof T]: Awaited<T[P]> };
+}
+
+export class MatchRegistry {
+    private ownerConnection: PoolClient | null = null;
+    async releaseOwnership(): Promise<void> {
+        if(this.ownerConnection){await this.ownerConnection.query("SELECT pg_advisory_unlock(hashtext($1))",["wordwar-match-owner:"+env.nodeId]);this.ownerConnection.release();this.ownerConnection=null;}
+    }
     private byMatchId = new Map<string, ActiveMatch>();
     /** userId -> matchId */
     private byUserId = new Map<string, string>();
@@ -143,6 +160,52 @@ class MatchRegistry {
     /** Number of live (not-ended) matches — used by ops/metrics. */
     activeMatchCount(): number {
         return this.byMatchId.size;
+    }
+
+    /** Durable state excludes socket IDs and timer handles. Targets remain server-only. */
+    async checkpointUser(userId: string): Promise<void> {
+        const id = this.byUserId.get(userId);
+        const match = id ? this.byMatchId.get(id) : undefined;
+        if (match) await this.checkpoint(match);
+    }
+
+    private async checkpoint(match: ActiveMatch): Promise<void> {
+        match.checkpointVersion = (match.checkpointVersion ?? 0) + 1;
+        const state = JSON.stringify(match, (key, value) =>
+            key.endsWith('Handle') || key.endsWith('GraceTimer') || key.endsWith('SocketId') ? null : value);
+        await checkpointQuery(`INSERT INTO match_checkpoints(id,node_id,state) VALUES($1,$2,$3)
+            ON CONFLICT(id) DO UPDATE SET state=EXCLUDED.state,updated_at=now()
+            WHERE NOT (match_checkpoints.state->>'ended')::boolean
+            AND COALESCE((match_checkpoints.state->>'checkpointVersion')::int,0) < (EXCLUDED.state->>'checkpointVersion')::int`, [match.id, env.nodeId, state]);
+    }
+
+    /** Called before listening. Deployments must retain a unique stable NODE_ID. */
+    async recover(io: AppIOServer): Promise<number> {
+        this.ownerConnection = await checkpointPool.connect();
+        const lock = await this.ownerConnection.query<{owned:boolean}>('SELECT pg_try_advisory_lock(hashtext($1)) owned',['wordwar-match-owner:'+env.nodeId]);
+        if(!lock.rows[0]?.owned){this.ownerConnection.release();this.ownerConnection=null;throw new Error('NODE_ID is already running; use one unique stable NODE_ID per instance.');}
+        this.ownerConnection.on('error', (error) => { logger.fatal({error}, 'Match ownership connection lost'); process.exit(1); });
+        const rows = await checkpointQuery<{ state: ActiveMatch }>(
+            "SELECT state FROM match_checkpoints WHERE node_id=$1 AND NOT (state->>'ended')::boolean", [env.nodeId]);
+        for (const row of rows) {
+            const match = row.state;
+            match.p1SocketId = null; match.p2SocketId = null;
+            match.timerHandle = null; match.endTimerHandle = null; match.botTimerHandle = null;
+            match.p1GraceTimer = null; match.p2GraceTimer = null;
+            this.byMatchId.set(match.id, match);
+            this.byUserId.set(match.p1UserId, match.id); this.byUserId.set(match.p2UserId, match.id);
+            const remaining = Math.max(0, match.startedAtMs + match.durationMs - Date.now());
+            if (match.pendingEnd || !remaining || shouldEnd(match.p1Guesses, match.p2Guesses)) {
+                await this.endMatch(io, match, match.pendingEnd ?? { reason: remaining ? 'engine_decided' : 'time_up' });
+                continue;
+            }
+            this.ensureTicker(io);
+            match.endTimerHandle = setTimeout(() => { void this.endMatch(io, match, { reason: 'time_up' }); }, remaining);
+            if(match.p1IsBot || match.p2IsBot) this.scheduleBotGuess(io, match);
+        }
+        // Ended checkpoints commit atomically with all rewards and prevent replay after a crash.
+        await checkpointQuery("DELETE FROM match_checkpoints WHERE node_id=$1 AND (state->>'ended')::boolean AND updated_at < now()-interval '7 days'", [env.nodeId]);
+        return rows.length;
     }
 
     private startingPlayers = new Set<string>();
@@ -235,6 +298,11 @@ class MatchRegistry {
         this.byUserId.set(p1.id, match.id);
         this.byUserId.set(p2.id, match.id);
 
+        try { await this.checkpoint(match); }
+        catch (error) {
+            this.byMatchId.delete(match.id);this.byUserId.delete(p1.id);this.byUserId.delete(p2.id);
+            throw error;
+        }
         const p1Public: PublicUser = userToPublic(p1);
         const p2Public: PublicUser = userToPublic(p2);
 
@@ -376,6 +444,7 @@ class MatchRegistry {
             if (match.p1SocketId) io.to(match.p1SocketId).emit('guess_result', oppPayload);
         }
 
+        await this.checkpoint(match);
         if (shouldEnd(match.p1Guesses, match.p2Guesses)) {
             await this.endMatch(io, match, { reason: 'engine_decided' });
         }
@@ -855,7 +924,8 @@ class MatchRegistry {
                 });
             }
 
-            if (shouldEnd(match.p1Guesses, match.p2Guesses)) {
+            await this.checkpoint(match);
+        if (shouldEnd(match.p1Guesses, match.p2Guesses)) {
                 await this.endMatch(io, match, { reason: 'engine_decided' });
                 return;
             }
@@ -866,16 +936,39 @@ class MatchRegistry {
         }
     }
 
-    private async endMatch(
+    private settling = new Set<string>();
+    private async endMatch(io: AppIOServer, match: ActiveMatch, opts: NonNullable<ActiveMatch['pendingEnd']>): Promise<void> {
+        if(match.ended || this.settling.has(match.id)) return;
+        this.settling.add(match.id);
+        match.pendingEnd = opts;
+        try {
+            // Persist terminal intent before settlement. A crash rolls back every
+            // reward and leaves this intent available to the next process.
+            await this.checkpoint(match);
+            const result = await inTransactionScope(() => this.settleMatch(io,match,opts));
+            if(result){
+                if(match.p1SocketId)io.to(match.p1SocketId).emit('match_over',result.p1);
+                if(match.p2SocketId)io.to(match.p2SocketId).emit('match_over',result.p2);
+            }
+            this.byMatchId.delete(match.id);this.byUserId.delete(match.p1UserId);this.byUserId.delete(match.p2UserId);this.stopTickerIfIdle();
+        } catch(error) {
+            match.ended=false;
+            match.endTimerHandle=setTimeout(()=>{void this.endMatch(io,match,opts).catch(err=>logger.error({err},'Settlement retry failed'));},2000);
+            throw error;
+        } finally {this.settling.delete(match.id);}
+    }
+
+    private async settleMatch(
         io: AppIOServer,
         match: ActiveMatch,
         opts: {
             reason: 'time_up' | 'engine_decided' | 'disconnect';
             forfeitedSlot?: 1 | 2;
         }
-    ): Promise<void> {
+    ): Promise<{p1:MatchOver;p2:MatchOver}|undefined> {
         if (match.ended) return;
         match.ended = true;
+        try { await this.checkpoint(match); } catch (error) { match.ended = false; throw error; }
         if (match.timerHandle) clearInterval(match.timerHandle);
         if (match.endTimerHandle) clearTimeout(match.endTimerHandle);
         if (match.botTimerHandle) clearTimeout(match.botTimerHandle);
@@ -893,7 +986,7 @@ class MatchRegistry {
         else if (outcome === 'p2_solved' || outcome === 'p2_more_correct') winner = 'p2';
         else winner = 'tie';
 
-        const [p1, p2] = await Promise.all([
+        const [p1, p2] = await allRequired([
             findUserById(match.p1UserId),
             findUserById(match.p2UserId),
         ]);
@@ -915,21 +1008,12 @@ class MatchRegistry {
             p2IsBot: match.p2IsBot,
         });
 
-        // A DB hiccup in ANY post-match write must not prevent `match_over` from
-        // reaching the players or the registry from being cleaned up — otherwise
-        // both clients are softlocked on a finished match with no result. Each
-        // post-match write is therefore made non-throwing: it degrades (log +
-        // fallback) instead of rejecting endMatch.
-        const safe = <T>(p: Promise<T>, fallback: T, label: string): Promise<T> =>
-            p.catch((err) => {
-                logger.error({ err, matchId: match.id }, label);
-                return fallback;
-            });
+        // Every grant must succeed; the enclosing transaction rolls back all
+        // ranks, inventory, match history and the terminal checkpoint on error.
+        const safe = <T>(p: Promise<T>, _fallback: T, _label: string): Promise<T> => p;
 
-        // Apply rank/win/loss/streak updates. Bots' updates are harmless but
-        // we skip them to keep bot rows from drifting unnecessarily. On failure
-        // we fall back to the pre-match row so the client still gets a result.
-        const [updatedP1, updatedP2] = await Promise.all([
+        // Apply both players' results in the shared transaction; skip bot rows.
+        const [updatedP1, updatedP2] = await allRequired([
             match.p1IsBot
                 ? Promise.resolve(p1)
                 : safe(
@@ -954,10 +1038,7 @@ class MatchRegistry {
                   ),
         ]);
 
-        // Persist the match + replay. Wrapped because any DB hiccup here
-        // shouldn't prevent the player from seeing their victory screen —
-        // worst case they lose the replay/history, but match_over still
-        // fires below and rank/coins are already applied.
+        // Match history and replay participate in the same reward transaction.
         const winnerId = winner === 'p1' ? p1.id : winner === 'p2' ? p2.id : null;
         const durationSec = Math.round((Date.now() - match.startedAtMs) / 1000);
         try {
@@ -1001,8 +1082,9 @@ class MatchRegistry {
         } catch (persistErr) {
             logger.error(
                 { err: persistErr, matchId: match.id },
-                'Failed to persist match / replay — continuing anyway so client gets match_over'
+                'Match settlement will roll back and retry'
             );
+            throw persistErr;
         }
 
         // Post-match grants. These are independent between the two players
@@ -1030,7 +1112,7 @@ class MatchRegistry {
             p2CoinsTotalRes,
             p1Streak,
             p2Streak,
-        ] = await Promise.all([
+        ] = await allRequired([
             match.p1IsBot
                 ? Promise.resolve(noXp)
                 : safe(
@@ -1089,14 +1171,12 @@ class MatchRegistry {
             else p2CoinsAwarded = 0;
         }
 
-        // Leaderboards + season peak (skip bots). Independent between players,
-        // and non-critical to the client result — wrapped so a failure can't
-        // block match_over.
+        // Leaderboards and season peaks commit alongside the match rewards.
         await safe(
-            Promise.all([
+            allRequired([
                 match.p1IsBot
                     ? Promise.resolve()
-                    : Promise.all([
+                    : allRequired([
                           recordMatchResult({
                               userId: p1.id,
                               isWin: winner === 'p1',
@@ -1107,7 +1187,7 @@ class MatchRegistry {
                       ]).then(() => undefined),
                 match.p2IsBot
                     ? Promise.resolve()
-                    : Promise.all([
+                    : allRequired([
                           recordMatchResult({
                               userId: p2.id,
                               isWin: winner === 'p2',
@@ -1184,18 +1264,12 @@ class MatchRegistry {
                       }
                     : undefined,
         };
-        if (match.p1SocketId) io.to(match.p1SocketId).emit('match_over', p1Payload);
-        if (match.p2SocketId) io.to(match.p2SocketId).emit('match_over', p2Payload);
-
-        this.byMatchId.delete(match.id);
-        this.byUserId.delete(match.p1UserId);
-        this.byUserId.delete(match.p2UserId);
-        this.stopTickerIfIdle();
 
         logger.info(
             { matchId: match.id, outcome, winner, durationSec },
-            'Match ended'
+            'Match settlement prepared'
         );
+        return {p1:p1Payload,p2:p2Payload};
     }
 }
 

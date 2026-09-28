@@ -1,3 +1,5 @@
+import Synthetic from './pages/Synthetic';
+import ProductMetrics from './pages/ProductMetrics';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { Loading } from './components/ui';
@@ -43,6 +45,8 @@ export default function App() {
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/economy" element={<Economy />} />
                 <Route path="/iap" element={<Iap />} />
+                <Route path="/synthetic" element={<Synthetic />} />
+                <Route path="/product-metrics" element={<ProductMetrics />} />
                 <Route path="/audit" element={<Audit />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

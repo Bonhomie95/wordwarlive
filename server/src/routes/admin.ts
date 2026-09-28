@@ -1,3 +1,5 @@
+import { settingsSchema, getSyntheticSettings, updateSynthetic } from '../services/syntheticHistory.js';
+import { playerTimeline } from '../services/supportTimeline.js';
 // Admin API — everything the Vite admin panel consumes. Every route except
 // /admin/login is gated by requireAuth + requireAdmin, and every mutation is
 // recorded to admin_audit_log.
@@ -111,6 +113,7 @@ adminRouter.use('/admin/players/:id', async (req, res, next) => {
     if (req.method !== 'GET' && target[0].is_super_admin && (req.method === 'DELETE' || req.path === '/ban' || req.path === '/role')) {
         return res.status(403).json({ error: 'Super-admin access is managed by the server operator.' });
     }
+    if (req.method !== 'GET' && !z.string().trim().min(3).max(500).safeParse(req.body?.reason).success) return res.status(400).json({ error: 'A reason of 3–500 characters is required.' });
     next();
 });
 
@@ -174,7 +177,7 @@ adminRouter.post('/admin/players/:id/unban', wrap(async (req, res) => {
     const id = String(req.params.id);
     const a = await actor(req);
     await admin.unbanPlayer(id);
-    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'unban', targetType: 'user', targetId: id });
+    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'unban', targetType: 'user', targetId: id, detail: { reason: req.body.reason } });
     res.json({ ok: true });
 }));
 
@@ -208,7 +211,7 @@ adminRouter.post('/admin/players/:id/role', wrap(async (req, res) => {
         return res.status(400).json({ error: "You can't remove your own admin access." });
     }
     await admin.setAdmin(id, makeAdmin);
-    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: makeAdmin ? 'promote' : 'demote', targetType: 'user', targetId: id });
+    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: makeAdmin ? 'promote' : 'demote', targetType: 'user', targetId: id, detail: { reason: req.body.reason } });
     res.json({ ok: true });
 }));
 
@@ -222,7 +225,7 @@ adminRouter.delete('/admin/players/:id', wrap(async (req, res) => {
         [id]
     );
     await admin.deletePlayer(id);
-    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'delete', targetType: 'user', targetId: id, detail: { username: who[0]?.username, email: who[0]?.email } });
+    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'delete', targetType: 'user', targetId: id, detail: { username: who[0]?.username, reason: req.body.reason } });
     res.json({ ok: true });
 }));
 
@@ -277,4 +280,23 @@ adminRouter.get('/admin/leaderboard', wrap(async (req, res) => {
 
 adminRouter.get('/admin/audit', wrap(async (req, res) => {
     res.json(await admin.listAudit(Number(req.query.limit) || 100));
+}));
+
+adminRouter.get('/admin/synthetic', wrap(async (_req,res)=>{res.json(await getSyntheticSettings());}));
+adminRouter.post('/admin/synthetic', wrap(async (req,res)=>{
+ if(!(await admin.isSuperAdmin(req.session!.userId)))return res.status(403).json({error:'Super-admin access required.'});
+ const parsed=z.object({settings:settingsSchema.optional(),paused:z.boolean().optional(),reason:z.string().trim().min(3).max(500)}).refine(v=>v.settings!==undefined||v.paused!==undefined).safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:'Check settings and provide a reason.'});
+ await updateSynthetic(parsed.data.settings,parsed.data.paused,req.session!.userId,req.session!.username,parsed.data.reason);
+ res.json(await getSyntheticSettings());
+}));
+adminRouter.get('/admin/players/:id/timeline',wrap(async(req,res)=>{
+ const parsed=z.object({search:z.string().max(128).default(''),before:z.string().datetime().optional()}).safeParse(req.query);
+ if(!parsed.success)return res.status(400).json({error:'Invalid timeline query'});
+ res.json(await playerTimeline(String(req.params.id),parsed.data.search,parsed.data.before));
+}));
+adminRouter.get('/admin/product-metrics',wrap(async(_req,res)=>{
+ const events=await query(`SELECT event,offer,count(*)::int events,count(DISTINCT e.user_id)::int players FROM product_events e JOIN users u ON u.id=e.user_id WHERE e.created_at>=now()-interval '30 days' AND u.auth_subject NOT LIKE 'bot-%' GROUP BY event,offer ORDER BY event,offer`);
+ const purchases=await query(`SELECT product_id,count(*)::int purchases,count(DISTINCT t.user_id)::int buyers FROM iap_transactions t JOIN users u ON u.id=t.user_id WHERE store_verified AND t.created_at>=now()-interval '30 days' AND u.auth_subject NOT LIKE 'bot-%' GROUP BY product_id`);
+ res.json({events,purchases});
 }));

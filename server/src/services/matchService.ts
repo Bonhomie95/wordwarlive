@@ -1,3 +1,4 @@
+import { connectTransactionClient } from '../db/pool.js';
 // Persists a finished match to the DB. Called from the socket match handler
 // once the engine reports GAME_OVER. Does the writes in a single transaction
 // so we never end up with a half-written match.
@@ -32,7 +33,7 @@ export interface PersistMatchArgs {
 }
 
 export async function persistMatch(args: PersistMatchArgs): Promise<string> {
-    const client = await pool.connect();
+    const client = await connectTransactionClient();
     try {
         await client.query('BEGIN');
 

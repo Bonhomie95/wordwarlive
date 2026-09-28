@@ -101,9 +101,17 @@ export function ensureSocket(token: string): AppSocket {
     // Nudge a reconnect when the app returns to the foreground so the user
     // doesn't wait for the heartbeat to notice a network change.
     appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
-        if (state === 'active' && socket && !socket.connected) {
-            socket.connect();
-        }
+        if (state !== 'active' || !socket) return;
+        if (!socket.connected) { socket.connect(); return; }
+        // A suspended app can retain a socket yet miss its live UI updates.
+        void import('../store/gameStore').then(({useGameStore}) => {
+            const phase = useGameStore.getState().phase;
+            if (phase !== 'playing' && phase !== 'matched') return;
+            socket?.timeout(8000).emit('match_resume', {}, (error: Error | null, ack: {ok:boolean;reason?:string} = {ok:false}) => {
+                if (error) return;
+                if (!ack.ok) useGameStore.setState({phase:'idle',lastError:'Match ended while you were away. Your result is in match history.'});
+            });
+        });
     });
 
     return socket;

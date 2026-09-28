@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Pool, type PoolClient } from 'pg';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
@@ -22,13 +23,14 @@ export async function query<T = any>(
     text: string,
     params?: unknown[]
 ): Promise<T[]> {
-    const result = await pool.query(text, params);
+    const result = await (transactionScope.getStore() ?? pool).query(text, params);
     return result.rows as T[];
 }
 
 /** Compose related writes atomically; nested services reuse the caller's client. */
 export async function transaction<T>(work: (client: PoolClient) => Promise<T>, existing?: PoolClient): Promise<T> {
-    if (existing) return work(existing);
+    const shared = existing ?? transactionScope.getStore();
+    if (shared) return work(shared);
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -41,4 +43,28 @@ export async function transaction<T>(work: (client: PoolClient) => Promise<T>, e
     } finally {
         client.release();
     }
+}
+
+
+// Match settlement composes legacy services into one transaction. Ordinary
+// callers keep their existing transaction boundaries; only this opt-in scope
+// shares a connection. Child services cannot commit the parent's transaction.
+const transactionScope = new AsyncLocalStorage<PoolClient>();
+export async function inTransactionScope<T>(work: () => Promise<T>): Promise<T> {
+    return transaction(client => transactionScope.run(client, work));
+}
+export async function connectTransactionClient(): Promise<PoolClient> {
+    const shared = transactionScope.getStore();
+    if (!shared) return pool.connect();
+    return new Proxy(shared, {
+        get(target, key) {
+            if (key === 'release') return () => {};
+            if (key === 'query') return (text: string, ...args: unknown[]) => {
+                if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(text.trim())) return Promise.resolve({rows:[],rowCount:0});
+                return Reflect.apply(target.query, target, [text, ...args]);
+            };
+            const value = Reflect.get(target,key);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    });
 }

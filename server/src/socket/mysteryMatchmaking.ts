@@ -1,3 +1,4 @@
+import { syntheticMatchPolicy } from '../services/syntheticHistory.js';
 // Mystery-mode matchmaking.
 //
 // Flow:
@@ -179,6 +180,8 @@ class MysteryHub {
         entry: QueueEntry
     ): Promise<void> {
         try {
+            const policy = await syntheticMatchPolicy();
+            if (!policy.allowed) return;
             const sub = await getMyPendingSubmission(entry.userId);
             if (!sub) {
                 // Player withdrew between enqueue and bot fire.
@@ -210,7 +213,7 @@ class MysteryHub {
             const bot = await createBotUser(human.rank_points);
             const recentSummary = await getRecentResultsSummary(human.id);
             const difficulty = adaptiveDifficulty(
-                human.rank_points,
+                human.rank_points + policy.rankOffset,
                 recentSummary
             );
 

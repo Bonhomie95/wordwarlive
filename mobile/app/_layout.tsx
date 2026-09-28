@@ -138,7 +138,7 @@ export default function RootLayout() {
         <ErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
                 <SafeAreaProvider>
-                    <ReducedMotionConfig mode={reducedMotion ? ReduceMotion.Always : ReduceMotion.Never} />
+                    <ReducedMotionConfig mode={reducedMotion ? ReduceMotion.Always : ReduceMotion.System} />
                     <StatusBar style="light" />
                     <Stack
                         screenOptions={{

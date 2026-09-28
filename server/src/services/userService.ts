@@ -1,3 +1,4 @@
+import { connectTransactionClient } from '../db/pool.js';
 import { redis } from '../db/redis.js';
 import { logger } from '../utils/logger.js';
 import { query, pool } from '../db/pool.js';
@@ -148,7 +149,7 @@ export async function applyMatchResult(args: {
     isWinner: boolean;
     rankDelta: number;
 }): Promise<UserRow> {
-    const client = await pool.connect();
+    const client = await connectTransactionClient();
     try {
         await client.query('BEGIN');
         const cur = await client.query<UserRow>(
@@ -279,7 +280,7 @@ export async function changeUsername(
     userId: string,
     username: string
 ): Promise<{ ok: true; coinsSpent: number } | { ok: false; error: 'TAKEN' | 'NOT_AFFORDABLE' | 'NOT_FOUND' }> {
-    const client = await pool.connect();
+    const client = await connectTransactionClient();
     try {
         await client.query('BEGIN');
         const cur = await client.query<{ username_changed_at: Date | null; coins: number; username: string }>(
@@ -361,7 +362,7 @@ export async function deleteAccount(userId: string): Promise<void> {
         throw new AppleRevocationPendingError();
     }
 
-    const client = await pool.connect();
+    const client = await connectTransactionClient();
     try {
         await client.query('BEGIN');
         // Removes the user's matches → cascades their guesses + replays.

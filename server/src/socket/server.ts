@@ -168,7 +168,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
             }
             matchRegistry
                 .handleGuess(io, socket, data.guess)
-                .then(ack)
+                .then(async (result) => { await matchRegistry.checkpointUser(socket.data.session.userId); ack(result); })
                 .catch((err) => {
                     logger.error({ err }, 'guess_submit failed');
                     ack({ ok: false, error: 'Internal error' });
@@ -183,7 +183,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
             }
             matchRegistry
                 .handlePowerUp(io, socket, data.kind, data.targetGuessIndex ?? null)
-                .then(ack)
+                .then(async (result) => { await matchRegistry.checkpointUser(socket.data.session.userId); ack(result); })
                 .catch((err) => {
                     logger.error({ err }, 'powerup_use failed');
                     ack({ ok: false, error: 'Internal error' });
@@ -193,7 +193,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         socket.on('hint_request', (_payload, ack) => {
             matchRegistry
                 .handleHint(socket)
-                .then(ack)
+                .then(async (result) => { await matchRegistry.checkpointUser(socket.data.session.userId); ack(result); })
                 .catch((err) => {
                     logger.error({ err }, 'hint_request failed');
                     ack({
@@ -207,7 +207,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         socket.on('match_resume', (_payload, ack) => {
             matchRegistry
                 .handleResume(io, socket)
-                .then(ack)
+                .then(async (result) => { await matchRegistry.checkpointUser(socket.data.session.userId); ack(result); })
                 .catch((err) => {
                     logger.error({ err }, 'match_resume failed');
                     ack({ ok: false, reason: 'Internal error' });
@@ -217,7 +217,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
         socket.on('match_quit', (_payload, ack) => {
             matchRegistry
                 .handleQuit(io, socket)
-                .then(ack)
+                .then(async (result) => { await matchRegistry.checkpointUser(socket.data.session.userId); ack(result); })
                 .catch((err) => {
                     logger.error({ err }, 'match_quit failed');
                     ack({ ok: false, reason: 'Internal error' });

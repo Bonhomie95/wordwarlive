@@ -1,3 +1,4 @@
+import { connectTransactionClient } from '../db/pool.js';
 // Daily play-streak tracking. Advanced ONLY when a match COMPLETES (not on
 // app open, not on connect). Compares the current UTC date against the
 // stored last_play_date.
@@ -85,7 +86,7 @@ export async function advanceStreakOnMatchComplete(
     const today = todayUtcDateString();
     const yesterday = yesterdayUtcDateString();
 
-    const client = await pool.connect();
+    const client = await connectTransactionClient();
     try {
         await client.query('BEGIN');
         const r = await client.query<{

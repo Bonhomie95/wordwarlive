@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), get: vi.fn(), set: vi.fn() }));
 vi.mock('../src/db/pool.js', () => ({ query: mocks.query, pool: {} }));
 vi.mock('../src/db/redis.js', () => ({ redis: { get: mocks.get, set: mocks.set } }));
+vi.mock('../src/services/syntheticHistory.js', async () => {
+    const players = await import('../src/services/syntheticPlayers.js');
+    const daily = await import('../src/services/dailySynthetic.js');
+    return { persistedSyntheticLeaderboard: async (period: Parameters<typeof players.syntheticLeaderboard>[0], mode: Parameters<typeof players.syntheticLeaderboard>[1]) => players.syntheticLeaderboard(period, mode), persistedDailySolvers: async (day: string) => daily.visibleSyntheticSolvers(day) };
+});
 import { getLeaderboard } from '../src/services/leaderboardService.js';
 import { todaysLeaderboard } from '../src/services/dailyChallengeService.js';
 import { syntheticLeaderboard, compareStandings } from '../src/services/syntheticPlayers.js';

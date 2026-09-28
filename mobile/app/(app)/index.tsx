@@ -71,7 +71,7 @@ export default function Home() {
     }, [refreshMe]);
 
     useEffect(() => {
-        SecureStore.getItemAsync('wordwar.onboarded')
+        SecureStore.getItemAsync('wordwar.onboarded.practice.v2')
             .then((v) => {
                 if (v !== '1') setShowOnboarding(true);
             })
@@ -80,7 +80,7 @@ export default function Home() {
 
     function dismissOnboarding() {
         setShowOnboarding(false);
-        SecureStore.setItemAsync('wordwar.onboarded', '1').catch(() => {});
+        SecureStore.setItemAsync('wordwar.onboarded.practice.v2', '1').catch(() => {});
     }
 
     // Start fetching the rewarded ad as soon as the daily bonus is claimable so

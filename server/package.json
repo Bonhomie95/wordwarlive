@@ -15,7 +15,8 @@
     "make-admin": "tsx src/scripts/makeAdmin.ts",
     "lint": "tsc --noEmit",
     "test:integration": "node --import dotenv/config ./node_modules/vitest/vitest.mjs run",
-    "test:smoke": "node --import tsx --import dotenv/config scripts/smoke.mjs"
+    "test:smoke": "node --import tsx --import dotenv/config scripts/smoke.mjs",
+    "test:recovery": "node --import tsx --import dotenv/config scripts/recovery-smoke.mjs"
   },
   "keywords": [],
   "author": "",

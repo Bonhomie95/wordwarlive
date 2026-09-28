@@ -1,7 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
+import { resolveApiUrl } from './resolveApiUrl';
 
-const API_URL =
-    process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000';
+const API_URL = resolveApiUrl(process.env.EXPO_PUBLIC_API_URL, __DEV__, Constants.expoConfig?.hostUri);
+if (__DEV__) console.info('[api] endpoint', API_URL);
 
 const TOKEN_KEY = 'wordwar.token';
 

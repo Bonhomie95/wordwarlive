@@ -1,3 +1,4 @@
+import { hostname } from 'node:os';
 // Validated, typed environment loading. Importing this file is the only way
 // the rest of the codebase reads env — that gives us a single failure point
 // if something's misconfigured.
@@ -34,7 +35,7 @@ const schema = z.object({
     // Postgres pool size. The match-end path fans out several concurrent
     // queries per completed match, so this needs headroom under load. Behind
     // PgBouncer (transaction pooling) you can push this higher safely.
-    DB_POOL_MAX: z.coerce.number().int().positive().default(50),
+    DB_POOL_MAX: z.coerce.number().int().min(2).default(50),
 
     JWT_SECRET: z
         .string()
@@ -123,7 +124,7 @@ export const env = {
     // Resolve a stable node id: explicit NODE_ID → OS hostname → random.
     nodeId:
         parsed.data.NODE_ID ||
-        process.env.HOSTNAME ||
+        process.env.HOSTNAME || hostname() ||
         `node-${randomUUID().slice(0, 8)}`,
     googleClientIds: parsed.data.GOOGLE_CLIENT_IDS.split(',')
         .map((s) => s.trim())

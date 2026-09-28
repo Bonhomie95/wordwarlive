@@ -8,8 +8,9 @@
 //
 // Updated on every match completion (winner gets +1 win; loser gets +1 loss).
 
-import { syntheticLeaderboard, compareStandings } from './syntheticPlayers.js';
-import { pool } from '../db/pool.js';
+import { compareStandings } from './syntheticPlayers.js';
+import { persistedSyntheticLeaderboard } from './syntheticHistory.js';
+import { query as writeQuery } from '../db/pool.js';
 import { redis } from '../db/redis.js';
 import { logger } from '../utils/logger.js';
 
@@ -99,7 +100,7 @@ export async function recordMatchResult(args: RecordResultArgs): Promise<void> {
         }
     }
 
-    await pool.query(
+    await writeQuery(
         `INSERT INTO leaderboard_entries
             (user_id, period, bucket, mode, wins, losses, rank_points, last_match_at)
          SELECT $1, p, b, m, $5, $6, $7, now()
@@ -269,7 +270,7 @@ export async function getLeaderboard(args: {
         }
     }
 
-    const fillers = syntheticLeaderboard(args.period, mode);
+    const fillers = await persistedSyntheticLeaderboard(args.period, mode);
     const merged: LeaderboardEntry[] = [
         ...entries,
         ...fillers.map((entry) => ({ ...entry, avatarId: null, profileBorderId: null, rankInLeaderboard: 0 })),

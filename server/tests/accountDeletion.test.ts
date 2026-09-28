@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn(), revoke: vi.fn(), publish: vi.fn() }));
-vi.mock('../src/db/pool.js', () => ({ query: mocks.query, pool: { connect: mocks.connect } }));
+vi.mock('../src/db/pool.js', () => ({ query: mocks.query, connectTransactionClient: mocks.connect, pool: { connect: mocks.connect } }));
 vi.mock('../src/db/redis.js', () => ({ redis: { publish: mocks.publish } }));
 vi.mock('../src/auth/apple.js', () => ({ revokeAppleRefreshToken: mocks.revoke }));
 import { deleteAccount, AppleRevocationPendingError } from '../src/services/userService.js';

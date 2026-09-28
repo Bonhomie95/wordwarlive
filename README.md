@@ -44,7 +44,7 @@ npm start                  # opens Expo dev server
 
 ## Local audit and running ports
 
-See [QA-REPORT.md](QA-REPORT.md) for verified behavior, fixes, and remaining
+See [LIVE-OPERATIONS.md](LIVE-OPERATIONS.md) for current controls, recovery, validation and remaining
 store/device checks. This audit uses API **6011**, mobile Metro **8082**, and
 admin **5174**; the example defaults above remain configurable.
 

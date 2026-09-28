@@ -1,14 +1,7 @@
-// Central observability hook for the app: error capture + lightweight event
-// tracking. One module so there's a single place to wire a provider (Sentry
-// for crashes, PostHog/Amplitude for analytics).
-//
-// It is a NO-OP by default and never throws, so the app behaves identically
-// whether or not a provider is configured. To turn crash reporting on:
-//   1. `npx expo install @sentry/react-native`
-//   2. set EXPO_PUBLIC_SENTRY_DSN
-//   3. drop the Sentry init into initObservability() below.
-// The call sites (ErrorBoundary, API client, key screens) already funnel
-// through captureError()/track(), so no other code changes are needed.
+import { apiRequest } from '../api/client';
+// First-party, allowlisted product events go to our authenticated API.
+// Error capture is console-only until an external crash provider is configured.
+// Reporting is best-effort and never blocks gameplay or store transactions.
 
 const DSN = process.env.EXPO_PUBLIC_SENTRY_DSN ?? '';
 const ANALYTICS_KEY = process.env.EXPO_PUBLIC_ANALYTICS_KEY ?? '';
@@ -52,7 +45,9 @@ export function track(
              
             console.log('[track]', event, props ?? '');
         }
-        // When analytics is wired: analytics.capture(event, props)
+        if (['shop_view','offer_view','purchase_attempt','purchase_completed','tutorial_started','tutorial_completed','tutorial_skipped'].includes(event)) {
+            void apiRequest('/events', { method: 'POST', body: {event, offer: typeof props?.offer === 'string' ? props.offer : ''}, retries: 0, timeoutMs: 4000 }).catch(() => {});
+        }
     } catch {
         // never let tracking throw
     }

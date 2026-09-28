@@ -2,6 +2,8 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
 
 const NAV = [
+    { to: '/synthetic', label: 'Synthetic activity', icon: '◷' },
+    { to: '/product-metrics', label: 'Product uptake', icon: '↗' },
     { to: '/', label: 'Dashboard', icon: '◧', end: true },
     { to: '/players', label: 'Players', icon: '⚇' },
     { to: '/leaderboard', label: 'Leaderboard', icon: '♛' },
@@ -13,6 +15,8 @@ const NAV = [
 ];
 
 const TITLES: Record<string, string> = {
+    '/synthetic': 'Synthetic activity',
+    '/product-metrics': 'Product uptake',
     '/': 'Dashboard',
     '/players': 'Players',
     '/leaderboard': 'Leaderboard',

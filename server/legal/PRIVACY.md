@@ -16,6 +16,8 @@ Contact: **adeyemibabatundejoseph@gmail.com**.
 - **Gameplay data.** Match results, guesses, rank, coins, cosmetics, streaks,
   battle-pass progress, friends, blocks, and reports you file. We need this to
   run the game, leaderboards, and moderation.
+- **Product usage.** We record first-party tutorial, shop and purchase-flow events linked to your game account, including an offer identifier and timestamp. We use these to improve onboarding and understand offer uptake. These records are deleted with your account; they are not shared with an external analytics provider.
+- **Support history.** Inventory changes and staff actions are recorded to investigate missing items and moderation appeals.
 - **Purchase verification.** Store-issued purchase tokens / signed transactions
   and transaction IDs, used only to verify and de-duplicate in-app purchases.
   We never receive your card number or payment details — those stay with Apple

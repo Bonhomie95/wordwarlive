@@ -1,3 +1,4 @@
+import { PlayerTimeline } from '../components/PlayerTimeline';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth';
@@ -207,6 +208,7 @@ export default function PlayerDetail() {
                 </Section>
             </div>
 
+            <PlayerTimeline id={u.id} />
             {action && (
                 <ActionModal
                     kind={action}
@@ -269,20 +271,21 @@ function ActionModal({
     const [err, setErr] = useState('');
 
     async function run() {
+        if(reason.trim().length<3){setErr("Provide a reason of at least 3 characters.");return;}
         setBusy(true);
         setErr('');
         try {
             if (kind === 'support') await api.post(`/admin/players/${user.id}/support`, { reason, [supportField]: ['adsRemoved', 'premium'].includes(supportField) ? supportValue === 'true' : supportField === 'cosmeticId' ? supportValue : Number(supportValue) });
             else if (kind === 'ban') await api.post(`/admin/players/${user.id}/ban`, { reason });
-            else if (kind === 'unban') await api.post(`/admin/players/${user.id}/unban`);
-            else if (kind === 'role') await api.post(`/admin/players/${user.id}/role`, { admin: !user.is_admin });
+            else if (kind === 'unban') await api.post(`/admin/players/${user.id}/unban`, { reason });
+            else if (kind === 'role') await api.post(`/admin/players/${user.id}/role`, { admin: !user.is_admin, reason });
             else if (kind === 'adjust')
                 await api.post(`/admin/players/${user.id}/adjust`, {
                     coinsDelta: coinsDelta ? Number(coinsDelta) : undefined,
                     rankPoints: rankPoints ? Number(rankPoints) : undefined,
                     reason,
                 });
-            else if (kind === 'delete') await api.del(`/admin/players/${user.id}`);
+            else if (kind === 'delete') await api.del(`/admin/players/${user.id}`, { reason });
             onDone(kind === 'delete');
         } catch (e) {
             setErr(e instanceof Error ? e.message : 'Failed');
@@ -369,6 +372,7 @@ function ActionModal({
                     <input className="input" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={user.username} autoFocus />
                 </>
             )}
+            <label>Action reason (required)<input className="input" value={reason} onChange={e=>setReason(e.target.value)} maxLength={500} /></label>
             {err && <div className="login-err">{err}</div>}
         </Modal>
     );

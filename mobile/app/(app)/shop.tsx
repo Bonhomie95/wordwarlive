@@ -1,3 +1,5 @@
+import { apiRequest } from '../../src/api/client';
+import { track } from '../../src/observability';
 // Cosmetics shop. Items are grouped by category. Purchase grants the
 // cosmetic; "Equip" calls PATCH /me/equip. Prices come from the store
 // (localized) once the product catalog loads, falling back to the server's
@@ -77,11 +79,14 @@ function rarityColor(rarity: Cosmetic['rarity']): string {
 }
 
 export default function Shop() {
+    useEffect(() => { track('shop_view'); }, []);
     const user = useAuthStore((s) => s.user);
     const refreshMe = useAuthStore((s) => s.refreshMe);
     const [ownedOnly, setOwnedOnly] = useState(false);
     const [items, setItems] = useState<Cosmetic[]>([]);
     const [packs, setPacks] = useState<CoinPack[]>([]);
+    const [styleOffer,setStyleOffer] = useState<{name:string;priceCoins:number;owned:boolean}|null>(null);
+    const [styleBusy,setStyleBusy] = useState(false);
     const [bundle, setBundle] = useState<StarterBundle | null>(null);
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -108,6 +113,7 @@ export default function Shop() {
             setItems(shopRes.cosmetics);
             setPacks(packsRes.packs);
             setBundle(packsRes.starterBundle ?? null);
+            setStyleOffer(await apiRequest('/style-bundle'));
             // Localized prices from the store for everything on this screen.
             const skus = [
                 REMOVE_ADS_PRODUCT_ID,
@@ -180,7 +186,7 @@ export default function Shop() {
         let equipOk = false;
         try {
             if (c.priceCents === 0) await cosmeticsApi.purchase(c.id);
-            else await purchaseCosmetic(c.id);
+            else await (async () => { track('purchase_attempt', {offer: c.id}); await purchaseCosmetic(c.id); track('purchase_completed', {offer: c.id}); })();
             // Auto-equip the just-purchased cosmetic. UX: you bought it,
             // you almost certainly want to use it right away. Players were
             // confused that "Buy" didn't visually do anything.
@@ -247,7 +253,7 @@ export default function Shop() {
         if (!bundle) return;
         setBundleBusy(true);
         try {
-            await purchaseStarterBundle();
+            await (async () => { track('purchase_attempt', {offer: 'starter_bundle'}); await purchaseStarterBundle(); track('purchase_completed', {offer: 'starter_bundle'}); })();
             await Promise.all([load(), refreshMe()]);
             appAlert('Welcome aboard!', `+${bundle.coins} coins, Fox avatar and Neon Pulse theme are yours.`);
         } catch (err) {
@@ -334,6 +340,7 @@ export default function Shop() {
     const removeAdsPrice = storePrice(REMOVE_ADS_PRODUCT_ID) ?? '$4.99';
 
     async function onRemoveAds() {
+        track('offer_view', {offer:'remove_ads'});
         appAlert(
             'Remove Ads',
             `One-time ${removeAdsPrice} — removes all interstitial and banner ads forever. Rewarded ads (Daily Bonus, XP Boost) stay available since they're opt-in.` +
@@ -345,7 +352,7 @@ export default function Shop() {
                     onPress: async () => {
                         setRemoveAdsBusy(true);
                         try {
-                            await purchaseRemoveAds();
+                            await (async () => { track('purchase_attempt', {offer: 'remove_ads'}); await purchaseRemoveAds(); track('purchase_completed', {offer: 'remove_ads'}); })();
                             await refreshMe();
                         } catch (err) {
                             if (!(err instanceof IapCancelled)) {
@@ -457,7 +464,7 @@ export default function Shop() {
             <View style={styles.header}>
                 <Text style={styles.title} allowFontScaling={false}>Shop</Text>
                 <Text style={styles.subtitle} allowFontScaling={false}>
-                    Cosmetics, coins and boosts. Power-ups are earned.
+                    Make it yours. Cosmetic styles and optional ad removal.
                 </Text>
             </View>
             <View style={{ flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
@@ -470,6 +477,18 @@ export default function Shop() {
                 contentContainerStyle={styles.listContent}
                 ListHeaderComponent={ownedOnly ? null :
                     <View>
+                        {styleOffer && !styleOffer.owned ? <View style={styles.bundleCard}>
+                            <Text style={styles.bundleTitle}>{styleOffer.name}</Text>
+                            <Text style={styles.bundleSub}>Fox avatar + Neon Pulse board. Save 20% on items you do not own. Style only — no gameplay advantage.</Text>
+                            <Button label={`Get style set · ${styleOffer.priceCoins} coins`} busy={styleBusy} onPress={()=>{
+                                track('offer_view',{offer:'neon_fox'});
+                                appAlert('Neon Fox style set',`Spend ${styleOffer.priceCoins} coins on your missing items?`,[{text:'Cancel',style:'cancel'},{text:'Buy set',onPress:async()=>{
+                                    setStyleBusy(true);track('purchase_attempt',{offer:'neon_fox'});
+                                    try{await apiRequest('/style-bundle',{method:'POST',body:{expectedPrice:styleOffer.priceCoins},retries:0});track('purchase_completed',{offer:'neon_fox'});await load();await refreshMe();appAlert('Style set unlocked','Open My items to equip your new look.');}
+                                    catch(e){appAlert('Could not buy set',e instanceof Error?e.message:'Try again.');}finally{setStyleBusy(false);}
+                                }}]);
+                            }}/>
+                        </View> : null}
                         {bundle && !starterOwned ? (
                             <View style={styles.bundleCard}>
                                 <View style={styles.bundleHead}>

@@ -81,13 +81,8 @@ export async function listOwnedCosmetics(userId: string): Promise<string[]> {
     return rows.map((r) => r.cosmetic_id);
 }
 
-/**
- * "Purchase" a cosmetic. We don't take real money in this codepath — that
- * happens client-side via App Store / Play Store IAP, then the receipt is
- * verified by the store and the client tells us "grant me item X". A real
- * production path would verify the receipt server-side; here we treat the
- * client request as authoritative for development. Mark as TODO.
- */
+/** Grants an entitlement inside the caller's transaction. Store verification
+ * occurs in the purchase route before this internal helper is invoked. */
 export async function grantCosmetic(
     userId: string,
     cosmeticId: string,
@@ -111,4 +106,24 @@ export async function grantCosmetic(
             [userId, cosmeticId, acquiredVia]
         );
     }, existing);
+}
+
+export const STYLE_BUNDLE = { id: 'neon_fox', name: 'Neon Fox style set', cosmeticIds: ['avatar_fox_01', 'theme_neon'] };
+export async function styleBundle(userId: string) {
+    const items = await query<CosmeticRow>(`SELECT * FROM cosmetics WHERE id=ANY($1::text[]) AND available_in_shop AND price_coins>0`, [STYLE_BUNDLE.cosmeticIds]);
+    if(items.length!==STYLE_BUNDLE.cosmeticIds.length) return null;
+    const owned = new Set(await listOwnedCosmetics(userId));
+    const missing = items.filter(c=>!owned.has(c.id));
+    return {...STYLE_BUNDLE, missing:missing.map(c=>c.id), priceCoins:Math.ceil(missing.reduce((n,c)=>n+c.price_coins,0)*0.8), owned:missing.length===0};
+}
+export async function buyStyleBundle(userId:string, expectedPrice:number) {
+    return transaction(async client=>{
+        await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[userId]);
+        const offer = await styleBundle(userId);
+        if(!offer || offer.owned || offer.priceCoins!==expectedPrice) return {ok:false,error:'Offer changed or already owned. Refresh the shop.'};
+        const coins=await spendCoins({userId,amount:offer.priceCoins,source:'cosmetic_spend',metadata:{bundle:offer.id,items:offer.missing}},client);
+        if(coins===null)return {ok:false,error:'Not enough coins.'};
+        for(const id of offer.missing)await grantCosmetic(userId,id,'purchase',client);
+        return {ok:true,coins};
+    });
 }

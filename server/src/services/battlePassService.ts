@@ -1,3 +1,4 @@
+import { connectTransactionClient } from '../db/pool.js';
 import type { PoolClient } from 'pg';
 // Battle pass logic. Players earn XP per match (win or loss); each
 // `xp_per_tier` XP advances them to the next tier. Tiers grant cosmetics on
@@ -46,7 +47,7 @@ export async function awardMatchXp(args: {
     if (!season) {
         return { xpAwarded: 0, newXp: 0, newTier: 0, boosted: false };
     }
-    const client = await pool.connect();
+    const client = await connectTransactionClient();
     try {
         await client.query('BEGIN');
 
@@ -142,7 +143,7 @@ export async function claimTier(args: {
     tier: number;
     track: 'free' | 'premium';
 }): Promise<ClaimResult> {
-    const client = await pool.connect();
+    const client = await connectTransactionClient();
     try {
         await client.query('BEGIN');
 

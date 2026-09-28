@@ -1,3 +1,4 @@
+import { styleBundle, buyStyleBundle } from '../services/cosmeticsService.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
@@ -96,4 +97,12 @@ cosmeticsRouter.post('/cosmetics/:id/purchase-coins', requireAuth, async (req, r
         return res.status(status).json({ error: message, code: r.error });
     }
     res.json({ ok: true, cosmeticId, coins: r.coins });
+});
+
+cosmeticsRouter.get('/style-bundle',requireAuth,async(req,res)=>{res.json(await styleBundle(req.session!.userId));});
+cosmeticsRouter.post('/style-bundle',requireAuth,async(req,res)=>{
+ const parsed=z.object({expectedPrice:z.number().int().positive()}).safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:'Invalid price'});
+ const result=await buyStyleBundle(req.session!.userId,parsed.data.expectedPrice);
+ res.status(result.ok?200:409).json(result);
 });

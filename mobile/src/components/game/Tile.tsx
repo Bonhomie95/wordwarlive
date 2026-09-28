@@ -1,3 +1,4 @@
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import React, { memo, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -45,8 +46,10 @@ const TileRaw: React.FC<Props> = ({
     cursor,
     boardOverride,
 }) => {
+    const reduced = useReducedMotion();
     const flip = useSharedValue(0);
     useEffect(() => {
+        if (reduced) { flip.value = state ? 1 : 0; return; }
         if (state) {
             flip.value = withDelay(revealDelayMs, withTiming(1, {
                 duration: 350,
@@ -55,7 +58,7 @@ const TileRaw: React.FC<Props> = ({
         } else {
             flip.value = 0;
         }
-    }, [state, flip, revealDelayMs]);
+    }, [state, flip, revealDelayMs, reduced]);
 
     // Resolve the color palette: override beats default per-key, so a
     // theme that defines only `correct` still inherits the rest. Colors are
@@ -122,9 +125,9 @@ const TileRaw: React.FC<Props> = ({
                 animatedStyle,
             ]}
             accessible={!isSmall}
-            accessibilityLabel={`${letter ?? hintLetter ?? 'Empty'}${state ? `, ${state}` : ''}${cursor ? ', selected' : ''}`}
+            accessibilityLabel={`${hideLetter ? 'Opponent tile' : letter ?? hintLetter ?? 'Empty'}${state ? `, ${state}` : ''}${cursor ? ', selected' : ''}`}
         >
-            {colorBlind && state && !isSmall ? <Text style={{ position: 'absolute', right: 3, top: 1, fontSize: 9, color: letterColor }} allowFontScaling={false}>{state === 'correct' ? '✓' : state === 'misplaced' ? '●' : '×'}</Text> : null}
+            {state && !isSmall ? <Text style={{ position: 'absolute', right: 3, top: 1, fontSize: 9, color: letterColor }} allowFontScaling={false}>{state === 'correct' ? '✓' : state === 'misplaced' ? '●' : '×'}</Text> : null}
             {showLetter ? (
                 <Text
                     style={[styles.letter, { fontSize, color: letterColor }]}

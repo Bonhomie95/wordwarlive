@@ -32,7 +32,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
         body: body === undefined ? undefined : JSON.stringify(body),
     });
 
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
         // Session gone or not an admin — drop credentials so the guard redirects.
         if (path !== '/admin/login') {
             clearToken();
@@ -50,5 +50,5 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
     get: <T>(path: string) => request<T>('GET', path),
     post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
-    del: <T>(path: string) => request<T>('DELETE', path),
+    del: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),
 };

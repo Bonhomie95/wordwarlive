@@ -256,31 +256,22 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
         }));
     });
 
-    // Auto-resume on reconnect. `connect` fires on the first connect AND
-    // every successful reconnection - we only resume if we're actually in
-    // an active match.
-    sock.on('connect', () => {
+    // Also discover a live match after a cold app start, when local state is idle.
+    const resume = (attempt = 0) => {
         const phase = get().phase;
-        if (phase !== 'playing' && phase !== 'matched') return;
-        sock.timeout(8000).emit(
-            'match_resume',
-            {},
-            (
-                err: Error | null,
-                ack: { ok: boolean; reason?: string } = { ok: false }
-            ) => {
-                if (err || !ack.ok) {
-                    set({
-                        phase: 'idle',
-                        lastError:
-                            ack.reason === 'Match already ended'
-                                ? 'Match ended while you were away.'
-                                : 'Could not resume match.',
-                    });
-                }
+        if (!['idle', 'playing', 'matched'].includes(phase)) return;
+        const wasActive = phase !== 'idle';
+        sock.timeout(8000).emit('match_resume', {}, (err: Error | null, ack: {ok:boolean;reason?:string} = {ok:false}) => {
+            if (err) {
+                if (attempt < 2) setTimeout(() => { if (sock.connected) resume(attempt + 1); }, 1500);
+                else if (wasActive) set({lastError:'Connection interrupted. Return to the app to retry.'});
+                return;
             }
-        );
-    });
+            if (!ack.ok && wasActive) set({phase:'idle',lastError:'Match ended while you were away. Check match history for your result.'});
+        });
+    };
+    sock.on('connect', () => resume());
+    if (sock.connected) resume();
 
     sock.on('opponent_scramble', () => {
         set({ scrambled: true });

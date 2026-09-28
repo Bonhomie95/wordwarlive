@@ -269,7 +269,7 @@ export default function PostGame() {
                 {isMystery ? (
                     <Button label="Back to Home" onPress={onHome} icon="home" />
                 ) : (
-                    <Button label="REMATCH" onPress={onPlayAgain} icon="refresh" />
+                    <Button label="Play Again" onPress={onPlayAgain} icon="refresh" />
                 )}
             </View>
         </Screen>

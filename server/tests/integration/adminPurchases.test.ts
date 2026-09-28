@@ -48,7 +48,7 @@ describe.skipIf(!process.env.DATABASE_URL)('admin authorization and purchase HTT
 
     it('rejects normal players, restricts role management, and protects super-admins', async () => {
         expect((await req(2, '/admin/overview')).status).toBe(403);
-        expect((await req(1, `/admin/players/${users[2].id}/role`, { admin: true })).status).toBe(403);
+        expect((await req(1, `/admin/players/${users[2].id}/role`, { admin: true, reason: 'Test role access' })).status).toBe(403);
         expect((await req(1, `/admin/players/${users[0].id}/ban`, {})).status).toBe(403);
         expect((await req(0, `/admin/players/${users[0].id}`, undefined, 'DELETE')).status).toBe(403);
         expect((await req(0, '/admin/players/invalid')).status).toBe(400);
@@ -101,10 +101,32 @@ describe.skipIf(!process.env.DATABASE_URL)('admin authorization and purchase HTT
         expect((await pool.query('SELECT status FROM content_reports WHERE id = $1', [report.rows[0].id])).rows[0].status).toBe('actioned');
     });
 
+    it('requires reasons and exposes searchable inventory and support history', async () => {
+        expect((await req(0, `/admin/players/${users[2].id}/adjust`, {coinsDelta:1})).status).toBe(400);
+        expect((await req(0, `/admin/players/${users[2].id}/unban`, {})).status).toBe(400);
+        const response=await req(0, `/admin/players/${users[2].id}/timeline?search=inventory`);
+        expect(response.status).toBe(200);
+        const events=await response.json();expect(events.length).toBeGreaterThan(0);
+        expect(events.every((e:{kind:string})=>e.kind==='inventory')).toBe(true);
+        expect((await req(0,'/admin/synthetic')).status).toBe(200);
+        expect((await req(1,'/admin/synthetic',{paused:true,reason:'Not authorized'})).status).toBe(403);
+        expect((await req(0,'/admin/product-metrics')).status).toBe(200);
+    });
+
+    it('buys only missing cosmetic bundle items and rejects duplicate charging', async () => {
+        await pool.query('DELETE FROM user_cosmetics WHERE user_id=$1 AND cosmetic_id=ANY($2::text[])',[users[2].id,['avatar_fox_01','theme_neon']]);
+        await pool.query('UPDATE users SET coins=10000 WHERE id=$1',[users[2].id]);
+        const offer=await (await req(2,'/style-bundle')).json();
+        expect(offer).not.toBeNull();expect(offer.priceCoins).toBeGreaterThan(0);
+        const first=await req(2,'/style-bundle',{expectedPrice:offer.priceCoins});expect(first.status).toBe(200);
+        const second=await req(2,'/style-bundle',{expectedPrice:offer.priceCoins});expect(second.status).toBe(409);
+        expect((await pool.query('SELECT coins FROM users WHERE id=$1',[users[2].id])).rows[0].coins).toBe(10000-offer.priceCoins);
+    });
+
     it('ban invalidates existing sessions immediately and unban requires a new session', async () => {
         expect((await req(0, `/admin/players/${users[2].id}/ban`, { reason: 'QA moderation' })).status).toBe(200);
         expect((await req(2, '/cosmetics')).status).toBe(403);
-        expect((await req(0, `/admin/players/${users[2].id}/unban`, {})).status).toBe(200);
+        expect((await req(0, `/admin/players/${users[2].id}/unban`, { reason: 'Appeal resolved' })).status).toBe(200);
         expect((await req(2, '/cosmetics')).status).toBe(401);
     });
 });

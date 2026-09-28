@@ -1,3 +1,4 @@
+import { syntheticMatchPolicy } from '../services/syntheticHistory.js';
 // Matchmaking. Stores queued players in Redis (sorted set keyed by rank
 // points) so multiple server instances could share the queue. Even running
 // single-process, Redis gives us trivial atomic pop semantics.
@@ -256,6 +257,8 @@ class MatchmakingHub {
     }
 
     private async spawnBotMatch(io: AppIOServer, humanMeta: QueueMeta): Promise<void> {
+        const policy = await syntheticMatchPolicy();
+        if (!policy.allowed || Date.now()-humanMeta.enqueuedAt < humanMeta.botAfterMs*policy.waitMultiplier) { this.botSpawning.delete(humanMeta.userId); return; }
         // Remove the human from the queue first.
         const removed = await redis.zrem(QUEUE_KEY, humanMeta.userId);
         if (removed === 0) return; // someone else matched them already
@@ -270,7 +273,7 @@ class MatchmakingHub {
         // shift it. Players on hot streaks get harder bots; players in a
         // slump get a chance to break out.
         const recentSummary = await getRecentResultsSummary(humanMeta.userId);
-        const difficulty = adaptiveDifficulty(humanMeta.rankPoints, recentSummary);
+        const difficulty = adaptiveDifficulty(humanMeta.rankPoints + policy.rankOffset, recentSummary);
         logger.info(
             {
                 userId: humanMeta.userId,

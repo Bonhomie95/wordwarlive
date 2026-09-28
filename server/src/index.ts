@@ -1,3 +1,4 @@
+import { productEventsRouter } from './routes/productEvents.js';
 // Server entry point. Wires up Express + Socket.io + Postgres + Redis.
 //
 //   GET  /healthz                  — process liveness probe
@@ -128,6 +129,7 @@ async function main() {
     });
 
     // Broad limiter across the whole API; strict limiter on auth.
+    app.use('/api', productEventsRouter);
     app.use('/api', apiLimiter);
     app.use('/api/auth', authLimiter, authRouter);
     app.use('/api', usersRouter);
@@ -190,6 +192,7 @@ async function main() {
 
     const httpServer = createServer(app);
     const io = createSocketServer(httpServer);
+    await matchRegistry.recover(io);
 
     httpServer.listen(env.PORT, () => {
         logger.info(
@@ -235,6 +238,7 @@ async function main() {
         // Close sockets, then drain the backing stores.
         try {
             await new Promise<void>((resolve) => io.close(() => resolve()));
+            await matchRegistry.releaseOwnership();
             await Promise.allSettled([pool.end(), redis.quit()]);
         } catch (err) {
             logger.error({ err }, 'Error draining connections on shutdown');
