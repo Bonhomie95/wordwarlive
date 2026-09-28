@@ -55,14 +55,22 @@ describe('activity sessions and boundary accounting', () => {
         const start = Date.parse(`${date}T00:00:00Z`);
         let previous = dayTallies(date, start);
         expect(previous.every((t) => t.cw + t.cl + t.mw + t.ml === 0)).toBe(true);
+        const players = population();
+        const violations: string[] = [];
+        // Check every player/hour without creating 300,000 matcher objects.
         for (let hour = 1; hour <= 24; hour++) {
             const next = dayTallies(date, start + hour * 3600000);
             next.forEach((t, i) => {
-                for (const field of ['cw', 'cl', 'mw', 'ml'] as const) expect(t[field]).toBeGreaterThanOrEqual(previous[i]![field]);
-                expect(t.cw + t.cl + t.mw + t.ml).toBeLessThanOrEqual(population()[i]!.gamesMax);
+                for (const field of ['cw', 'cl', 'mw', 'ml'] as const) {
+                    if (!(t[field] >= previous[i]![field])) violations.push(`hour ${hour}, player ${i}: ${field} decreased`);
+                }
+                if (!(t.cw + t.cl + t.mw + t.ml <= players[i]!.gamesMax)) {
+                    violations.push(`hour ${hour}, player ${i}: daily cap exceeded`);
+                }
             });
             previous = next;
         }
+        expect(violations).toEqual([]);
     });
     it('weekly and monthly match their own UTC dates when a week crosses a month', () => {
         const now = Date.parse('2026-10-01T13:25:00Z'); // Thursday; Monday was in September.

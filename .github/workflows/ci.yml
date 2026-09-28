@@ -41,14 +41,14 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci
+      - name: Install mobile dependencies for shared-source and recovery tests
+        run: npm ci --prefix ../mobile
       - name: Typecheck
         run: npm run lint
       - name: Migrate (for integration tests)
         run: npm run migrate
       - name: Tests
         run: npm test
-      - name: Install mobile socket client for recovery checks
-        run: npm ci --prefix ../mobile
       - name: Match interruption and restart recovery
         run: npm run test:recovery
 

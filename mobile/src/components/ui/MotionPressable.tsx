@@ -14,8 +14,11 @@ export function MotionPressable({ style, onPressIn, onPressOut, onHoverIn, onHov
     const scale = useSharedValue(1);
     useEffect(() => { if (disabled || reduced) scale.set(1); }, [disabled, reduced, scale]);
     const motion = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+    // Generated RN types include hovered; legacy declarations only include pressed.
+    // A named state object supports both declarations without a cast.
+    const pressState = { pressed: pressed && !disabled, hovered };
     return <AnimatedPressable {...props} disabled={disabled}
-        style={[typeof style === 'function' ? style({ pressed: pressed && !disabled, hovered }) : style, motion]}
+        style={[typeof style === 'function' ? style(pressState) : style, motion]}
         onHoverIn={(event) => { setHovered(true); onHoverIn?.(event); }}
         onHoverOut={(event) => { setHovered(false); onHoverOut?.(event); }}
         onPressIn={(event) => {
