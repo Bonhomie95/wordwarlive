@@ -139,10 +139,12 @@ export const leaderboardApi = {
     fetch: (
         period: LeaderboardPeriod,
         mode: 'classic' | 'mystery' | 'overall' = 'overall',
-        limit = 50
+        limit = 50,
+        /** When true the server returns a window of rows centred on you. */
+        around = false
     ) =>
         apiRequest<LeaderboardResponse>(
-            `/api/leaderboard?period=${period}&mode=${mode}&limit=${limit}`
+            `/api/leaderboard?period=${period}&mode=${mode}&limit=${limit}${around ? '&around=1' : ''}`
         ),
 };
 

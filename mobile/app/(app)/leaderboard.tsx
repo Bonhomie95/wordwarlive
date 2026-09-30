@@ -10,7 +10,7 @@
 // Refreshes whenever the screen is focused so the player sees their result
 // reflected immediately after a match.
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -55,11 +55,15 @@ export default function LeaderboardScreen() {
     const [period, setPeriod] = useState<LeaderboardPeriod>('weekly');
     const [mode, setMode] = useState<Mode>('overall');
     const [data, setData] = useState<LeaderboardResponse | null>(null);
+    // Rows centred on me, shown instead of the top list after "Show my position"
+    // when I rank below what the top list covers.
+    const [around, setAround] = useState<LeaderboardResponse | null>(null);
     const [loading, setLoading] = useState(false);
 
     const load = useCallback(
         async (p: LeaderboardPeriod, m: Mode) => {
             setLoading(true);
+            setAround(null);
             try {
                 const r = await leaderboardApi.fetch(p, m, 50);
                 setData(r);
@@ -95,23 +99,46 @@ export default function LeaderboardScreen() {
 
     // Show top 100 by default. If "you" rank is beyond 100, the goto-me
     // pill scrolls to your row regardless.
-    const top3 = data?.entries.slice(0, 3) ?? [];
-    const rest = (data?.entries ?? []).slice(3, 100);
+    const top3 = around ? [] : data?.entries.slice(0, 3) ?? [];
+    const rest = around ? around.entries : (data?.entries ?? []).slice(3, 100);
     const youInTop = data?.you
         ? data.entries.some((e) => e.userId === data.you?.userId)
         : false;
-    const showYouPill = !!data?.you && !youInTop;
+    // Keep the pill up whenever you're not on the podium so your rank is
+    // always one glance away; tapping scrolls to your row when it's listed.
+    const showYouPill = !!data?.you && (!youInTop || data.you.rankInLeaderboard > 3);
     const listRef = useRef<FlatList<typeof rest[number]>>(null);
+    const [locating, setLocating] = useState(false);
 
-    function scrollToMe() {
+    // Once the around-me window renders, centre my row.
+    useEffect(() => {
+        if (!around || !me) return;
+        const idx = around.entries.findIndex((e) => e.userId === me.id);
+        if (idx < 0) return;
+        const t = setTimeout(
+            () => listRef.current?.scrollToIndex({ index: idx, viewPosition: 0.5, animated: false }),
+            50
+        );
+        return () => clearTimeout(t);
+    }, [around, me]);
+
+    async function scrollToMe() {
         if (!data?.you) return;
         const idx = rest.findIndex((e) => e.userId === data.you?.userId);
-        if (idx < 0) {
-            // I'm not on this screen at all (rank > 100). Soft-fail; the
-            // pill will keep showing, and the user knows their rank from it.
+        if (idx >= 0) {
+            listRef.current?.scrollToIndex({ index: idx, viewPosition: 0.5, animated: true });
             return;
         }
-        listRef.current?.scrollToIndex({ index: idx, viewPosition: 0.5, animated: true });
+        // Not on this screen (rank below the top list): fetch the rows around me.
+        setLocating(true);
+        try {
+            const r = await leaderboardApi.fetch(period, mode, 21, true);
+            setAround(r);
+        } catch (err) {
+            console.warn('leaderboard around-me fetch failed', err);
+        } finally {
+            setLocating(false);
+        }
     }
 
     return (
@@ -181,6 +208,15 @@ export default function LeaderboardScreen() {
                 ))}
             </View>
 
+            {loading && data ? (
+                <View style={styles.reloadingBar}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.reloadingText} allowFontScaling={false}>
+                        Updating…
+                    </Text>
+                </View>
+            ) : null}
+
             {loading && !data ? (
                 <View style={styles.loadingWrap}>
                     <ActivityIndicator color={colors.primary} />
@@ -218,7 +254,19 @@ export default function LeaderboardScreen() {
                         }, 100);
                     }}
                     ListHeaderComponent={
-                        top3.length > 0 ? (
+                        around ? (
+                            <Pressable
+                                onPress={() => setAround(null)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Back to top of leaderboard"
+                                style={({ pressed }) => [styles.backToTop, pressed ? { opacity: 0.85 } : null]}
+                            >
+                                <Ionicons name="arrow-up" size={16} color={colors.primary} />
+                                <Text style={styles.backToTopText} allowFontScaling={false}>
+                                    Back to top
+                                </Text>
+                            </Pressable>
+                        ) : top3.length > 0 ? (
                             <Podium
                                 top3={top3.map((e) => ({ userId: e.userId, username: e.username, score: `${e.wins} W` }))}
                                 meId={me?.id ?? null}
@@ -231,10 +279,11 @@ export default function LeaderboardScreen() {
                 />
             )}
 
-            {showYouPill && data?.you ? (
+            {showYouPill && data?.you && !around ? (
                 <View style={styles.youPillWrap} pointerEvents="box-none">
                     <Pressable
                         onPress={scrollToMe}
+                        disabled={locating}
                         accessibilityRole="button"
                         accessibilityLabel={`Your rank ${data.you.rankInLeaderboard}, tap to find`}
                         style={({ pressed }) => [
@@ -247,7 +296,7 @@ export default function LeaderboardScreen() {
                         </Text>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.youPillName} allowFontScaling={false}>
-                                You (tap to find)
+                                {locating ? 'Finding you…' : 'You · show my position'}
                             </Text>
                             <Text style={styles.youPillStats} allowFontScaling={false}>
                                 {data.you.wins} W · {data.you.losses} L
@@ -483,5 +532,33 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: '#0F1115',
         opacity: 0.7,
         fontSize: typography.sizes.xs,
+    },
+    reloadingBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 6,
+    },
+    reloadingText: {
+        fontFamily: typography.family,
+        color: colors.textMuted,
+        fontSize: typography.sizes.xs,
+    },
+    backToTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 10,
+        marginBottom: 8,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    backToTopText: {
+        fontFamily: typography.family,
+        color: colors.primary,
+        fontSize: typography.sizes.sm,
     },
 }));
