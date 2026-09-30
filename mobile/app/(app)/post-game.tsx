@@ -134,7 +134,6 @@ export default function PostGame() {
             const t = setTimeout(() => setReveal('showing'), 900);
             return () => clearTimeout(t);
         }
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- see above
         setReveal('done');
     }, [matchOver, refreshMe, tierChanged]);
 
