@@ -8,6 +8,7 @@ import Animated, {
     useSharedValue,
     withTiming,
     withDelay,
+    withSequence,
 } from 'react-native-reanimated';
 import { makeThemedStyles, colors, useThemeStore } from '../../theme/colors';
 import { typography, radius } from '../../theme/typography';
@@ -25,6 +26,8 @@ interface Props {
     hintLetter?: string | null;
     /** When true, this tile is the active cursor position. */
     cursor?: boolean;
+    /** When set, the tile hops after its reveal (solved-row celebration). */
+    bounceDelayMs?: number;
     /** Optional color palette from an equipped board_theme cosmetic.
      *  Overrides the default theme tile colors when set. The render_data
      *  for board themes ships {bg, correct, misplaced, wrong} as hex strings. */
@@ -44,10 +47,30 @@ const TileRaw: React.FC<Props> = ({
     revealDelayMs = 0,
     hintLetter,
     cursor,
+    bounceDelayMs,
     boardOverride,
 }) => {
     const reduced = useReducedMotion();
     const flip = useSharedValue(0);
+    // Quick pop when a letter lands in an unscored tile.
+    const pop = useSharedValue(0);
+    useEffect(() => {
+        if (reduced || !letter || state) return;
+        pop.value = 0;
+        pop.value = withSequence(withTiming(1, { duration: 90 }), withTiming(0, { duration: 110 }));
+    }, [letter, state, reduced, pop]);
+    // Solved-row hop, staggered by the caller.
+    const bounce = useSharedValue(0);
+    useEffect(() => {
+        if (reduced || bounceDelayMs === undefined) return;
+        bounce.value = withDelay(
+            bounceDelayMs,
+            withSequence(
+                withTiming(1, { duration: 150, easing: Easing.out(Easing.quad) }),
+                withTiming(0, { duration: 260, easing: Easing.bounce })
+            )
+        );
+    }, [bounceDelayMs, reduced, bounce]);
     useEffect(() => {
         if (reduced) { flip.value = state ? 1 : 0; return; }
         if (state) {
@@ -87,7 +110,11 @@ const TileRaw: React.FC<Props> = ({
         const bgColor = stateBg ?? (letter ? filledBg : emptyBg);
         return {
             backgroundColor: bgColor,
-            transform: [{ scaleY }],
+            transform: [
+                { scaleY },
+                { scale: 1 + 0.12 * pop.value },
+                { translateY: -12 * bounce.value },
+            ],
         };
     });
 

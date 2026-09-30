@@ -34,6 +34,9 @@ import { makeThemedStyles, colors, useThemeStore } from '../../src/theme/colors'
 import { typography, radius, spacing } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
 import { Podium } from '../../src/components/ui/Podium';
+import { PopIn } from '../../src/components/ui/PopIn';
+import { CountUp } from '../../src/components/ui/CountUp';
+import { notify, NotificationType } from '../../src/lib/haptics';
 
 type Cell = string | null;
 
@@ -163,7 +166,10 @@ export default function DailyChallengeScreen() {
                 startedAt: prev?.startedAt ?? Date.now(),
                 coinsAwarded: r.coinsAwarded ?? 0,
             }));
-            if (r.solved) refreshMe().catch(() => {}); // coin balance in the top bar
+            if (r.solved) {
+                notify(NotificationType.Success);
+                refreshMe().catch(() => {}); // coin balance in the top bar
+            }
             // Reset input row.
             setBoard(new Array(meta.wordLength).fill(null));
             setCursor(0);
@@ -304,6 +310,7 @@ export default function DailyChallengeScreen() {
 
                 {attempt?.solved ? (
                     <View style={styles.solvedCard}>
+                        <PopIn delayMs={450} style={styles.solvedHero}>
                         <Ionicons
                             name="checkmark-circle"
                             size={28}
@@ -318,10 +325,15 @@ export default function DailyChallengeScreen() {
                             {Math.round((attempt.durationMs ?? 0) / 1000)}s
                         </Text>
                         {attempt.coinsAwarded > 0 ? (
-                            <Text style={styles.solvedCoins} allowFontScaling={false}>
-                                +{attempt.coinsAwarded} coins
-                            </Text>
+                            <CountUp
+                                to={attempt.coinsAwarded}
+                                prefix="+"
+                                suffix=" coins"
+                                delayMs={900}
+                                style={styles.solvedCoins}
+                            />
                         ) : null}
+                        </PopIn>
 
                         <Pressable
                             style={styles.shareBtn}
@@ -503,6 +515,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.primary,
     },
+    solvedHero: { alignItems: 'center', gap: spacing.xs },
     solvedTitle: {
         fontFamily: typography.familyDisplay,
         color: colors.primary,

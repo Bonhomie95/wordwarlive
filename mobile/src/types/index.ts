@@ -357,6 +357,9 @@ export interface MatchOver {
         | 'forfeit';
     word: string;
     rankDelta: number;
+    /** Rank before the match (older servers may omit these). */
+    previousRankPoints?: number;
+    previousRankTier?: RankTier;
     newRankPoints: number;
     newRankTier: RankTier;
     battlePassXpAwarded: number;

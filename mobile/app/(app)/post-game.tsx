@@ -4,7 +4,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import Animated, {
+    Easing,
+    useAnimatedStyle,
+    useSharedValue,
+    withDelay,
+    withSequence,
+    withTiming,
+} from 'react-native-reanimated';
 import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
@@ -14,6 +22,11 @@ import { Screen } from '../../src/components/ui/Screen';
 import { HeroTitle, MonoLabel, Card } from '../../src/components/ui/primitives';
 import { Tile } from '../../src/components/game/Tile';
 import { VictoryAnim } from '../../src/components/game/VictoryAnim';
+import { RankReveal } from '../../src/components/game/RankReveal';
+import { CountUp } from '../../src/components/ui/CountUp';
+import { PopIn } from '../../src/components/ui/PopIn';
+import { useReducedMotion } from '../../src/hooks/useReducedMotion';
+import { tierFromPoints, tierProgress } from '../../src/lib/ranks';
 import { victoryKind } from '../../src/lib/cosmetics';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
@@ -44,6 +57,46 @@ export default function PostGame() {
     // away, since expo-router keeps this screen mounted in the stack.
     const handledMatchRef = useRef<string | null>(null);
 
+    // Dev-only preview of the post-game moments (rank up/down, milestone):
+    // open wordwar://post-game?demo=rankup|rankdown|milestone.
+    const params = useLocalSearchParams<{ demo?: string }>();
+    useEffect(() => {
+        if (__DEV__ && params.demo) useGameStore.setState({ matchOver: demoMatchOver(params.demo) });
+    }, [params.demo]);
+
+    // Rank transition data. Older servers omit the "previous" fields.
+    const prevPoints = matchOver
+        ? matchOver.previousRankPoints ?? matchOver.newRankPoints - matchOver.rankDelta
+        : 0;
+    const prevTier = matchOver ? matchOver.previousRankTier ?? tierFromPoints(prevPoints) : 'stone';
+    const tierChanged = !!matchOver && prevTier !== matchOver.newRankTier;
+    const [reveal, setReveal] = useState<'pending' | 'showing' | 'done'>('done');
+    const dismissReveal = useCallback(() => setReveal('done'), []);
+
+    // Progress bar animates from the old position to the new one; a tier
+    // change sweeps through the end of the bar and restarts in the new band.
+    const reduced = useReducedMotion();
+    const barProgress = useSharedValue(0);
+    useEffect(() => {
+        if (!matchOver) return;
+        const target = tierProgress(matchOver.newRankPoints);
+        if (reduced) { barProgress.value = target; return; }
+        const up = matchOver.newRankPoints > prevPoints;
+        barProgress.value = tierProgress(prevPoints);
+        const ease = { duration: 650, easing: Easing.out(Easing.cubic) };
+        barProgress.value = withDelay(
+            500,
+            tierChanged
+                ? withSequence(
+                      withTiming(up ? 1 : 0, ease),
+                      withTiming(up ? 0 : 1, { duration: 0 }),
+                      withTiming(target, ease)
+                  )
+                : withTiming(target, { duration: 900, easing: Easing.out(Easing.cubic) })
+        );
+    }, [matchOver, prevPoints, tierChanged, reduced, barProgress]);
+    const barStyle = useAnimatedStyle(() => ({ width: `${barProgress.value * 100}%` }));
+
     // Result haptic — fires only while this screen is actually FOCUSED,
     // exactly once per match. On blur (Home, back, tab switch — anything
     // that takes the victory/defeat page off screen) any vibration still
@@ -73,6 +126,24 @@ export default function PostGame() {
         // Pull the latest /me so other tabs see updated rank.
         refreshMe().catch(() => {});
 
+        // A promotion/demotion gets its own moment before anything else
+        // (the ad waits for it).
+        if (tierChanged) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot per match, guarded by handledMatchRef
+            setReveal('pending');
+            const t = setTimeout(() => setReveal('showing'), 900);
+            return () => clearTimeout(t);
+        }
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- see above
+        setReveal('done');
+    }, [matchOver, refreshMe, tierChanged]);
+
+    const interstitialRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!matchOver || reveal !== 'done') return;
+        if (interstitialRef.current === matchOver.matchId) return;
+        interstitialRef.current = matchOver.matchId;
+
         // Frequency-capped post-match interstitial. Skipped for ads-removed
         // users; gameStore handles cap + cooldown + skip-after-loss.
         const adsRemoved = user && 'ads' in user ? user.ads.removed : false;
@@ -89,7 +160,7 @@ export default function PostGame() {
                     .finally(() => setInterstitialLoading(false));
             }, 800);
         }
-    }, [matchOver, refreshMe, shouldShowInterstitial, markInterstitialShown, user]);
+    }, [matchOver, reveal, shouldShowInterstitial, markInterstitialShown, user]);
 
     if (!matchOver) {
         return (
@@ -143,7 +214,6 @@ export default function PostGame() {
             : result === 'loss'
             ? `${oppName} won this round`
             : 'Evenly matched';
-    const deltaSign = matchOver.rankDelta > 0 ? '+' : matchOver.rankDelta < 0 ? '' : '±';
     const durationSec = matchOver.matchDurationSec ?? 0;
 
     const equippedVictory =
@@ -153,6 +223,9 @@ export default function PostGame() {
     return (
         <Screen>
             {victory ? <VictoryAnim kind={victory} /> : null}
+            {reveal === 'showing' ? (
+                <RankReveal from={prevTier} to={tier} points={matchOver.newRankPoints} onDone={dismissReveal} />
+            ) : null}
             <AdLoadingOverlay visible={interstitialLoading} label="Quick ad break…" />
             {/* Icon actions live at the top so they're visible on every
                 screen size — the scrollable summary below can be tall. */}
@@ -191,47 +264,39 @@ export default function PostGame() {
                         <View style={styles.eloRank}>
                             <RankBadge tier={tier} size="sm" />
                             <Text style={styles.eloTier} allowFontScaling={false}>
-                                {tier.toUpperCase()} · {matchOver.newRankPoints} RP
+                                <CountUp from={prevPoints} to={matchOver.newRankPoints} delayMs={500} durationMs={900} style={styles.eloTier} />
+                                {' '}RP
                             </Text>
                         </View>
-                        <Text
-                            style={[
-                                styles.eloDelta,
-                                {
-                                    color:
-                                        matchOver.rankDelta > 0
-                                            ? colors.primary
-                                            : matchOver.rankDelta < 0
-                                            ? colors.danger
-                                            : colors.textDim,
-                                },
-                            ]}
-                            allowFontScaling={false}
-                        >
-                            {deltaSign}
-                            {matchOver.rankDelta} Elo
-                        </Text>
+                        {matchOver.rankDelta === 0 ? (
+                            <Text style={[styles.eloDelta, { color: colors.textDim }]} allowFontScaling={false}>
+                                ±0 Elo
+                            </Text>
+                        ) : (
+                            <CountUp
+                                to={matchOver.rankDelta}
+                                signed
+                                suffix=" Elo"
+                                delayMs={300}
+                                durationMs={700}
+                                style={[
+                                    styles.eloDelta,
+                                    { color: matchOver.rankDelta > 0 ? colors.primary : colors.danger },
+                                ]}
+                            />
+                        )}
                     </View>
                     <View style={styles.eloBarTrack}>
-                        <View
-                            style={[
-                                styles.eloBarFill,
-                                { width: `${Math.round(tierProgress(matchOver.newRankPoints) * 100)}%` },
-                            ]}
-                        />
+                        <Animated.View style={[styles.eloBarFill, barStyle]} />
                     </View>
                     <View style={styles.eloBottom}>
                         <View style={styles.eloStat}>
                             <Ionicons name="ellipse" size={13} color={colors.warning} />
-                            <Text style={styles.eloStatText} allowFontScaling={false}>
-                                +{matchOver.coinsAwarded ?? 0} coins
-                            </Text>
+                            <CountUp to={matchOver.coinsAwarded ?? 0} prefix="+" suffix=" coins" delayMs={700} style={styles.eloStatText} />
                         </View>
                         <View style={styles.eloStat}>
                             <Ionicons name="flash" size={13} color={colors.info} />
-                            <Text style={styles.eloStatText} allowFontScaling={false}>
-                                +{matchOver.battlePassXpAwarded} XP
-                            </Text>
+                            <CountUp to={matchOver.battlePassXpAwarded} prefix="+" suffix=" XP" delayMs={850} style={styles.eloStatText} />
                         </View>
                         <View style={styles.eloStat}>
                             <Ionicons name="time-outline" size={13} color={colors.textDim} />
@@ -304,17 +369,6 @@ function formatDuration(sec: number): string {
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-/** Fraction (0..1) through the current rank tier band, for the summary bar. */
-function tierProgress(points: number): number {
-    const bands = [0, 1100, 1300, 1500, 1700, 1900, 2100, 2400];
-    for (let i = 0; i < bands.length - 1; i++) {
-        if (points >= bands[i]! && points < bands[i + 1]!) {
-            return (points - bands[i]!) / (bands[i + 1]! - bands[i]!);
-        }
-    }
-    return 1;
-}
-
 function RewardsCard({ matchOver }: { matchOver: MatchOver }) {
     const coinsAwarded = matchOver.coinsAwarded ?? 0;
     const streak = matchOver.streakUpdate;
@@ -351,7 +405,7 @@ function RewardsCard({ matchOver }: { matchOver: MatchOver }) {
             ) : null}
 
             {milestone ? (
-                <View style={styles.milestoneCard}>
+                <PopIn delayMs={1100} style={styles.milestoneCard}>
                     <View style={styles.milestoneHeader}>
                         <Ionicons name="star" size={20} color={colors.warning} />
                         <Text style={styles.milestoneTitle} allowFontScaling={false}>
@@ -364,7 +418,7 @@ function RewardsCard({ matchOver }: { matchOver: MatchOver }) {
                             ? ` and +${milestone.hintCredits} hint credit${milestone.hintCredits === 1 ? '' : 's'}`
                             : ''}
                     </Text>
-                </View>
+                </PopIn>
             ) : null}
 
             {matchOver.coinsTotal !== undefined ? (
@@ -436,6 +490,41 @@ function BoardColumn({
     );
 }
 
+
+/** Dev-only sample payloads for previewing the post-game moments. */
+function demoMatchOver(kind: string): MatchOver {
+    const win = kind !== 'rankdown';
+    const base: MatchOver = {
+        matchId: `demo-${kind}-${Date.now()}`,
+        result: win ? 'win' : 'loss',
+        outcome: win ? 'p1_solved' : 'p2_solved',
+        word: 'TRAIN',
+        wordTheme: 'Something that runs on rails.',
+        rankDelta: win ? 27 : -25,
+        previousRankPoints: win ? 1085 : 1104,
+        previousRankTier: win ? 'stone' : 'bronze',
+        newRankPoints: win ? 1112 : 1079,
+        newRankTier: win ? 'bronze' : 'stone',
+        battlePassXpAwarded: win ? 60 : 20,
+        coinsAwarded: win ? 10 : 3,
+        coinsTotal: 245,
+        matchDurationSec: 84,
+        yourGuesses: [
+            { guess: 'CRANE', tiles: ['wrong', 'correct', 'misplaced', 'misplaced', 'wrong'] },
+            { guess: 'TRAIN', tiles: ['correct', 'correct', 'correct', 'correct', 'correct'] },
+        ],
+        opponentGuesses: [
+            { guess: 'SLATE', tiles: ['wrong', 'wrong', 'misplaced', 'misplaced', 'wrong'] },
+            { guess: 'GRAIN', tiles: ['wrong', 'correct', 'correct', 'correct', 'correct'] },
+        ],
+    };
+    if (kind === 'milestone') {
+        base.previousRankPoints = 1040; base.previousRankTier = 'stone';
+        base.newRankPoints = 1067; base.newRankTier = 'stone';
+        base.streakUpdate = { playStreak: 7, dailyCoins: 10, milestone: { day: 7, coins: 75, hintCredits: 1 } };
+    }
+    return base;
+}
 
 const styles = makeThemedStyles(() => StyleSheet.create({
     content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.lg },

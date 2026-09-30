@@ -110,12 +110,15 @@ export const Grid: React.FC<Props> = ({
                     {row.letters.map((letter, colIdx) => {
                         const isActiveRow = rowIdx === activeRowIdx;
                         const isCursor = isActiveRow && colIdx === inputCursor;
+                        const solvedRow =
+                            row.tiles.length > 0 && row.tiles.every((t) => t === 'correct');
                         const tile = (
                             <Tile
                                 letter={letter}
                                 state={row.tiles[colIdx] ?? null}
                                 hintLetter={row.hintLetters?.[colIdx] ?? null}
                                 revealDelayMs={colIdx * 80}
+                                bounceDelayMs={solvedRow ? 420 + colIdx * 70 : undefined}
                                 size={tileSize}
                                 cursor={isCursor}
                                 boardOverride={boardOverride ?? null}
