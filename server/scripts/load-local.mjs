@@ -9,7 +9,7 @@ import { io } from '../../mobile/node_modules/socket.io-client/build/esm/index.j
 import { env } from '../src/config/env.ts';
 import { createUser, deleteAccount } from '../src/services/userService.ts';
 import { signSession } from '../src/auth/jwt.ts';
-import { pool } from '../src/db/pool.ts';
+import { connectMongo, closeMongo } from '../src/db/mongo.ts';
 import { redis } from '../src/db/redis.ts';
 assert.notEqual(env.NODE_ENV, 'production', 'Use a development database only');
 const count = Number(process.env.LOAD_PLAYERS || 20);
@@ -23,6 +23,7 @@ const users = [], sockets = [], timings = [], failures = [];
 let child, logs = '';
 const delay = ms => new Promise(r => setTimeout(r, ms));
 try {
+    await connectMongo();
     child = spawn(process.execPath, ['--import', 'tsx', 'src/index.ts'], {
         env: { ...process.env, PORT: String(port), NODE_ID: `load-${randomUUID()}`, LOG_LEVEL: 'error' },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -77,5 +78,5 @@ try {
         await stopped; clearTimeout(timer);
     }
     for (const user of users) await deleteAccount(user.id);
-    await pool.end(); await redis.quit();
+    await closeMongo(); await redis.quit();
 }

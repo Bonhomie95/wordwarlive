@@ -1,37 +1,30 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { pool } from '../../src/db/pool.js';
-import { redis } from '../../src/db/redis.js';
-import { defaults, ensureSyntheticDay } from '../../src/services/syntheticHistory.js';
-describe.skipIf(!process.env.DATABASE_URL)('persisted synthetic schedules', () => {
+import { hasDb, mongo, useDb } from './db.js';
+
+describe.skipIf(!hasDb)('persisted synthetic schedules', () => {
+    useDb();
     const day = '2099-12-28';
-    const versions: number[] = [];
+    const versions: string[] = [];
     afterAll(async () => {
-        await pool.query('DELETE FROM synthetic_days WHERE day=$1', [day]);
-        await pool.query('DELETE FROM synthetic_config_versions WHERE id=ANY($1::bigint[])', [
-            versions,
-        ]);
-        await pool.end();
-        redis.disconnect();
+        const { col } = await mongo();
+        await col('synthetic_days').deleteMany({ day });
+        await col('synthetic_config_versions').deleteMany({ id: { $in: versions } });
     });
     it('does not rewrite a materialized schedule when its configuration changes', async () => {
-        const first = await pool.query(
-            "INSERT INTO synthetic_config_versions(effective_day,settings,reason) VALUES($1,$2,'QA fixture') RETURNING id",
-            [day, JSON.stringify(defaults)],
-        );
-        versions.push(first.rows[0].id);
+        const { col, newId } = await mongo();
+        const { defaults, ensureSyntheticDay } = await import('../../src/services/syntheticHistory.js');
+        const version = async (settings: typeof defaults, reason: string, created_at: Date) => {
+            const id = newId();
+            versions.push(id);
+            await col('synthetic_config_versions').insertOne({ id, effective_day: day, settings, created_at, actor_id: null, reason });
+            return id;
+        };
+        const first = await version(defaults, 'QA fixture', new Date());
         const original = await ensureSyntheticDay(day);
         expect(original.ranked.length).toBeGreaterThan(0);
-        const next = await pool.query(
-            "INSERT INTO synthetic_config_versions(effective_day,settings,reason) VALUES($1,$2,'QA changed fixture') RETURNING id",
-            [day, JSON.stringify({ ...defaults, population: 0 })],
-        );
-        versions.push(next.rows[0].id);
+        await version({ ...defaults, population: 0 }, 'QA changed fixture', new Date(Date.now() + 1000));
         expect(await ensureSyntheticDay(day)).toEqual(original);
-        const stored = await pool.query(
-            'SELECT version_id,algorithm_version FROM synthetic_days WHERE day=$1',
-            [day],
-        );
-        expect(stored.rows[0].version_id).toBe(first.rows[0].id);
-        expect(stored.rows[0].algorithm_version).toBe(3);
+        const stored = await col('synthetic_days').findOne({ day }, { projection: { _id: 0, version_id: 1, algorithm_version: 1 } });
+        expect(stored).toEqual({ version_id: first, algorithm_version: 3 });
     });
 });

@@ -25,12 +25,14 @@ registerIndexes('synthetic_config_versions', [{ key: { id: 1 }, unique: true }, 
 registerIndexes('inventory_history', [{ key: { id: 1 }, unique: true }, { key: { user_id: 1, created_at: -1 } }]);
 
 /** ON CONFLICT DO NOTHING for a batch of rows sharing the same key fields. */
-async function upsertMany<T extends Record<string, unknown>>(collection: string, keys: (keyof T & string)[], rows: T[]): Promise<void> {
+/** `overwrite` makes the seed authoritative for existing rows (static catalog
+ *  content); the default only fills gaps so runtime-mutated rows are kept. */
+async function upsertMany<T extends Record<string, unknown>>(collection: string, keys: (keyof T & string)[], rows: T[], overwrite = false): Promise<void> {
     if (rows.length === 0) return;
     const ops: AnyBulkWriteOperation[] = rows.map((row) => ({
         updateOne: {
             filter: Object.fromEntries(keys.map((k) => [k, row[k]])),
-            update: { $setOnInsert: row },
+            update: overwrite ? { $set: row } : { $setOnInsert: row },
             upsert: true,
         },
     }));
@@ -57,8 +59,10 @@ async function seedWordBank(): Promise<void> {
 
 const D = (s: string) => new Date(s);
 const CREATED = D('2026-05-09T06:39:03.162Z');
+// 021_economy.sql: coin price derived from the cash price for shop items (0 = cash only).
+const COIN_PRICE: Record<number, number> = { 199: 250, 299: 400, 399: 550, 499: 700, 599: 850, 799: 1100 };
 const cosmetic = (id: string, category: string, name: string, description: string, price_cents: number, rarity: string, render_data: Record<string, unknown>, available_in_shop = true) =>
-    ({ id, category, name, description, price_cents, rarity, render_data, available_in_shop, created_at: CREATED });
+    ({ id, category, name, description, price_cents, price_coins: available_in_shop ? COIN_PRICE[price_cents] ?? 0 : 0, rarity, render_data, available_in_shop, created_at: CREATED });
 
 async function seedContent(): Promise<void> {
     const now = Date.now();
@@ -87,7 +91,7 @@ async function seedContent(): Promise<void> {
         cosmetic('border_bronze', 'profile_border', 'Bronze Frame', 'Earned: hit Bronze.', 0, 'common', { color: '#A97142' }, false),
         cosmetic('border_diamond', 'profile_border', 'Diamond Frame', 'Earned: hit Diamond.', 0, 'epic', { color: '#7CC8FF' }, false),
         cosmetic('border_legend', 'profile_border', 'Legend Frame', 'Top 500 of a season.', 0, 'legendary', { glow: true, color: '#FFD700' }, false),
-    ]);
+    ], true);
 
     const rewards: [number, number, 'free' | 'premium', string][] = [
         [1, 5, 'free', 'theme_paper'], [1, 10, 'free', 'avatar_fox_01'], [1, 15, 'free', 'victory_pulse'],
@@ -105,7 +109,7 @@ async function seedContent(): Promise<void> {
 
     await upsertMany('rank_seasons', ['id'], [
         { id: 1, name: 'Season 1', starts_at: D('2026-05-15T17:15:13.841Z'), ends_at: D('2026-07-10T17:15:13.841Z'), soft_reset_delta: 200, created_at: D('2026-05-15T17:15:13.841Z') },
-    ]);
+    ], true);
 
     // 027_live_operations.sql
     await upsertMany('synthetic_control', ['id'], [{ id: 1, paused: false }]);

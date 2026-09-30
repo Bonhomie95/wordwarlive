@@ -1,27 +1,23 @@
 // Solving the daily challenge grants coins exactly once. Self-skips
-// without DATABASE_URL. Uses today's real challenge word (read straight from
-// the table) so nothing about the shared challenge is modified.
+// without MONGODB_URL. Uses today's real challenge word (read straight from
+// the collection) so nothing about the shared challenge is modified.
 
 import { describe, it, expect, afterAll } from 'vitest';
-
-const hasDb = !!process.env.DATABASE_URL;
+import { hasDb, mongo, useDb } from './db.js';
 
 describe.skipIf(!hasDb)('daily solve reward (integration)', () => {
-    let pool: typeof import('../../src/db/pool.js').pool;
+    useDb();
     let userId: string | null = null;
 
     afterAll(async () => {
-        if (pool) {
-            if (userId) {
-                await pool.query('DELETE FROM daily_challenge_attempts WHERE user_id = $1', [userId]);
-                await pool.query('DELETE FROM users WHERE id = $1', [userId]);
-            }
-            await pool.end();
-        }
+        if (!userId) return;
+        const { col } = await mongo();
+        await col('daily_challenge_attempts').deleteMany({ user_id: userId });
+        await col('users').deleteOne({ id: userId });
     });
 
     it('grants DAILY_SOLVE_COINS on solve, refuses a second solve', async () => {
-        ({ pool } = await import('../../src/db/pool.js'));
+        const { col } = await mongo();
         const { createUser } = await import('../../src/services/userService.js');
         const { getCoinBalance } = await import('../../src/services/coinsService.js');
         const { getOrCreateTodaysChallenge, submitGuess, getMyAttempt, DAILY_SOLVE_COINS } =
@@ -37,11 +33,8 @@ describe.skipIf(!hasDb)('daily solve reward (integration)', () => {
         userId = u.id;
 
         const { challengeDate } = await getOrCreateTodaysChallenge();
-        const { rows } = await pool.query<{ word: string }>(
-            'SELECT word FROM daily_challenges WHERE challenge_date = $1',
-            [challengeDate]
-        );
-        const word = rows[0]!.word;
+        const row = await col<{ word: string }>('daily_challenges').findOne({ challenge_date: challengeDate });
+        const word = row!.word;
 
         const before = await getCoinBalance(u.id);
         const r = await submitGuess(u.id, word);

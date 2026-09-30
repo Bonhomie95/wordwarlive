@@ -2,27 +2,23 @@
 //   • first sight of a transaction → ok, grant
 //   • SAME user re-sends it       → ok, alreadyGranted (nothing re-granted)
 //   • DIFFERENT user sends it     → 409
-// Self-skips without DATABASE_URL (runs in CI and against the local dev DB).
+// Self-skips without MONGODB_URL (runs in CI and against the local dev DB).
 
 import { describe, it, expect, afterAll } from 'vitest';
-
-const hasDb = !!process.env.DATABASE_URL;
+import { hasDb, useDb } from './db.js';
 
 describe.skipIf(!hasDb)('verifyIapPurchase replay semantics (integration)', () => {
-    let pool: typeof import('../../src/db/pool.js').pool;
+    useDb();
     const created: string[] = [];
 
     afterAll(async () => {
-        if (pool) {
-            for (const id of created) await pool.query('DELETE FROM users WHERE id = $1', [id]);
-            await pool.end();
-        }
+        const { deleteAccount } = await import('../../src/services/userService.js');
+        for (const id of created) await deleteAccount(id);
     });
 
     it('is idempotent per user and refuses cross-account replays', async () => {
         const { createUser } = await import('../../src/services/userService.js');
         const { verifyIapPurchase } = await import('../../src/iap/verify.js');
-        ({ pool } = await import('../../src/db/pool.js'));
 
         const mk = async (tag: string) => {
             const u = await createUser({

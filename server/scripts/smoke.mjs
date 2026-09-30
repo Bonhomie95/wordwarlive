@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { io } from '../../mobile/node_modules/socket.io-client/build/esm/index.js';
 import { env } from '../src/config/env.ts';
-import { pool } from '../src/db/pool.ts';
+import { col, connectMongo, closeMongo } from '../src/db/mongo.ts';
 import { redis } from '../src/db/redis.ts';
 import { createUser, deleteAccount } from '../src/services/userService.ts';
 import { signSession } from '../src/auth/jwt.ts';
@@ -28,11 +28,12 @@ async function api(index, path, body) {
     return data;
 }
 try {
+    await connectMongo();
     for (let i = 0; i < 2; i++) {
         const u = await createUser({ username: `sm_${randomUUID().slice(0, 8)}`, provider: 'anonymous', subject: `qa-${randomUUID()}` });
         const token = signSession({ userId: u.id, username: u.username, provider: 'anonymous', tokenVersion: u.token_version });
         players.push({ ...u, token });
-        await pool.query('UPDATE users SET powerup_reveal = 12, powerup_lock = 2, powerup_scramble = 2, coins = 1000 WHERE id = $1', [u.id]);
+        await col('users').updateOne({ id: u.id }, { $set: { powerup_reveal: 12, powerup_lock: 2, powerup_scramble: 2, coins: 1000 } });
         const socket = io(base, { auth: { token }, transports: ['websocket'], reconnection: false });
         socket.on('connect_error', (error) => console.error('Socket connection failed:', error.message));
         sockets.push(socket);
@@ -140,6 +141,6 @@ try {
     }
     await sleep(250);
     for (const player of players) await deleteAccount(player.id);
-    await pool.end();
+    await closeMongo();
     redis.disconnect();
 }

@@ -6,7 +6,7 @@ import { createServer } from 'node:net';
 import { io } from '../../mobile/node_modules/socket.io-client/build/esm/index.js';
 import { createUser, deleteAccount } from '../src/services/userService.ts';
 import { signSession } from '../src/auth/jwt.ts';
-import { pool } from '../src/db/pool.ts';
+import { col, connectMongo, closeMongo } from '../src/db/mongo.ts';
 import { redis } from '../src/db/redis.ts';
 import { env } from '../src/config/env.ts';
 assert.notEqual(env.NODE_ENV, 'production');
@@ -70,6 +70,7 @@ async function connect(u) {
     return s;
 }
 try {
+    await connectMongo();
     await boot();
     for (let i = 0; i < 2; i++) {
         const u = await createUser({
@@ -86,7 +87,7 @@ try {
                 tokenVersion: u.token_version,
             }),
         });
-        await pool.query('UPDATE users SET powerup_reveal=3,hint_credits=3 WHERE id=$1', [u.id]);
+        await col('users').updateOne({ id: u.id }, { $set: { powerup_reveal: 3, hint_credits: 3 } });
     }
     const a = await connect(users[0]),
         b = await connect(users[1]);
@@ -105,14 +106,11 @@ try {
     const match = await found;
     assert.equal((await ack(a, 'powerup_use', { kind: 'reveal' })).ok, true);
     assert.equal((await ack(a, 'hint_request')).ok, true);
-    const initial = (
-        await pool.query('SELECT state FROM match_checkpoints WHERE id=$1', [match.matchId])
-    ).rows[0].state;
+    const initial = (await col('match_checkpoints').findOne({ id: match.matchId })).state;
     const guess = initial.p1Word === 'CRANE' ? 'SLATE' : 'CRANE';
     assert.equal((await ack(a, 'guess_submit', { guess })).ok, true);
-    const balance = (
-        await pool.query('SELECT powerup_reveal,hint_credits FROM users WHERE id=$1', [users[0].id])
-    ).rows[0];
+    const inventory = () => col('users').findOne({ id: users[0].id }, { projection: { _id: 0, powerup_reveal: 1, hint_credits: 1 } });
+    const balance = await inventory();
     a.disconnect();
     const reconnected = await connect(users[0]);
     const history = [];
@@ -134,34 +132,19 @@ try {
     assert.equal(restored.filter((v) => v.side === 'me').length, 1);
     assert.equal(letters.length, 2);
     assert.equal((await ack(ra, 'hint_request')).ok, false);
-    assert.deepEqual(
-        (
-            await pool.query('SELECT powerup_reveal,hint_credits FROM users WHERE id=$1', [
-                users[0].id,
-            ])
-        ).rows[0],
-        balance,
-    );
+    assert.deepEqual(await inventory(), balance);
     console.log('PASS SIGKILL/restart: same match, guesses, reveals, hint cap and inventory');
     await pause(2100);
     const ended = event(ra, 'match_over');
     assert.equal((await ack(ra, 'guess_submit', { guess: initial.p1Word })).ok, true);
     await ended;
-    const points = (await pool.query('SELECT rank_points FROM users WHERE id=$1', [users[0].id]))
-        .rows[0].rank_points;
+    const rankPoints = async () => (await col('users').findOne({ id: users[0].id })).rank_points;
+    const points = await rankPoints();
     await kill();
     for (const s of sockets) s.disconnect();
     await boot();
-    assert.equal(
-        (await pool.query('SELECT count(*)::int n FROM matches WHERE id=$1', [match.matchId]))
-            .rows[0].n,
-        1,
-    );
-    assert.equal(
-        (await pool.query('SELECT rank_points FROM users WHERE id=$1', [users[0].id])).rows[0]
-            .rank_points,
-        points,
-    );
+    assert.equal(await col('matches').countDocuments({ id: match.matchId }), 1);
+    assert.equal(await rankPoints(), points);
     console.log('PASS second restart: completed match not settled twice');
 } catch (e) {
     console.error(output);
@@ -169,8 +152,8 @@ try {
 } finally {
     for (const s of sockets) s.disconnect();
     await kill();
-    await pool.query('DELETE FROM match_checkpoints WHERE node_id=$1', [node]);
+    await col('match_checkpoints').deleteMany({ node_id: node });
     for (const u of users) await deleteAccount(u.id);
-    await pool.end();
+    await closeMongo();
     redis.disconnect();
 }

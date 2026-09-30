@@ -76,10 +76,19 @@ export async function purchaseCosmeticWithCoins(
     const cos = await getCosmetic(cosmeticId);
     if (!cos || !cos.available_in_shop) return { ok: false, error: 'NOT_FOUND' };
     if (cos.price_coins <= 0) return { ok: false, error: 'NOT_FOR_COINS' };
-    if (await ownsCosmetic(userId, cosmeticId)) return { ok: false, error: 'ALREADY_OWNED' };
+    // Reserve the entitlement first (unique user_id+cosmetic_id) so racing
+    // purchases can only charge once; release it if the wallet can't pay.
+    const reserved = await userCosmetics().updateOne(
+        { user_id: userId, cosmetic_id: cosmeticId },
+        { $setOnInsert: { user_id: userId, cosmetic_id: cosmeticId, acquired_via: 'purchase', acquired_at: new Date() } },
+        { upsert: true }
+    );
+    if (!reserved.upsertedCount) return { ok: false, error: 'ALREADY_OWNED' };
     const coins = await spendCoins({ userId, amount: cos.price_coins, source: 'cosmetic_spend', metadata: { cosmeticId } });
-    if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-    await grantCosmetic(userId, cosmeticId, 'purchase');
+    if (coins === null) {
+        await userCosmetics().deleteOne({ user_id: userId, cosmetic_id: cosmeticId, acquired_via: 'purchase' });
+        return { ok: false, error: 'NOT_AFFORDABLE' };
+    }
     return { ok: true, coins };
 }
 

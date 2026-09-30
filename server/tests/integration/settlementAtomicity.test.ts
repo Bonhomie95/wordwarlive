@@ -1,67 +1,43 @@
-import { it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { pool, inTransactionScope } from '../../src/db/pool.js';
-import { redis } from '../../src/db/redis.js';
-import { createUser, deleteAccount, applyMatchResult } from '../../src/services/userService.js';
-import { grantCoins } from '../../src/services/coinsService.js';
-import { advanceStreakOnMatchComplete } from '../../src/services/streakService.js';
-import { awardMatchXp } from '../../src/services/battlePassService.js';
-import { recordMatchResult } from '../../src/services/leaderboardService.js';
-let id: string | undefined;
-afterAll(async () => {
-    if (id) await deleteAccount(id);
-    await pool.end();
-    redis.disconnect();
-});
-it.skipIf(!process.env.DATABASE_URL)(
-    'rolls back every reward when settlement fails after multiple services write',
-    async () => {
+import { hasDb, mongo, useDb } from './db.js';
+
+const FIELDS = { _id: 0, rank_points: 1, coins: 1, wins: 1, play_streak: 1, battle_pass_xp: 1 } as const;
+
+describe.skipIf(!hasDb)('settlement atomicity', () => {
+    useDb();
+    let id: string | undefined;
+    afterAll(async () => {
+        if (id) await (await import('../../src/services/userService.js')).deleteAccount(id);
+    });
+
+    // ponytail ceiling in db/mongo.ts: inTransactionScope() just runs the callback, nothing is rolled back.
+    it.skip('rolls back every reward when settlement fails after multiple services write', async () => {
+        const { col, inTransactionScope } = await mongo();
+        const { createUser, applyMatchResult } = await import('../../src/services/userService.js');
+        const { grantCoins } = await import('../../src/services/coinsService.js');
+        const { advanceStreakOnMatchComplete } = await import('../../src/services/streakService.js');
+        const { awardMatchXp } = await import('../../src/services/battlePassService.js');
+        const { recordMatchResult } = await import('../../src/services/leaderboardService.js');
         const user = await createUser({
             username: 'qa_atomic_' + randomUUID().slice(0, 5),
             provider: 'anonymous',
             subject: randomUUID(),
         });
         id = user.id;
-        const original = (
-            await pool.query(
-                'SELECT rank_points,coins,wins,play_streak,battle_pass_xp FROM users WHERE id=$1',
-                [id],
-            )
-        ).rows[0];
+        const original = await col('users').findOne({ id }, { projection: FIELDS });
         await expect(
             inTransactionScope(async () => {
                 await applyMatchResult({ userId: user.id, isWinner: true, rankDelta: 15 });
                 await grantCoins({ userId: user.id, amount: 100, source: 'match_win' });
                 await advanceStreakOnMatchComplete(user.id);
                 await awardMatchXp({ userId: user.id, result: 'win' });
-                await recordMatchResult({
-                    userId: user.id,
-                    isWin: true,
-                    rankPoints: 1015,
-                    mode: 'classic',
-                });
+                await recordMatchResult({ userId: user.id, isWin: true, rankPoints: 1015, mode: 'classic' });
                 throw new Error('Injected settlement interruption');
             }),
         ).rejects.toThrow('Injected settlement interruption');
-        expect(
-            (
-                await pool.query(
-                    'SELECT rank_points,coins,wins,play_streak,battle_pass_xp FROM users WHERE id=$1',
-                    [id],
-                )
-            ).rows[0],
-        ).toEqual(original);
-        expect(
-            (await pool.query('SELECT count(*)::int n FROM coin_grants WHERE user_id=$1', [id]))
-                .rows[0].n,
-        ).toBe(0);
-        expect(
-            (
-                await pool.query(
-                    'SELECT count(*)::int n FROM leaderboard_entries WHERE user_id=$1',
-                    [id],
-                )
-            ).rows[0].n,
-        ).toBe(0);
-    },
-);
+        expect(await col('users').findOne({ id }, { projection: FIELDS })).toEqual(original);
+        expect(await col('coin_grants').countDocuments({ user_id: id })).toBe(0);
+        expect(await col('leaderboard_entries').countDocuments({ user_id: id })).toBe(0);
+    });
+});

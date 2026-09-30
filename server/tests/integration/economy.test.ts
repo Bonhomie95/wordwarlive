@@ -1,24 +1,20 @@
 // DB-backed checks for the coin economy added in the revenue pass:
 // coin-priced cosmetics, Streak Shield, XP Booster, username rename.
-// Self-skips without DATABASE_URL.
+// Self-skips without MONGODB_URL.
 
 import { describe, it, expect, afterAll } from 'vitest';
-
-const hasDb = !!process.env.DATABASE_URL;
+import { hasDb, useDb } from './db.js';
 
 describe.skipIf(!hasDb)('coin economy (integration)', () => {
-    let pool: typeof import('../../src/db/pool.js').pool;
+    useDb();
     const created: string[] = [];
 
     afterAll(async () => {
-        if (pool) {
-            for (const id of created) await pool.query('DELETE FROM users WHERE id = $1', [id]);
-            await pool.end();
-        }
+        const { deleteAccount } = await import('../../src/services/userService.js');
+        for (const id of created) await deleteAccount(id);
     });
 
     it('cosmetic with coins, shields, XP boost and rename all charge and grant correctly', async () => {
-        ({ pool } = await import('../../src/db/pool.js'));
         const { createUser, changeUsername, findUserById } = await import('../../src/services/userService.js');
         const { grantCoins, getCoinBalance } = await import('../../src/services/coinsService.js');
         const { purchaseCosmeticWithCoins, ownsCosmetic, getCosmetic } = await import('../../src/services/cosmeticsService.js');
