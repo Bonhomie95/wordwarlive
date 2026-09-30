@@ -14,6 +14,10 @@ const MIGRATIONS_DIR = join(__dirname, '../../migrations');
 const WORDS_PATH = join(__dirname, '../data/words.json');
 
 async function ensureMigrationsTable() {
+    // Lets DATABASE_URL carry `?options=-c search_path=wordwar,public` so the
+    // app can share a Postgres instance with another project (tables land in
+    // the `wordwar` schema instead of colliding in `public`).
+    await query('CREATE SCHEMA IF NOT EXISTS wordwar');
     await query(`
         CREATE TABLE IF NOT EXISTS _migrations (
             name TEXT PRIMARY KEY,
