@@ -39,6 +39,9 @@ interface DayDoc {
 }
 const versions = () => col<VersionDoc>('synthetic_config_versions');
 const days = () => col<DayDoc>('synthetic_days');
+// Day payloads are immutable once written (only admin updates replace them),
+// so keep them in memory instead of re-reading ~60 large docs per request.
+const dayCache = new Map<string, Day>();
 const control = () => col<{ id: number; paused: boolean }>('synthetic_control');
 const identities = () => col<{ player_index: number; identity: SyntheticPlayer }>('synthetic_identities');
 /** Real humans who played on `day` or the day before (`last_play_date` is a YYYY-MM-DD string). */
@@ -228,6 +231,8 @@ export async function updateSynthetic(
     actorName: string,
     reason: string,
 ) {
+    dayCache.clear(); // admin changes may rewrite day payloads
+
     // Freeze today's baseline before making changes. Pausing preserves all completed results.
     const today = todayStr();
     await ensureSyntheticDay(today);
@@ -305,7 +310,13 @@ async function readSyntheticLeaderboard(
     for (let i = 0; i < missing.length; i += 15) {
         await Promise.all(missing.slice(i, i + 15).map((day) => ensureSyntheticDay(day)));
     }
-    const rows = await days().find(range, { projection: { _id: 0, day: 1, payload: 1 } }).toArray();
+    const uncached = { day: { $gte: HISTORY_START, $lte: today, $nin: [...dayCache.keys()] } };
+    for (const row of await days().find(uncached, { projection: { _id: 0, day: 1, payload: 1 } }).toArray()) {
+        dayCache.set(row.day, row.payload);
+    }
+    const rows = [...dayCache.entries()]
+        .filter(([day]) => day >= HISTORY_START && day <= today)
+        .map(([day, payload]) => ({ day, payload }));
     const players = await loadIdentities();
     const totals = players.map(() => ({ wins: 0, losses: 0, net: 0 }));
     const cutoff = Math.floor(now / 60000) * 60000;

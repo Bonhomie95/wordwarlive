@@ -129,6 +129,7 @@ registerIndexes('node_leases', [{ key: { id: 1 }, unique: true }]);
 const LEASE_MS = 30_000;
 const LEASE_HEARTBEAT_MS = 10_000;
 interface NodeLease { id: string; lease_until: Date }
+const LEASE_ACQUIRE_TIMEOUT_MS = 180_000;
 
 export class MatchRegistry {
     private leaseTimer: NodeJS.Timeout | null = null;
@@ -206,7 +207,7 @@ export class MatchRegistry {
         }
     }
 
-    /** Called before listening. Deployments must retain a unique stable NODE_ID. */
+    /** Called after listening. Deployments must retain a unique stable NODE_ID. */
     async recover(io: AppIOServer): Promise<number> {
         const leases = col<NodeLease>('node_leases');
         const renew = () => leases.updateOne(
@@ -216,9 +217,17 @@ export class MatchRegistry {
         );
         // Acquire: insert if absent, or take over an expired lease. A live
         // lease makes the upsert collide on the unique id index (11000).
-        try { await renew(); } catch (err) {
-            if ((err as { code?: number }).code !== 11000) throw err;
-            throw new Error('NODE_ID is already running; use one unique stable NODE_ID per instance.');
+        // During a rolling deploy the previous instance holds the lease until
+        // it is told to stop (which happens once this one is serving), so
+        // keep trying for a while instead of dying.
+        const deadline = Date.now() + LEASE_ACQUIRE_TIMEOUT_MS;
+        for (;;) {
+            try { await renew(); break; } catch (err) {
+                if ((err as { code?: number }).code !== 11000) throw err;
+                if (Date.now() > deadline) throw new Error('NODE_ID is already running; use one unique stable NODE_ID per instance.');
+                logger.warn({ nodeId: env.nodeId }, 'Match ownership lease held by another instance; retrying');
+                await new Promise((r) => setTimeout(r, 2_000));
+            }
         }
         // Heartbeat renews our own (unexpired) lease; a lost DB kills the node
         // like the old advisory-lock connection error did.

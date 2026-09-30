@@ -191,14 +191,14 @@ async function main() {
 
     const httpServer = createServer(app);
     const io = createSocketServer(httpServer);
+    // Open the port first so a rolling deploy can retire the previous
+    // instance (which releases the match-ownership lease we then acquire).
+    await new Promise<void>((resolve) => httpServer.listen(env.PORT, resolve));
+    logger.info(
+        { port: env.PORT, env: env.NODE_ENV, nodeId: env.nodeId },
+        'WordWar server listening'
+    );
     await matchRegistry.recover(io);
-
-    httpServer.listen(env.PORT, () => {
-        logger.info(
-            { port: env.PORT, env: env.NODE_ENV, nodeId: env.nodeId },
-            'WordWar server listening'
-        );
-    });
 
     let shuttingDown = false;
     const shutdown = async () => {
