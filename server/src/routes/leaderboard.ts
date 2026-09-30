@@ -1,4 +1,4 @@
-// GET /api/leaderboard?period=daily|weekly|monthly|all_time&limit=50
+// GET /api/leaderboard?period=daily|weekly|monthly|all_time&limit=50[&around=1]
 //
 // Returns top-N entries plus the requesting user's own rank within the
 // same bucket (if they've played in that period).
@@ -42,6 +42,7 @@ leaderboardRouter.get('/leaderboard', requireAuth, async (req, res) => {
         mode: modeParam,
         limit,
         requesterId: req.session!.userId,
+        around: req.query.around === '1' || req.query.around === 'true',
     });
     res.json(data);
 });

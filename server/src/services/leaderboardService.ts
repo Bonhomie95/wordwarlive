@@ -196,6 +196,9 @@ export async function getLeaderboard(args: {
     limit?: number;
     /** Optional caller's user id — if provided we also return their own rank. */
     requesterId?: string;
+    /** Return a window of rows centred on the requester instead of the top-N
+     *  (for "show my position" when they rank below the visible list). */
+    around?: boolean;
 }): Promise<LeaderboardResponse> {
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
     const bucket = bucketFor(args.period);
@@ -253,9 +256,27 @@ export async function getLeaderboard(args: {
     }
 
     const fillers = await persistedSyntheticLeaderboard(args.period, mode);
+    const asFiller = (entry: (typeof fillers)[number]): LeaderboardEntry =>
+        ({ ...entry, avatarId: null, profileBorderId: null, rankInLeaderboard: 0 });
+
+    if (args.around && you && args.requesterId) {
+        // ponytail: loads every human row in the bucket to place the requester
+        // among the synthetic players; paginate server-side if humans grow large.
+        const humans = await entriesCol
+            .aggregate<RankedRow>([...rankedStages(args.period, bucket, mode), PROJECT_ROW])
+            .toArray();
+        const standings = [...humans.map((r) => toEntry(r, 0)), ...fillers.map(asFiller)]
+            .sort(compareStandings)
+            .map((entry, i) => ({ ...entry, rankInLeaderboard: i + 1 }));
+        const idx = standings.findIndex((e) => e.userId === args.requesterId);
+        const from = Math.max(0, idx - Math.floor(limit / 2));
+        const window = standings.slice(from, from + limit);
+        return { period: args.period, bucket, entries: window, you: standings[idx] ?? you };
+    }
+
     const merged: LeaderboardEntry[] = [
         ...entries,
-        ...fillers.map((entry) => ({ ...entry, avatarId: null, profileBorderId: null, rankInLeaderboard: 0 })),
+        ...fillers.map(asFiller),
     ].sort(compareStandings).slice(0, limit).map((entry, i) => ({ ...entry, rankInLeaderboard: i + 1 }));
     if (you) {
         const player = you;
