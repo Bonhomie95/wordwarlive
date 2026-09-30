@@ -1,16 +1,21 @@
-import { connectTransactionClient } from '../db/pool.js';
 // Persists a finished match to the DB. Called from the socket match handler
-// once the engine reports GAME_OVER. Does the writes in a single transaction
-// so we never end up with a half-written match.
+// once the engine reports GAME_OVER.
 
-import { pool } from '../db/pool.js';
+import { col, newId, registerIndexes } from '../db/mongo.js';
 import type { GuessResult, MatchOutcome } from '../game/engine.js';
 
+registerIndexes('matches', [
+    { key: { id: 1 }, unique: true },
+    { key: { player1_id: 1, ended_at: -1 } },
+    { key: { player2_id: 1, ended_at: -1 } },
+]);
+registerIndexes('guesses', [
+    { key: { id: 1 }, unique: true },
+    { key: { match_id: 1 } },
+]);
+
 export interface PersistMatchArgs {
-    /** In-memory match id, also used by match_replays.match_id. We pin it
-     *  on the matches row so saveReplay's FK resolves. Otherwise Postgres
-     *  generates a different UUID and the FK insert blows up at end-of-
-     *  match, killing the victory screen for both classic and mystery. */
+    /** In-memory match id, also used by match_replays.match_id. */
     matchId: string;
     player1Id: string;
     player2Id: string;
@@ -33,71 +38,34 @@ export interface PersistMatchArgs {
 }
 
 export async function persistMatch(args: PersistMatchArgs): Promise<string> {
-    const client = await connectTransactionClient();
-    try {
-        await client.query('BEGIN');
+    // ponytail: no multi-doc transaction; matches + guesses are three inserts.
+    // Re-running after a crash is safe: the unique id index rejects a dup match.
+    await col('matches').insertOne({
+        id: args.matchId,
+        player1_id: args.player1Id,
+        player2_id: args.player2Id,
+        word: args.word.toUpperCase(),
+        p2_word: args.p2Word ? args.p2Word.toUpperCase() : null,
+        word_length: args.word.length,
+        winner_id: args.winnerId,
+        outcome: args.outcome,
+        duration_seconds: args.durationSeconds,
+        p1_rank_delta: args.p1RankDelta,
+        p2_rank_delta: args.p2RankDelta,
+        p1_is_bot: args.p1IsBot,
+        p2_is_bot: args.p2IsBot,
+        started_at: new Date(args.startedAtMs),
+        ended_at: new Date(),
+        mode: 'classic',
+    });
 
-        const matchRes = await client.query<{ id: string }>(
-            `INSERT INTO matches
-                (id, player1_id, player2_id, word, p2_word, word_length, winner_id,
-                 outcome, duration_seconds, p1_rank_delta, p2_rank_delta,
-                 p1_is_bot, p2_is_bot, started_at, ended_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                     to_timestamp($14 / 1000.0), now())
-             RETURNING id`,
-            [
-                args.matchId,
-                args.player1Id,
-                args.player2Id,
-                args.word.toUpperCase(),
-                args.p2Word ? args.p2Word.toUpperCase() : null,
-                args.word.length,
-                args.winnerId,
-                args.outcome,
-                args.durationSeconds,
-                args.p1RankDelta,
-                args.p2RankDelta,
-                args.p1IsBot,
-                args.p2IsBot,
-                args.startedAtMs,
-            ]
-        );
-        const matchId = matchRes.rows[0]!.id;
-
-        // Compute guess timestamps relative to start. We don't store per-guess
-        // wall-clock here; the at_ms field is "ms after match start".
-        const p1Sequence = args.p1Guesses.map((g, i) => ({
-            guess: g.guess,
-            tiles: g.tiles,
-            // We don't actually have per-guess timestamps here without threading
-            // them through; persist the index for now.
-            i,
-        }));
-        const p2Sequence = args.p2Guesses.map((g, i) => ({
-            guess: g.guess,
-            tiles: g.tiles,
-            i,
-        }));
-
-        await client.query(
-            `INSERT INTO guesses (match_id, player_id, guess_sequence)
-             VALUES ($1, $2, $3::jsonb)`,
-            [matchId, args.player1Id, JSON.stringify(p1Sequence)]
-        );
-        await client.query(
-            `INSERT INTO guesses (match_id, player_id, guess_sequence)
-             VALUES ($1, $2, $3::jsonb)`,
-            [matchId, args.player2Id, JSON.stringify(p2Sequence)]
-        );
-
-        await client.query('COMMIT');
-        return matchId;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    // at_ms is not threaded through; persist the index for now.
+    const seq = (gs: GuessResult[]) => gs.map((g, i) => ({ guess: g.guess, tiles: g.tiles, i }));
+    await col('guesses').insertMany([
+        { id: newId(), match_id: args.matchId, player_id: args.player1Id, guess_sequence: seq(args.p1Guesses) },
+        { id: newId(), match_id: args.matchId, player_id: args.player2Id, guess_sequence: seq(args.p2Guesses) },
+    ]);
+    return args.matchId;
 }
 
 /** Recent matches for a user, with opponent info.
@@ -117,29 +85,54 @@ export interface RecentMatch {
     endedAt: string;
 }
 
+interface MatchDoc {
+    id: string;
+    player1_id: string;
+    player2_id: string;
+    word: string;
+    p2_word: string | null;
+    winner_id: string | null;
+    outcome: string;
+    duration_seconds: number;
+    p1_rank_delta: number;
+    p2_rank_delta: number;
+    ended_at: Date;
+}
+
+function recentMatchDocs(userId: string, limit: number): Promise<MatchDoc[]> {
+    return col<MatchDoc>('matches')
+        .find({ $or: [{ player1_id: userId }, { player2_id: userId }] }, { projection: { _id: 0 } })
+        .sort({ ended_at: -1 })
+        .limit(limit)
+        .toArray();
+}
+
 export async function listRecentMatches(
     userId: string,
     limit = 25
 ): Promise<RecentMatch[]> {
-    const { query } = await import('../db/pool.js');
-    return query<RecentMatch>(
-        `SELECT
-            m.id,
-            CASE WHEN m.player1_id = $1 THEN m.word ELSE COALESCE(m.p2_word, m.word) END AS word,
-            m.outcome,
-            m.duration_seconds AS "durationSeconds",
-            m.ended_at AS "endedAt",
-            CASE WHEN m.player1_id = $1 THEN m.p1_rank_delta ELSE m.p2_rank_delta END AS "rankDelta",
-            CASE WHEN m.winner_id = $1 THEN TRUE ELSE FALSE END AS "isWin",
-            CASE WHEN m.player1_id = $1 THEN u2.username ELSE u1.username END AS "opponentUsername"
-         FROM matches m
-         JOIN users u1 ON u1.id = m.player1_id
-         JOIN users u2 ON u2.id = m.player2_id
-         WHERE m.player1_id = $1 OR m.player2_id = $1
-         ORDER BY m.ended_at DESC
-         LIMIT $2`,
-        [userId, limit]
-    );
+    const docs = await recentMatchDocs(userId, limit);
+    const ids = [...new Set(docs.flatMap((m) => [m.player1_id, m.player2_id]))];
+    const users = await col<{ id: string; username: string }>('users')
+        .find({ id: { $in: ids } }, { projection: { _id: 0, id: 1, username: 1 } })
+        .toArray();
+    const names = new Map(users.map((u) => [u.id, u.username]));
+    // Inner JOIN semantics: drop matches whose users no longer exist.
+    return docs
+        .filter((m) => names.has(m.player1_id) && names.has(m.player2_id))
+        .map((m) => {
+            const isP1 = m.player1_id === userId;
+            return {
+                id: m.id,
+                word: isP1 ? m.word : m.p2_word ?? m.word,
+                outcome: m.outcome,
+                durationSeconds: m.duration_seconds,
+                endedAt: m.ended_at.toISOString(),
+                rankDelta: isP1 ? m.p1_rank_delta : m.p2_rank_delta,
+                isWin: m.winner_id === userId,
+                opponentUsername: names.get(isP1 ? m.player2_id : m.player1_id)!,
+            };
+        });
 }
 
 /**
@@ -154,17 +147,10 @@ export async function getRecentResultsSummary(userId: string): Promise<{
     recentWins: number;
     recentTotal: number;
 }> {
-    const { query } = await import('../db/pool.js');
-    const rows = await query<{ is_win: boolean; outcome: string }>(
-        `SELECT
-            (winner_id = $1) AS is_win,
-            outcome
-         FROM matches
-         WHERE player1_id = $1 OR player2_id = $1
-         ORDER BY ended_at DESC
-         LIMIT 5`,
-        [userId]
-    );
+    const rows = (await recentMatchDocs(userId, 5)).map((m) => ({
+        is_win: m.winner_id === userId,
+        outcome: m.outcome,
+    }));
 
     let consecutiveWins = 0;
     let consecutiveLosses = 0;

@@ -14,7 +14,6 @@ echo "JWT_SECRET=$(openssl rand -hex 64)" >> .env
 
 docker compose up -d        # postgres + redis
 npm install
-npm run migrate             # idempotent — also seeds the word bank
 npm run dev                 # http://localhost:4000
 ```
 
@@ -37,7 +36,7 @@ src/
 ├── routes/            # REST endpoints (auth, users, matches, cosmetics, battle pass)
 ├── socket/            # Socket.io server, matchmaking, in-flight match handler
 ├── ai/                # Groq client, daily-word curator, bot opponent
-└── data/words.json    # curated 4–10 letter word bank, loaded on migrate
+└── data/words.json    # curated 4–10 letter word bank, seeded at boot
 ```
 
 ## Polished surfaces

@@ -1,6 +1,8 @@
-import type { PoolClient } from 'pg';
-import { query, pool, transaction } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
 import { spendCoins } from './coinsService.js';
+
+registerIndexes('cosmetics', [{ key: { id: 1 }, unique: true }]);
+registerIndexes('user_cosmetics', [{ key: { user_id: 1, cosmetic_id: 1 }, unique: true }]);
 
 export interface CosmeticRow {
     id: string;
@@ -20,31 +22,42 @@ export interface CosmeticRow {
     available_in_shop: boolean;
 }
 
+interface UserCosmeticDoc {
+    user_id: string;
+    cosmetic_id: string;
+    acquired_via: string;
+    acquired_at: Date;
+}
+
+const COSMETIC_PROJECTION = {
+    _id: 0, id: 1, category: 1, name: 1, description: 1, price_cents: 1, price_coins: 1,
+    rarity: 1, render_data: 1, available_in_shop: 1,
+} as const;
+
+const cosmetics = () => col<CosmeticRow>('cosmetics');
+const userCosmetics = () => col<UserCosmeticDoc>('user_cosmetics');
+
 export async function listShopCosmetics(userId?: string): Promise<CosmeticRow[]> {
-    return query<CosmeticRow>(
-        `SELECT id, category, name, description, price_cents, price_coins, rarity,
-                render_data, available_in_shop
-         FROM cosmetics WHERE available_in_shop = TRUE OR EXISTS (SELECT 1 FROM user_cosmetics uc WHERE uc.cosmetic_id = cosmetics.id AND uc.user_id = $1)
-         ORDER BY category, price_cents ASC`, [userId ?? null]
-    );
+    const owned = userId ? await listOwnedCosmetics(userId) : [];
+    return cosmetics()
+        .find(
+            { $or: [{ available_in_shop: true }, { id: { $in: owned } }] },
+            { projection: COSMETIC_PROJECTION }
+        )
+        .sort({ category: 1, price_cents: 1 })
+        .toArray();
 }
 
 export async function getCosmetic(id: string): Promise<CosmeticRow | null> {
-    const rows = await query<CosmeticRow>(
-        `SELECT id, category, name, description, price_cents, price_coins, rarity,
-                render_data, available_in_shop
-         FROM cosmetics WHERE id = $1`,
-        [id]
-    );
-    return rows[0] ?? null;
+    return cosmetics().findOne({ id }, { projection: COSMETIC_PROJECTION });
 }
 
 export async function ownsCosmetic(userId: string, cosmeticId: string): Promise<boolean> {
-    const rows = await query(
-        'SELECT 1 FROM user_cosmetics WHERE user_id = $1 AND cosmetic_id = $2',
-        [userId, cosmeticId]
+    const row = await userCosmetics().findOne(
+        { user_id: userId, cosmetic_id: cosmeticId },
+        { projection: { _id: 1 } }
     );
-    return rows.length > 0;
+    return row !== null;
 }
 
 /**
@@ -58,72 +71,61 @@ export async function purchaseCosmeticWithCoins(
     | { ok: true; coins: number }
     | { ok: false; error: 'NOT_FOUND' | 'NOT_FOR_COINS' | 'ALREADY_OWNED' | 'NOT_AFFORDABLE' }
 > {
-    return transaction(async (client) => {
-        const user = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (!user.rowCount) return { ok: false, error: 'NOT_FOUND' };
-        const cos = await getCosmetic(cosmeticId);
-        if (!cos || !cos.available_in_shop) return { ok: false, error: 'NOT_FOUND' };
-        if (cos.price_coins <= 0) return { ok: false, error: 'NOT_FOR_COINS' };
-        const owned = await client.query('SELECT 1 FROM user_cosmetics WHERE user_id = $1 AND cosmetic_id = $2', [userId, cosmeticId]);
-        if (owned.rowCount) return { ok: false, error: 'ALREADY_OWNED' };
-        const coins = await spendCoins({ userId, amount: cos.price_coins, source: 'cosmetic_spend', metadata: { cosmeticId } }, client);
-        if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-        await grantCosmetic(userId, cosmeticId, 'purchase', client);
-        return { ok: true, coins };
-    });
+    const user = await col('users').findOne({ id: userId }, { projection: { _id: 1 } });
+    if (!user) return { ok: false, error: 'NOT_FOUND' };
+    const cos = await getCosmetic(cosmeticId);
+    if (!cos || !cos.available_in_shop) return { ok: false, error: 'NOT_FOUND' };
+    if (cos.price_coins <= 0) return { ok: false, error: 'NOT_FOR_COINS' };
+    if (await ownsCosmetic(userId, cosmeticId)) return { ok: false, error: 'ALREADY_OWNED' };
+    const coins = await spendCoins({ userId, amount: cos.price_coins, source: 'cosmetic_spend', metadata: { cosmeticId } });
+    if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
+    await grantCosmetic(userId, cosmeticId, 'purchase');
+    return { ok: true, coins };
 }
 
 export async function listOwnedCosmetics(userId: string): Promise<string[]> {
-    const rows = await query<{ cosmetic_id: string }>(
-        'SELECT cosmetic_id FROM user_cosmetics WHERE user_id = $1',
-        [userId]
-    );
+    const rows = await userCosmetics()
+        .find({ user_id: userId }, { projection: { _id: 0, cosmetic_id: 1 } })
+        .toArray();
     return rows.map((r) => r.cosmetic_id);
 }
 
-/** Grants an entitlement inside the caller's transaction. Store verification
- * occurs in the purchase route before this internal helper is invoked. */
+/** Grants an entitlement. Store verification occurs in the purchase route
+ * before this internal helper is invoked. */
 export async function grantCosmetic(
     userId: string,
     cosmeticId: string,
     acquiredVia: 'purchase' | 'battle_pass' | 'season_reward' | 'grant' = 'purchase',
-    existing?: PoolClient
+    _existing?: unknown
 ): Promise<void> {
     // For the 'purchase' path the store receipt is verified upstream in
     // routes/cosmetics.ts (verifyIapPurchase) before we get here. Other
     // acquiredVia values are internal grants and don't involve a receipt.
-    return transaction(async (client) => {
-        const existsRes = await client.query(
-            'SELECT 1 FROM cosmetics WHERE id = $1',
-            [cosmeticId]
-        );
-        if (existsRes.rowCount === 0) throw new Error('Cosmetic does not exist');
-
-        await client.query(
-            `INSERT INTO user_cosmetics (user_id, cosmetic_id, acquired_via)
-             VALUES ($1, $2, $3)
-             ON CONFLICT DO NOTHING`,
-            [userId, cosmeticId, acquiredVia]
-        );
-    }, existing);
+    const exists = await cosmetics().findOne({ id: cosmeticId }, { projection: { _id: 1 } });
+    if (!exists) throw new Error('Cosmetic does not exist');
+    // ON CONFLICT DO NOTHING
+    await userCosmetics().updateOne(
+        { user_id: userId, cosmetic_id: cosmeticId },
+        { $setOnInsert: { acquired_via: acquiredVia, acquired_at: new Date() } },
+        { upsert: true }
+    );
 }
 
 export const STYLE_BUNDLE = { id: 'neon_fox', name: 'Neon Fox style set', cosmeticIds: ['avatar_fox_01', 'theme_neon'] };
 export async function styleBundle(userId: string) {
-    const items = await query<CosmeticRow>(`SELECT * FROM cosmetics WHERE id=ANY($1::text[]) AND available_in_shop AND price_coins>0`, [STYLE_BUNDLE.cosmeticIds]);
+    const items = await cosmetics()
+        .find({ id: { $in: STYLE_BUNDLE.cosmeticIds }, available_in_shop: true, price_coins: { $gt: 0 } }, { projection: COSMETIC_PROJECTION })
+        .toArray();
     if(items.length!==STYLE_BUNDLE.cosmeticIds.length) return null;
     const owned = new Set(await listOwnedCosmetics(userId));
     const missing = items.filter(c=>!owned.has(c.id));
     return {...STYLE_BUNDLE, missing:missing.map(c=>c.id), priceCoins:Math.ceil(missing.reduce((n,c)=>n+c.price_coins,0)*0.8), owned:missing.length===0};
 }
 export async function buyStyleBundle(userId:string, expectedPrice:number) {
-    return transaction(async client=>{
-        await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[userId]);
-        const offer = await styleBundle(userId);
-        if(!offer || offer.owned || offer.priceCoins!==expectedPrice) return {ok:false,error:'Offer changed or already owned. Refresh the shop.'};
-        const coins=await spendCoins({userId,amount:offer.priceCoins,source:'cosmetic_spend',metadata:{bundle:offer.id,items:offer.missing}},client);
-        if(coins===null)return {ok:false,error:'Not enough coins.'};
-        for(const id of offer.missing)await grantCosmetic(userId,id,'purchase',client);
-        return {ok:true,coins};
-    });
+    const offer = await styleBundle(userId);
+    if(!offer || offer.owned || offer.priceCoins!==expectedPrice) return {ok:false,error:'Offer changed or already owned. Refresh the shop.'};
+    const coins=await spendCoins({userId,amount:offer.priceCoins,source:'cosmetic_spend',metadata:{bundle:offer.id,items:offer.missing}});
+    if(coins===null)return {ok:false,error:'Not enough coins.'};
+    for(const id of offer.missing)await grantCosmetic(userId,id,'purchase');
+    return {ok:true,coins};
 }

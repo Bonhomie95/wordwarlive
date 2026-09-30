@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { query, transaction } from '../db/pool.js';
+import { col, newId, registerIndexes, todayStr } from '../db/mongo.js';
 import {
     rankedActivity,
     population,
@@ -13,6 +13,44 @@ import {
 } from './syntheticPlayers.js';
 import { syntheticSolvers, type SyntheticSolver } from './dailySynthetic.js';
 import { tierFromPoints } from '../game/ranks.js';
+
+registerIndexes('synthetic_config_versions', [{ key: { id: 1 }, unique: true }, { key: { effective_day: 1, created_at: -1 } }]);
+registerIndexes('synthetic_days', [{ key: { day: 1 }, unique: true }]);
+registerIndexes('synthetic_control', [{ key: { id: 1 }, unique: true }]);
+registerIndexes('synthetic_identities', [{ key: { player_index: 1 }, unique: true }]);
+registerIndexes('users', [{ key: { last_play_date: 1 } }]);
+registerIndexes('admin_audit_log', [{ key: { id: 1 }, unique: true }, { key: { created_at: -1 } }]);
+
+interface VersionDoc {
+    id: string;
+    effective_day: string;
+    settings: Settings;
+    created_at: Date;
+    actor_id: string | null;
+    reason: string;
+}
+interface DayDoc {
+    day: string;
+    version_id: string | null;
+    algorithm_version: number;
+    payload: Day;
+    real_players: number;
+    created_at: Date;
+}
+const versions = () => col<VersionDoc>('synthetic_config_versions');
+const days = () => col<DayDoc>('synthetic_days');
+const control = () => col<{ id: number; paused: boolean }>('synthetic_control');
+const identities = () => col<{ player_index: number; identity: SyntheticPlayer }>('synthetic_identities');
+/** Real humans who played on `day` or the day before (`last_play_date` is a YYYY-MM-DD string). */
+function countRealPlayers(day: string, upTo?: string): Promise<number> {
+    const prev = todayStr(new Date(Date.parse(day + 'T00:00:00Z') - 86400000));
+    return col('users').countDocuments({
+        auth_subject: { $not: /^bot-/ },
+        banned: false,
+        last_play_date: upTo ? { $gte: prev, $lte: upTo } : { $gte: prev },
+    });
+}
+const isPaused = async () => (await control().findOne({ id: 1 }))?.paused ?? false;
 export const settingsSchema = z
     .object({
         population: z.number().int().min(0).max(2500),
@@ -115,66 +153,73 @@ export function tuneDay(day: string, settings: Settings, realPlayers: number): D
     return { ranked, daily };
 }
 export async function getSyntheticSettings() {
-    const [versions, control, activity] = await Promise.all([
-        query(
-            "SELECT * FROM synthetic_config_versions WHERE effective_day <= (now() AT TIME ZONE 'UTC')::date+1 ORDER BY id DESC LIMIT 20",
-        ),
-        query<{ paused: boolean }>('SELECT paused FROM synthetic_control WHERE id=1'),
-        query<{ n: string }>(
-            "SELECT count(*)::text n FROM users WHERE auth_subject NOT LIKE 'bot-%' AND NOT banned AND last_play_date >= (now() AT TIME ZONE 'UTC')::date - 1",
-        ),
+    const tomorrow = todayStr(new Date(Date.now() + 86400000));
+    const [versionRows, paused, realPlayers] = await Promise.all([
+        versions().find({ effective_day: { $lte: tomorrow } }, { projection: { _id: 0 }, sort: { created_at: -1 }, limit: 20 }).toArray(),
+        isPaused(),
+        countRealPlayers(todayStr()),
     ]);
     return {
         defaults,
-        versions,
-        paused: control[0]?.paused ?? false,
-        realPlayers: Number(activity[0]?.n ?? 0),
-        effectiveDay: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        versions: versionRows,
+        paused,
+        realPlayers,
+        effectiveDay: tomorrow,
     };
 }
-export async function ensureSyntheticDay(day: string): Promise<Day> {
-    return transaction(async (client) => {
-        // Serialize materialization and pause so no concurrent request publishes future activity.
-        await client.query('SELECT id FROM synthetic_control WHERE id=1 FOR UPDATE');
-        await client.query(
-            `INSERT INTO synthetic_identities(player_index,identity) SELECT (value->>'index')::int,value FROM jsonb_array_elements($1::jsonb) ON CONFLICT DO NOTHING`,
-            [JSON.stringify(population())],
+// The identity population is fixed for the life of the deployment, so seed it
+// and read it back once per process instead of on every day materialization
+// (the all-time backfill touches ~60 days on a cold database).
+let identityPromise: Promise<SyntheticPlayer[]> | null = null;
+function loadIdentities(): Promise<SyntheticPlayer[]> {
+    identityPromise ??= (async () => {
+        await identities().bulkWrite(
+            population().map((p) => ({
+                updateOne: {
+                    filter: { player_index: p.index },
+                    update: { $setOnInsert: { player_index: p.index, identity: p } },
+                    upsert: true,
+                },
+            })),
+            { ordered: false },
         );
-        const existing = await client.query<{ payload: Day }>(
-            'SELECT payload FROM synthetic_days WHERE day=$1',
-            [day],
-        );
-        if (existing.rows[0]) return existing.rows[0].payload;
-        const versions = await client.query<{ id: number; settings: Settings }>(
-            'SELECT id,settings FROM synthetic_config_versions WHERE effective_day <= $1 ORDER BY id DESC LIMIT 1',
-            [day],
-        );
-        const version = versions.rows[0];
-        const today = new Date().toISOString().slice(0, 10);
-        const real = await client.query<{ n: string }>(
-            "SELECT count(*)::text n FROM users WHERE auth_subject NOT LIKE 'bot-%' AND NOT banned AND last_play_date >= $1::date - 1 AND last_play_date <= $1::date",
-            [day],
-        );
-        const count = version ? Number(real.rows[0]?.n ?? 0) : 0;
-        const payload = version
-            ? tuneDay(day, version.settings, count)
-            : { ranked: rankedActivity(day), daily: syntheticSolvers(day) };
-        const identities = await client.query<{player_index:number;username:string}>("SELECT player_index,identity->>'username' username FROM synthetic_identities");
-        const names = new Map(identities.rows.map(p => [p.player_index,p.username]));
-        payload.daily = payload.daily.map(s => ({...s,username:names.get(Number(s.userId.split(':').at(-1))) ?? s.username}));
-        const control = await client.query<{ paused: boolean }>(
-            'SELECT paused FROM synthetic_control WHERE id=1',
-        );
-        if (control.rows[0]?.paused && day >= today) {
-            payload.ranked = [];
-            payload.daily = [];
-        }
-        await client.query(
-            'INSERT INTO synthetic_days(day,version_id,payload,real_players) VALUES ($1,$2,$3,$4)',
-            [day, version?.id ?? null, JSON.stringify(payload), count],
-        );
-        return payload;
+        const stored = await identities().find({}, { projection: { _id: 0, identity: 1 }, sort: { player_index: 1 } }).toArray();
+        return stored.map((r) => r.identity);
+    })().catch((err) => {
+        identityPromise = null;
+        throw err;
     });
+    return identityPromise;
+}
+
+export async function ensureSyntheticDay(day: string): Promise<Day> {
+    // ponytail: no cross-document lock. A racing materialization of the same day
+    // loses on the unique `day` index and reads back the winner's payload.
+    const players = await loadIdentities();
+    const existing = await days().findOne({ day }, { projection: { _id: 0, payload: 1 } });
+    if (existing) return existing.payload;
+    const version = await versions().findOne(
+        { effective_day: { $lte: day } },
+        { projection: { _id: 0, id: 1, settings: 1 }, sort: { created_at: -1 } },
+    );
+    const today = todayStr();
+    const count = version ? await countRealPlayers(day, day) : 0;
+    const payload = version
+        ? tuneDay(day, version.settings, count)
+        : { ranked: rankedActivity(day), daily: syntheticSolvers(day) };
+    const names = new Map(players.map((p) => [p.index, p.username]));
+    payload.daily = payload.daily.map((s) => ({ ...s, username: names.get(Number(s.userId.split(':').at(-1))) ?? s.username }));
+    if ((await isPaused()) && day >= today) {
+        payload.ranked = [];
+        payload.daily = [];
+    }
+    const written = await days().updateOne(
+        { day },
+        { $setOnInsert: { day, version_id: version?.id ?? null, algorithm_version: 3, payload, real_players: count, created_at: new Date() } },
+        { upsert: true },
+    );
+    if (written.upsertedCount) return payload;
+    return (await days().findOne({ day }, { projection: { _id: 0, payload: 1 } }))!.payload;
 }
 export async function updateSynthetic(
     settings: Settings | undefined,
@@ -184,32 +229,35 @@ export async function updateSynthetic(
     reason: string,
 ) {
     // Freeze today's baseline before making changes. Pausing preserves all completed results.
-    await ensureSyntheticDay(new Date().toISOString().slice(0, 10));
-    return transaction(async (client) => {
-        await client.query('SELECT id FROM synthetic_control WHERE id=1 FOR UPDATE');
-        if (settings)
-            await client.query(
-                "INSERT INTO synthetic_config_versions(effective_day,settings,actor_id,reason) VALUES ((now() AT TIME ZONE 'UTC')::date+1,$1,$2,$3)",
-                [JSON.stringify(settings), actorId, reason],
-            );
-        if (paused !== undefined) {
-            await client.query('UPDATE synthetic_control SET paused=$1 WHERE id=1', [paused]);
-            if (paused) {
-                const rows = await client.query<{ day: Date; payload: Day }>(
-                    "SELECT day,payload FROM synthetic_days WHERE day >= (now() AT TIME ZONE 'UTC')::date FOR UPDATE",
-                );
-                const cutoff = Date.now();
-                for (const row of rows.rows)
-                    await client.query('UPDATE synthetic_days SET payload=$1 WHERE day=$2', [
-                        JSON.stringify(freezeCompletedActivity(row.payload, cutoff)),
-                        row.day,
-                    ]);
-            }
+    const today = todayStr();
+    await ensureSyntheticDay(today);
+    if (settings)
+        await versions().insertOne({
+            id: newId(),
+            effective_day: todayStr(new Date(Date.now() + 86400000)),
+            settings,
+            created_at: new Date(),
+            actor_id: actorId,
+            reason,
+        });
+    if (paused !== undefined) {
+        await control().updateOne({ id: 1 }, { $set: { paused } }, { upsert: true });
+        if (paused) {
+            const rows = await days().find({ day: { $gte: today } }, { projection: { _id: 0, day: 1, payload: 1 } }).toArray();
+            const cutoff = Date.now();
+            for (const row of rows)
+                await days().updateOne({ day: row.day }, { $set: { payload: freezeCompletedActivity(row.payload, cutoff) } });
         }
-        await client.query(
-            "INSERT INTO admin_audit_log(admin_id,admin_name,action,target_type,detail) VALUES($1,$2,'synthetic_config','system',$3)",
-            [actorId, actorName, JSON.stringify({ settings, paused, reason })],
-        );
+    }
+    await col('admin_audit_log').insertOne({
+        id: newId(),
+        admin_id: actorId,
+        admin_name: actorName,
+        action: 'synthetic_config',
+        target_type: 'system',
+        target_id: null,
+        detail: { settings, paused, reason },
+        created_at: new Date(),
     });
 }
 // Share simultaneous reads without retaining results after completion. An admin
@@ -241,27 +289,24 @@ async function readSyntheticLeaderboard(
     if (period === 'monthly') start.setUTCDate(1);
     const from = period === 'all_time' ? HISTORY_START : start.toISOString().slice(0, 10);
     // Backfill once, preserving the existing baseline before future configuration changes.
-    const stored = await query<{ day: string }>(
-        'SELECT day::text FROM synthetic_days WHERE day BETWEEN $1 AND $2',
-        [HISTORY_START, today],
-    );
+    const range = { day: { $gte: HISTORY_START, $lte: today } };
+    const stored = await days().find(range, { projection: { _id: 0, day: 1 } }).toArray();
     const present = new Set(stored.map((r) => r.day));
+    const missing: string[] = [];
     for (
         let d = new Date(HISTORY_START + 'T00:00:00Z');
         d.toISOString().slice(0, 10) <= today;
         d.setUTCDate(d.getUTCDate() + 1)
     ) {
         const day = d.toISOString().slice(0, 10);
-        if (!present.has(day)) await ensureSyntheticDay(day);
+        if (!present.has(day)) missing.push(day);
     }
-    const rows = await query<{ day: string; payload: Day }>(
-        'SELECT day::text,payload FROM synthetic_days WHERE day BETWEEN $1 AND $2',
-        [HISTORY_START, today],
-    );
-    const identities = await query<{ identity: SyntheticPlayer }>(
-        'SELECT identity FROM synthetic_identities ORDER BY player_index',
-    );
-    const players = identities.map((r) => r.identity);
+    // Materialize missing days concurrently; each one is a handful of round trips.
+    for (let i = 0; i < missing.length; i += 15) {
+        await Promise.all(missing.slice(i, i + 15).map((day) => ensureSyntheticDay(day)));
+    }
+    const rows = await days().find(range, { projection: { _id: 0, day: 1, payload: 1 } }).toArray();
+    const players = await loadIdentities();
     const totals = players.map(() => ({ wins: 0, losses: 0, net: 0 }));
     const cutoff = Math.floor(now / 60000) * 60000;
     for (const row of rows)
@@ -302,19 +347,16 @@ export async function persistedDailySolvers(day: string, now = Date.now()) {
 
 /** Queue fallbacks consult the same operator controls; running matches finish normally. */
 export async function syntheticMatchPolicy() {
-    const [control, versions, real] = await Promise.all([
-        query<{ paused: boolean }>('SELECT paused FROM synthetic_control WHERE id=1'),
-        query<{ settings: Settings }>(
-            "SELECT settings FROM synthetic_config_versions WHERE effective_day <= (now() AT TIME ZONE 'UTC')::date ORDER BY id DESC LIMIT 1",
-        ),
-        query<{ n: string }>(
-            "SELECT count(*)::text n FROM users WHERE auth_subject NOT LIKE 'bot-%' AND NOT banned AND last_play_date >= (now() AT TIME ZONE 'UTC')::date-1",
-        ),
+    const today = todayStr();
+    const [paused, version, real] = await Promise.all([
+        isPaused(),
+        versions().findOne({ effective_day: { $lte: today } }, { projection: { _id: 0, settings: 1 }, sort: { created_at: -1 } }),
+        countRealPlayers(today),
     ]);
-    const settings = versions[0]?.settings ?? defaults;
-    const ratio = Math.max(0, 1 - Number(real[0]?.n ?? 0) / settings.realPlayerTarget);
+    const settings = version?.settings ?? defaults;
+    const ratio = Math.max(0, 1 - real / settings.realPlayerTarget);
     return {
-        allowed: !control[0]?.paused && settings.population > 0 && ratio > 0,
+        allowed: !paused && settings.population > 0 && ratio > 0,
         waitMultiplier: 1 + 3 * (1 - ratio),
         rankOffset:
             settings.difficulty === 'easy' ? -300 : settings.difficulty === 'hard' ? 300 : 0,

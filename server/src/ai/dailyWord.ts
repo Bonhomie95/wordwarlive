@@ -6,10 +6,13 @@
 // end up serving a word that isn't in our bank. If Groq fails or isn't
 // configured, we fall back to a deterministic random pick.
 
-import { query } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
 import { groqJSON, isGroqEnabled } from './groq.js';
 import { logger } from '../utils/logger.js';
 import { pickRandomWord, isValidWord } from '../game/words.js';
+
+registerIndexes('daily_words', [{ key: { day: 1 }, unique: true }]);
+registerIndexes('word_bank', [{ key: { length: 1, difficulty: 1 } }]);
 
 interface DailyWordRow {
     day: string;
@@ -29,17 +32,14 @@ function todayKey(): string {
 /**
  * Idempotently get today's daily word, picking and caching one if it's
  * not yet set. Safe to call from many places — concurrent first-callers
- * will race but only one row will land due to the PRIMARY KEY on `day`.
+ * will race but only one doc will land due to the unique index on `day`.
  */
 export async function getOrPickDailyWord(): Promise<{ word: string; theme: string | null }> {
     const day = todayKey();
 
-    const existing = await query<DailyWordRow & { theme: string | null }>(
-        'SELECT day, word, NULL::text AS theme FROM daily_words WHERE day = $1',
-        [day]
-    );
-    if (existing.length > 0) {
-        return { word: existing[0]!.word, theme: null };
+    const existing = await col<DailyWordRow>('daily_words').findOne({ day }, { projection: { _id: 0, word: 1 } });
+    if (existing) {
+        return { word: existing.word, theme: null };
     }
 
     const candidates = await pickCandidates(20);
@@ -62,10 +62,10 @@ export async function getOrPickDailyWord(): Promise<{ word: string; theme: strin
         chosen = { word: candidates[0] ?? pickRandomWord(5), theme: chosen.theme };
     }
 
-    await query(
-        `INSERT INTO daily_words (day, word) VALUES ($1, $2)
-         ON CONFLICT (day) DO NOTHING`,
-        [day, chosen.word.toUpperCase()]
+    await col('daily_words').updateOne(
+        { day },
+        { $setOnInsert: { day, word: chosen.word.toUpperCase(), plays: 0, solves: 0, avg_solve_ms: 0, avg_guesses: 0 } },
+        { upsert: true }
     );
 
     return { word: chosen.word.toUpperCase(), theme: chosen.theme || null };
@@ -73,13 +73,13 @@ export async function getOrPickDailyWord(): Promise<{ word: string; theme: strin
 
 async function pickCandidates(n: number): Promise<string[]> {
     // Pull a balanced sample across difficulty levels and lengths.
-    const rows = await query<{ word: string }>(
-        `SELECT word FROM word_bank
-         WHERE length BETWEEN 5 AND 7
-         ORDER BY random()
-         LIMIT $1`,
-        [n]
-    );
+    const rows = await col<{ word: string }>('word_bank')
+        .aggregate<{ word: string }>([
+            { $match: { length: { $gte: 5, $lte: 7 } } },
+            { $sample: { size: n } },
+            { $project: { _id: 0, word: 1 } },
+        ])
+        .toArray();
     return rows.map((r) => r.word);
 }
 

@@ -7,10 +7,25 @@
 //
 // Expo endpoint: https://docs.expo.dev/push-notifications/sending-notifications/
 
-import { query } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
 import { logger } from '../utils/logger.js';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+
+interface PushTokenDoc {
+    token: string;
+    user_id: string;
+    platform: 'ios' | 'android' | null;
+    created_at: Date;
+    updated_at: Date;
+}
+
+registerIndexes('push_tokens', [
+    { key: { token: 1 }, unique: true },
+    { key: { user_id: 1 } },
+]);
+
+const pushTokens = () => col<PushTokenDoc>('push_tokens');
 
 export async function registerPushToken(args: {
     userId: string;
@@ -19,26 +34,25 @@ export async function registerPushToken(args: {
 }): Promise<void> {
     // A token is globally unique to a device; re-point it at the current user
     // (handles a shared device where accounts switch).
-    await query(
-        `INSERT INTO push_tokens (token, user_id, platform, updated_at)
-         VALUES ($1, $2, $3, now())
-         ON CONFLICT (token) DO UPDATE
-         SET user_id = EXCLUDED.user_id,
-             platform = EXCLUDED.platform,
-             updated_at = now()`,
-        [args.token, args.userId, args.platform ?? null]
+    const now = new Date();
+    await pushTokens().updateOne(
+        { token: args.token },
+        {
+            $set: { user_id: args.userId, platform: args.platform ?? null, updated_at: now },
+            $setOnInsert: { created_at: now },
+        },
+        { upsert: true }
     );
 }
 
 export async function removePushToken(token: string): Promise<void> {
-    await query('DELETE FROM push_tokens WHERE token = $1', [token]);
+    await pushTokens().deleteOne({ token });
 }
 
 async function tokensForUser(userId: string): Promise<string[]> {
-    const rows = await query<{ token: string }>(
-        'SELECT token FROM push_tokens WHERE user_id = $1',
-        [userId]
-    );
+    const rows = await pushTokens()
+        .find({ user_id: userId }, { projection: { _id: 0, token: 1 } })
+        .toArray();
     return rows.map((r) => r.token);
 }
 
@@ -99,7 +113,7 @@ export async function sendPushToUser(
             }
         });
         if (dead.length > 0) {
-            await query('DELETE FROM push_tokens WHERE token = ANY($1::text[])', [dead]);
+            await pushTokens().deleteMany({ token: { $in: dead } });
             logger.info({ count: dead.length }, 'push: pruned dead tokens');
         }
     } catch (err) {

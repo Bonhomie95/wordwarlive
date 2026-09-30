@@ -1,4 +1,3 @@
-import { connectTransactionClient } from '../db/pool.js';
 // Daily play-streak tracking. Advanced ONLY when a match COMPLETES (not on
 // app open, not on connect). Compares the current UTC date against the
 // stored last_play_date.
@@ -9,7 +8,7 @@ import { connectTransactionClient } from '../db/pool.js';
 //   last == yesterday  → streak += 1
 //   last <  yesterday  → streak = 1 (broken, restart)
 
-import { pool } from '../db/pool.js';
+import { col } from '../db/mongo.js';
 import { grantCoins } from './coinsService.js';
 
 const DAILY_COIN_REWARD = 10;
@@ -86,88 +85,81 @@ export async function advanceStreakOnMatchComplete(
     const today = todayUtcDateString();
     const yesterday = yesterdayUtcDateString();
 
-    const client = await connectTransactionClient();
-    try {
-        await client.query('BEGIN');
-        const r = await client.query<{
-            play_streak: number;
-            play_streak_best: number;
-            last_play_date: string | null;
-            streak_shields: number;
-        }>(
-            `SELECT play_streak, play_streak_best, streak_shields,
-                    to_char(last_play_date, 'YYYY-MM-DD') AS last_play_date
-             FROM users WHERE id = $1 FOR UPDATE`,
-            [userId]
-        );
-        const u = r.rows[0];
-        if (!u) {
-            await client.query('ROLLBACK');
-            return { playStreak: 0, advanced: false, dailyCoins: 0, milestone: null, shieldsUsed: 0 };
-        }
+    const users = col<{
+        play_streak: number;
+        play_streak_best: number;
+        last_play_date: string | Date | null;
+        streak_shields: number;
+    }>('users');
+    const u = await users.findOne(
+        { id: userId },
+        { projection: { _id: 0, play_streak: 1, play_streak_best: 1, last_play_date: 1, streak_shields: 1 } }
+    );
+    if (!u) {
+        return { playStreak: 0, advanced: false, dailyCoins: 0, milestone: null, shieldsUsed: 0 };
+    }
+    const lastPlayDate = u.last_play_date instanceof Date
+        ? u.last_play_date.toISOString().slice(0, 10)
+        : u.last_play_date ?? null;
 
-        // Already counted today.
-        if (u.last_play_date === today) {
-            await client.query('COMMIT');
-            return {
-                playStreak: u.play_streak,
-                advanced: false,
-                dailyCoins: 0,
-                milestone: null,
-                shieldsUsed: 0,
-            };
-        }
+    // Already counted today.
+    if (lastPlayDate === today) {
+        return {
+            playStreak: u.play_streak,
+            advanced: false,
+            dailyCoins: 0,
+            milestone: null,
+            shieldsUsed: 0,
+        };
+    }
 
-        const { streak: newStreak, shieldsUsed } = nextStreak({
-            lastPlayDate: u.last_play_date,
-            today,
-            streak: u.play_streak,
-            shields: u.streak_shields,
-        });
-        void yesterday;
-        const newBest = Math.max(u.play_streak_best, newStreak);
-        await client.query(
-            `UPDATE users SET play_streak = $1, play_streak_best = $2,
-                              last_play_date = $3::date,
-                              streak_shields = streak_shields - $5,
-                              updated_at = now()
-             WHERE id = $4`,
-            [newStreak, newBest, today, userId, shieldsUsed]
-        );
+    const { streak: newStreak, shieldsUsed } = nextStreak({
+        lastPlayDate,
+        today,
+        streak: u.play_streak,
+        shields: u.streak_shields ?? 0,
+    });
+    void yesterday;
+    const newBest = Math.max(u.play_streak_best, newStreak);
+    // ponytail: no row lock; the `last_play_date != today` filter makes a
+    // racing second match-end on the same day a no-op.
+    const written = await users.updateOne(
+        { id: userId, last_play_date: { $ne: today } },
+        {
+            $set: { play_streak: newStreak, play_streak_best: newBest, last_play_date: today, updated_at: new Date() },
+            $inc: { streak_shields: -shieldsUsed },
+        }
+    );
+    if (!written.matchedCount) {
+        return { playStreak: newStreak, advanced: false, dailyCoins: 0, milestone: null, shieldsUsed: 0 };
+    }
+    await grantCoins({
+        userId,
+        amount: DAILY_COIN_REWARD,
+        source: 'streak_daily',
+        metadata: { day: newStreak },
+    });
+
+    const milestone = MILESTONES.find((m) => m.day === newStreak) ?? null;
+    if (milestone) {
         await grantCoins({
             userId,
-            amount: DAILY_COIN_REWARD,
-            source: 'streak_daily',
+            amount: milestone.coins,
+            source: 'streak_milestone',
             metadata: { day: newStreak },
-        }, client);
-
-        const milestone = MILESTONES.find((m) => m.day === newStreak) ?? null;
-        if (milestone) {
-            await grantCoins({
-                userId,
-                amount: milestone.coins,
-                source: 'streak_milestone',
-                metadata: { day: newStreak },
-            }, client);
-            if (milestone.hintCredits > 0) {
-                await client.query('UPDATE users SET hint_credits = hint_credits + $1 WHERE id = $2', [milestone.hintCredits, userId]);
-            }
+        });
+        if (milestone.hintCredits > 0) {
+            await users.updateOne({ id: userId }, { $inc: { hint_credits: milestone.hintCredits } });
         }
-
-        await client.query('COMMIT');
-        return {
-            playStreak: newStreak,
-            advanced: true,
-            dailyCoins: DAILY_COIN_REWARD,
-            milestone,
-            shieldsUsed,
-        };
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
     }
+
+    return {
+        playStreak: newStreak,
+        advanced: true,
+        dailyCoins: DAILY_COIN_REWARD,
+        milestone,
+        shieldsUsed,
+    };
 }
 
 /** Compute the next milestone the user is working toward. */

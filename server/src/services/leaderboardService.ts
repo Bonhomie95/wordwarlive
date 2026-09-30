@@ -1,18 +1,25 @@
 // Leaderboard service. Computes period buckets (daily / weekly / monthly /
-// all_time) and maintains a pre-aggregated `leaderboard_entries` table so
+// all_time) and maintains a pre-aggregated `leaderboard_entries` collection so
 // top-N lookups are index-only scans.
 //
 // Why pre-aggregate? With N matches and M users over a year, computing
 // "current month leaderboard" on demand means scanning every match in the
-// month and grouping. With a counter table, it's a single sorted index seek.
+// month and grouping. With a counter collection, it's a single sorted index seek.
 //
 // Updated on every match completion (winner gets +1 win; loser gets +1 loss).
 
+import type { Document } from 'mongodb';
 import { compareStandings } from './syntheticPlayers.js';
 import { persistedSyntheticLeaderboard } from './syntheticHistory.js';
-import { query as writeQuery } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
 import { redis } from '../db/redis.js';
 import { logger } from '../utils/logger.js';
+
+registerIndexes('leaderboard_entries', [
+    { key: { period: 1, bucket: 1, mode: 1, user_id: 1 }, unique: true },
+    { key: { period: 1, bucket: 1, mode: 1, wins: -1, rank_points: -1, user_id: 1 } },
+]);
+registerIndexes('users', [{ key: { id: 1 }, unique: true }]);
 
 export type LeaderboardPeriod = 'all_time' | 'monthly' | 'weekly' | 'daily';
 
@@ -86,40 +93,23 @@ export async function recordMatchResult(args: RecordResultArgs): Promise<void> {
     // leaderboards work without scanning multiple modes.
     const modes: string[] = [args.mode, 'overall'];
 
-    // Batch all 4 periods × 2 modes = 8 upserts into a SINGLE statement via
-    // UNNEST. This replaces the previous 8-round-trip loop-in-a-transaction —
-    // a meaningful reduction in per-match-end DB work under load.
-    const periodsArr: string[] = [];
-    const bucketsArr: string[] = [];
-    const modesArr: string[] = [];
+    // 4 periods × 2 modes = 8 upserts in one round trip.
+    const ops = [];
     for (const b of buckets) {
         for (const m of modes) {
-            periodsArr.push(b.period);
-            bucketsArr.push(b.bucket);
-            modesArr.push(m);
+            ops.push({
+                updateOne: {
+                    filter: { period: b.period, bucket: b.bucket, mode: m, user_id: args.userId },
+                    update: {
+                        $inc: { wins: args.isWin ? 1 : 0, losses: args.isWin ? 0 : 1 },
+                        $set: { rank_points: args.rankPoints, last_match_at: now },
+                    },
+                    upsert: true,
+                },
+            });
         }
     }
-
-    await writeQuery(
-        `INSERT INTO leaderboard_entries
-            (user_id, period, bucket, mode, wins, losses, rank_points, last_match_at)
-         SELECT $1, p, b, m, $5, $6, $7, now()
-         FROM unnest($2::text[], $3::text[], $4::text[]) AS t(p, b, m)
-         ON CONFLICT (period, bucket, mode, user_id) DO UPDATE
-         SET wins = leaderboard_entries.wins + EXCLUDED.wins,
-             losses = leaderboard_entries.losses + EXCLUDED.losses,
-             rank_points = EXCLUDED.rank_points,
-             last_match_at = now()`,
-        [
-            args.userId,
-            periodsArr,
-            bucketsArr,
-            modesArr,
-            args.isWin ? 1 : 0,
-            args.isWin ? 0 : 1,
-            args.rankPoints,
-        ]
-    );
+    await col('leaderboard_entries').bulkWrite(ops, { ordered: false });
 }
 
 export interface LeaderboardEntry {
@@ -145,6 +135,55 @@ export interface LeaderboardResponse {
     you: LeaderboardEntry | null;
 }
 
+interface RankedRow {
+    user_id: string;
+    username: string;
+    rank_tier: string;
+    wins: number;
+    losses: number;
+    rank_points: number;
+    equipped_avatar: string | null;
+    equipped_profile_border: string | null;
+}
+
+/** Entries for a board joined to their (human, unbanned) users. */
+function rankedStages(period: LeaderboardPeriod, bucket: string, mode: string, extra: Document = {}): Document[] {
+    return [
+        { $match: { period, bucket, mode, ...extra } },
+        { $lookup: { from: 'users', localField: 'user_id', foreignField: 'id', as: 'u' } },
+        { $unwind: '$u' },
+        { $match: { 'u.auth_subject': { $not: /^bot-/ }, 'u.banned': false } },
+    ];
+}
+
+const PROJECT_ROW: Document = {
+    $project: {
+        _id: 0,
+        user_id: 1,
+        wins: 1,
+        losses: 1,
+        rank_points: 1,
+        username: '$u.username',
+        rank_tier: '$u.rank_tier',
+        equipped_avatar: { $ifNull: ['$u.equipped_avatar', null] },
+        equipped_profile_border: { $ifNull: ['$u.equipped_profile_border', null] },
+    },
+};
+
+function toEntry(r: RankedRow, rank: number): LeaderboardEntry {
+    return {
+        userId: r.user_id,
+        username: r.username,
+        rankTier: r.rank_tier,
+        wins: r.wins,
+        losses: r.losses,
+        rankPoints: r.rank_points,
+        avatarId: r.equipped_avatar,
+        profileBorderId: r.equipped_profile_border,
+        rankInLeaderboard: rank,
+    };
+}
+
 /**
  * Fetch the top-N leaderboard for a period. Joins with users to get the
  * display info. Tiebreaks on rank_points (so two players tied on wins are
@@ -161,8 +200,7 @@ export async function getLeaderboard(args: {
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
     const bucket = bucketFor(args.period);
     const mode = args.mode ?? 'overall';
-
-    const { query } = await import('../db/pool.js');
+    const entriesCol = col('leaderboard_entries');
 
     // Short-lived cache of the shared top-N rows.
     const cacheKey = `lb:${args.period}:${bucket}:${mode}:${limit}`;
@@ -175,47 +213,16 @@ export async function getLeaderboard(args: {
     }
 
     if (!entries) {
-        const topRows = await query<{
-            user_id: string;
-            username: string;
-            rank_tier: string;
-            wins: number;
-            losses: number;
-            rank_points: number;
-            equipped_avatar: string | null;
-            equipped_profile_border: string | null;
-            rank_in_leaderboard: string;
-        }>(
-            `SELECT
-                le.user_id,
-                u.username,
-                u.rank_tier,
-                le.wins,
-                le.losses,
-                le.rank_points,
-                u.equipped_avatar,
-                u.equipped_profile_border,
-                ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC, le.user_id ASC) AS rank_in_leaderboard
-             FROM leaderboard_entries le
-             JOIN users u ON u.id = le.user_id
-             WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
-               AND u.auth_subject NOT LIKE 'bot-%' AND u.banned = false
-             ORDER BY le.wins DESC, le.rank_points DESC, le.user_id ASC
-             LIMIT $4`,
-            [args.period, bucket, mode, limit]
-        );
+        const topRows = await entriesCol
+            .aggregate<RankedRow>([
+                ...rankedStages(args.period, bucket, mode),
+                { $sort: { wins: -1, rank_points: -1, user_id: 1 } },
+                { $limit: limit },
+                PROJECT_ROW,
+            ])
+            .toArray();
 
-        entries = topRows.map((r) => ({
-            userId: r.user_id,
-            username: r.username,
-            rankTier: r.rank_tier,
-            wins: r.wins,
-            losses: r.losses,
-            rankPoints: r.rank_points,
-            avatarId: r.equipped_avatar,
-            profileBorderId: r.equipped_profile_border,
-            rankInLeaderboard: Number(r.rank_in_leaderboard),
-        }));
+        entries = topRows.map((r, i) => toEntry(r, i + 1));
 
         redis
             .set(cacheKey, JSON.stringify(entries), 'EX', LEADERBOARD_CACHE_TTL_S)
@@ -224,49 +231,24 @@ export async function getLeaderboard(args: {
 
     let you: LeaderboardEntry | null = null;
     if (args.requesterId) {
-        const youRows = await query<{
-            user_id: string;
-            username: string;
-            rank_tier: string;
-            wins: number;
-            losses: number;
-            rank_points: number;
-            equipped_avatar: string | null;
-            equipped_profile_border: string | null;
-            rank_in_leaderboard: string;
-        }>(
-            `WITH ranked AS (
-                SELECT
-                    le.user_id,
-                    u.username,
-                    u.rank_tier,
-                    le.wins,
-                    le.losses,
-                    le.rank_points,
-                    u.equipped_avatar,
-                    u.equipped_profile_border,
-                    ROW_NUMBER() OVER (ORDER BY le.wins DESC, le.rank_points DESC, le.user_id ASC) AS rank_in_leaderboard
-                 FROM leaderboard_entries le
-                 JOIN users u ON u.id = le.user_id
-                 WHERE le.period = $1 AND le.bucket = $2 AND le.mode = $3
-                   AND u.auth_subject NOT LIKE 'bot-%' AND u.banned = false
-            )
-            SELECT * FROM ranked WHERE user_id = $4`,
-            [args.period, bucket, mode, args.requesterId]
-        );
-        const r = youRows[0];
+        const [r] = await entriesCol
+            .aggregate<RankedRow>([...rankedStages(args.period, bucket, mode, { user_id: args.requesterId }), PROJECT_ROW])
+            .toArray();
         if (r) {
-            you = {
-                userId: r.user_id,
-                username: r.username,
-                rankTier: r.rank_tier,
-                wins: r.wins,
-                losses: r.losses,
-                rankPoints: r.rank_points,
-                avatarId: r.equipped_avatar,
-                profileBorderId: r.equipped_profile_border,
-                rankInLeaderboard: Number(r.rank_in_leaderboard),
-            };
+            // ROW_NUMBER() equivalent: 1 + humans strictly ahead in (wins desc, rank_points desc, user_id asc).
+            const [ahead] = await entriesCol
+                .aggregate<{ n: number }>([
+                    ...rankedStages(args.period, bucket, mode, {
+                        $or: [
+                            { wins: { $gt: r.wins } },
+                            { wins: r.wins, rank_points: { $gt: r.rank_points } },
+                            { wins: r.wins, rank_points: r.rank_points, user_id: { $lt: r.user_id } },
+                        ],
+                    }),
+                    { $count: 'n' },
+                ])
+                .toArray();
+            you = toEntry(r, 1 + (ahead?.n ?? 0));
         }
     }
 

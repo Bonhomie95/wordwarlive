@@ -1,9 +1,14 @@
-import type { PoolClient } from 'pg';
 // Coin currency. Coins are GRANTED from earn paths (streak, match win, ads,
 // milestones) and SPENT on hints. Every change goes through grantCoins or
 // spendCoins so the coin_grants audit log captures the source.
 
-import { pool, query, transaction } from '../db/pool.js';
+import { col, newId, registerIndexes } from '../db/mongo.js';
+
+registerIndexes('users', [{ key: { id: 1 }, unique: true }]);
+registerIndexes('coin_grants', [
+    { key: { id: 1 }, unique: true },
+    { key: { user_id: 1, created_at: -1 } },
+]);
 
 // ─── Pack catalog ───────────────────────────────────────────────────────────
 //
@@ -128,6 +133,12 @@ export function matchCoins(args: {
     return args.result === 'tie' ? COINS_MATCH_TIE : COINS_MATCH_LOSS;
 }
 
+async function logGrant(userId: string, amount: number, source: CoinSource, metadata?: Record<string, unknown>): Promise<void> {
+    await col('coin_grants').insertOne({
+        id: newId(), user_id: userId, amount, source, metadata: metadata ?? {}, created_at: new Date(),
+    });
+}
+
 /**
  * Grant coins to a user. amount must be positive. Source is recorded for
  * audit. Returns the new balance.
@@ -137,21 +148,15 @@ export async function grantCoins(args: {
     amount: number;
     source: CoinSource;
     metadata?: Record<string, unknown>;
-}, existing?: PoolClient): Promise<number> {
+}, _existing?: unknown): Promise<number> {
     if (args.amount <= 0) throw new Error('grantCoins: amount must be positive');
-    return transaction(async (client) => {
-        const r = await client.query<{ coins: number }>(
-            `UPDATE users SET coins = coins + $1, updated_at = now()
-             WHERE id = $2 RETURNING coins`,
-            [args.amount, args.userId]
-        );
-        await client.query(
-            `INSERT INTO coin_grants (user_id, amount, source, metadata)
-             VALUES ($1, $2, $3, $4)`,
-            [args.userId, args.amount, args.source, args.metadata ?? {}]
-        );
-        return r.rows[0]?.coins ?? 0;
-    }, existing);
+    const u = await col<{ coins: number }>('users').findOneAndUpdate(
+        { id: args.userId },
+        { $inc: { coins: args.amount }, $set: { updated_at: new Date() } },
+        { returnDocument: 'after', projection: { _id: 0, coins: 1 } }
+    );
+    await logGrant(args.userId, args.amount, args.source, args.metadata);
+    return u?.coins ?? 0;
 }
 
 /**
@@ -163,47 +168,35 @@ export async function spendCoins(args: {
     amount: number;
     source: CoinSource;
     metadata?: Record<string, unknown>;
-}, existing?: PoolClient): Promise<number | null> {
+}, _existing?: unknown): Promise<number | null> {
     if (args.amount <= 0) throw new Error('spendCoins: amount must be positive');
-    return transaction(async (client) => {
-        // Conditional UPDATE — only succeeds if the user has enough coins.
-        // This avoids the read/check/write race.
-        const r = await client.query<{ coins: number }>(
-            `UPDATE users SET coins = coins - $1, updated_at = now()
-             WHERE id = $2 AND coins >= $1
-             RETURNING coins`,
-            [args.amount, args.userId]
-        );
-        if (r.rowCount === 0) {
-            return null;
-        }
-        await client.query(
-            `INSERT INTO coin_grants (user_id, amount, source, metadata)
-             VALUES ($1, $2, $3, $4)`,
-            [args.userId, -args.amount, args.source, args.metadata ?? {}]
-        );
-        return r.rows[0]?.coins ?? 0;
-    }, existing);
+    // Conditional $inc — only matches if the user has enough coins, so the
+    // balance can never go negative and there is no read/check/write race.
+    const u = await col<{ coins: number }>('users').findOneAndUpdate(
+        { id: args.userId, coins: { $gte: args.amount } },
+        { $inc: { coins: -args.amount }, $set: { updated_at: new Date() } },
+        { returnDocument: 'after', projection: { _id: 0, coins: 1 } }
+    );
+    if (!u) return null;
+    await logGrant(args.userId, -args.amount, args.source, args.metadata);
+    return u.coins ?? 0;
 }
 
 export async function getCoinBalance(userId: string): Promise<number> {
-    const rows = await query<{ coins: number }>(
-        'SELECT coins FROM users WHERE id = $1',
-        [userId]
-    );
-    return rows[0]?.coins ?? 0;
+    const u = await col<{ coins: number }>('users').findOne({ id: userId }, { projection: { _id: 0, coins: 1 } });
+    return u?.coins ?? 0;
 }
 
 // ─── Hint credits ───────────────────────────────────────────────────────────
 
 export async function grantHintCredits(userId: string, amount: number): Promise<number> {
     if (amount <= 0) return 0;
-    const rows = await query<{ hint_credits: number }>(
-        `UPDATE users SET hint_credits = hint_credits + $1, updated_at = now()
-         WHERE id = $2 RETURNING hint_credits`,
-        [amount, userId]
+    const u = await col<{ hint_credits: number }>('users').findOneAndUpdate(
+        { id: userId },
+        { $inc: { hint_credits: amount }, $set: { updated_at: new Date() } },
+        { returnDocument: 'after', projection: { _id: 0, hint_credits: 1 } }
     );
-    return rows[0]?.hint_credits ?? 0;
+    return u?.hint_credits ?? 0;
 }
 
 // ─── IAP fulfilment ─────────────────────────────────────────────────────────

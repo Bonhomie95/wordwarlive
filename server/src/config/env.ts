@@ -30,11 +30,9 @@ const schema = z.object({
     // in production so a restarted instance reuses its queue namespace.
     NODE_ID: z.string().optional().default(''),
 
-    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+    MONGODB_URL: z.string().min(1, 'MONGODB_URL is required'),
     REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
-    // Postgres pool size. The match-end path fans out several concurrent
-    // queries per completed match, so this needs headroom under load. Behind
-    // PgBouncer (transaction pooling) you can push this higher safely.
+    // MongoDB connection pool size.
     DB_POOL_MAX: z.coerce.number().int().min(2).default(50),
 
     JWT_SECRET: z

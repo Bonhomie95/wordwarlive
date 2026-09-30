@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { col } from '../db/mongo.js';
 import { requireAuth } from '../auth/middleware.js';
 import {
     COIN_PACKS,
@@ -40,13 +41,16 @@ coinsRouter.post('/coins/bundles/starter/purchase', requireAuth, async (req, res
 
     const verified = await verifyIapPurchase({
         userId, productId: STARTER_BUNDLE_PRODUCT_ID, entitlement: 'bundle:starter', ...parsed.data,
-    }, async (client) => {
-        // The user lock also prevents different store transactions from double-granting the bundle.
-        const row = await client.query('SELECT starter_bundle_at FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (row.rows[0]?.starter_bundle_at) return;
-        await client.query('UPDATE users SET starter_bundle_at = now(), updated_at = now() WHERE id = $1', [userId]);
-        for (const id of STARTER_BUNDLE.cosmeticIds) await grantCosmetic(userId, id, 'purchase', client);
-        await grantCoins({ userId, amount: STARTER_BUNDLE.coins, source: 'bundle', metadata: { productId: STARTER_BUNDLE.productId } }, client);
+    }, async () => {
+        // Atomic claim: only the first store transaction flips starter_bundle_at, so the bundle can't double-grant.
+        const now = new Date();
+        const claimed = await col('users').updateOne(
+            { id: userId, starter_bundle_at: null },
+            { $set: { starter_bundle_at: now, updated_at: now } }
+        );
+        if (!claimed.matchedCount) return;
+        for (const id of STARTER_BUNDLE.cosmeticIds) await grantCosmetic(userId, id, 'purchase');
+        await grantCoins({ userId, amount: STARTER_BUNDLE.coins, source: 'bundle', metadata: { productId: STARTER_BUNDLE.productId } });
     });
     if (!verified.ok) return res.status(verified.status).json({ error: verified.error });
     res.json({ ok: true, newBalance: await getCoinBalance(userId) });
@@ -73,8 +77,8 @@ coinsRouter.post('/coins/packs/:id/purchase', requireAuth, async (req, res) => {
         platform: parsed.data.platform,
         receipt: parsed.data.receipt,
         transactionId: parsed.data.transactionId,
-    }, async (client) => {
-        await grantCoins({ userId: req.session!.userId, amount: pack.coins, source: 'iap', metadata: { packId: pack.id, productId: pack.productId } }, client);
+    }, async () => {
+        await grantCoins({ userId: req.session!.userId, amount: pack.coins, source: 'iap', metadata: { packId: pack.id, productId: pack.productId } });
     });
     if (!verified.ok) {
         return res.status(verified.status).json({ error: verified.error });

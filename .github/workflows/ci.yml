@@ -13,15 +13,11 @@ jobs:
       run:
         working-directory: server
     services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: wordwar
-          POSTGRES_PASSWORD: wordwar
-          POSTGRES_DB: wordwar
-        ports: ['5432:5432']
+      mongo:
+        image: mongo:7
+        ports: ['27017:27017']
         options: >-
-          --health-cmd "pg_isready -U wordwar"
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1}).ok'"
           --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7
@@ -30,7 +26,7 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 10s --health-timeout 5s --health-retries 5
     env:
-      DATABASE_URL: postgresql://wordwar:wordwar@localhost:5432/wordwar
+      MONGODB_URL: mongodb://localhost:27017/wordwar
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: ci-test-secret-ci-test-secret-ci-test-secret-0123456789
     steps:
@@ -45,8 +41,6 @@ jobs:
         run: npm ci --prefix ../mobile
       - name: Typecheck
         run: npm run lint
-      - name: Migrate (for integration tests)
-        run: npm run migrate
       - name: Tests
         run: npm test
       - name: Match interruption and restart recovery

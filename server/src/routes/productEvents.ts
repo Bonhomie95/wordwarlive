@@ -1,8 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
-import { query } from '../db/pool.js';
+import { col, newId, registerIndexes } from '../db/mongo.js';
 import { redis } from '../db/redis.js';
+
+registerIndexes('product_events', [
+    { key: { id: 1 }, unique: true },
+    { key: { created_at: 1, event: 1 } },
+]);
+
 export const productEventsRouter = Router();
 const schema = z.object({
     event: z.enum([
@@ -24,9 +30,19 @@ productEventsRouter.post('/events', requireAuth, async (req, res) => {
     const n = await redis.incr(key);
     if (n === 1) await redis.expire(key, 120);
     if (n > 30) return res.status(429).json({ error: 'Too many events' });
-    await query(
-        "INSERT INTO product_events(user_id,event,offer) SELECT id,$2,$3 FROM users WHERE id=$1 AND auth_subject NOT LIKE 'bot-%' AND NOT banned",
-        [user, parsed.data.event, parsed.data.offer],
+    // Only record for real (non-bot, non-banned) users.
+    const eligible = await col('users').findOne(
+        { id: user, auth_subject: { $not: /^bot-/ }, banned: { $ne: true } },
+        { projection: { _id: 1 } }
     );
+    if (eligible) {
+        await col('product_events').insertOne({
+            id: newId(),
+            user_id: user,
+            event: parsed.data.event,
+            offer: parsed.data.offer,
+            created_at: new Date(),
+        });
+    }
     res.json({ ok: true });
 });

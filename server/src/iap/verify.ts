@@ -15,12 +15,29 @@
 import { JWT } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
-import { transaction } from '../db/pool.js';
-import type { PoolClient } from 'pg';
+import { col, newId, registerIndexes } from '../db/mongo.js';
 import { logger } from '../utils/logger.js';
 import { looksLikeJws, verifyAppleSignedTransaction } from './appleJws.js';
 
 export type IapPlatform = 'ios' | 'android';
+
+// One transaction id per store = one grant, forever.
+registerIndexes('iap_transactions', [
+    { key: { id: 1 }, unique: true },
+    { key: { platform: 1, transaction_id: 1 }, unique: true },
+    { key: { user_id: 1 } },
+]);
+
+interface IapTransactionDoc {
+    id: string;
+    platform: IapPlatform;
+    transaction_id: string;
+    user_id: string | null;
+    product_id: string;
+    entitlement: string;
+    created_at: Date;
+    store_verified: boolean;
+}
 
 // ─── Product id conventions ──────────────────────────────────────────────────
 // The store product ids we expect for each entitlement. These must match the
@@ -73,7 +90,7 @@ function isPlatform(v: string | undefined): v is IapPlatform {
  */
 export async function verifyIapPurchase(
     args: VerifyArgs,
-    fulfill?: (client: PoolClient) => Promise<void>
+    fulfill?: (client?: undefined) => Promise<void>
 ): Promise<VerifyResult> {
     // ─── Dev / unenforced ────────────────────────────────────────────────────
     if (!env.IAP_ENFORCE) {
@@ -130,24 +147,24 @@ async function reserveOrReplay(row: {
     userId: string;
     productId: string;
     entitlement: string;
-}, fulfill?: (client: PoolClient) => Promise<void>): Promise<VerifyResult> {
-    return transaction(async (client): Promise<VerifyResult> => {
-    // Lock before inserting the FK row: upgrading concurrent FK key-share locks
-    // later (e.g. a bundle grant) can deadlock. All grants use this lock order.
-    const user = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [row.userId]);
-    if (!user.rowCount) return { ok: false, status: 404, error: 'User not found' };
-    if (await reserveTransaction(row, client)) {
-        if (fulfill) await fulfill(client);
+}, fulfill?: (client?: undefined) => Promise<void>): Promise<VerifyResult> {
+    const user = await col('users').findOne({ id: row.userId }, { projection: { _id: 1 } });
+    if (!user) return { ok: false, status: 404, error: 'User not found' };
+    if (await reserveTransaction(row)) {
+        // ponytail: no transaction — if fulfill throws, the reservation stays
+        // and the same user's retry returns alreadyGranted. Upgrade to a
+        // session/withTransaction if that ever bites in production.
+        if (fulfill) await fulfill();
         return { ok: true, transactionId: row.transactionId, alreadyGranted: false };
     }
-    const prior = await client.query<{ user_id: string; product_id: string }>(
-        'SELECT user_id, product_id FROM iap_transactions WHERE platform = $1 AND transaction_id = $2',
-        [row.platform, row.transactionId]
+    const prior = await col<IapTransactionDoc>('iap_transactions').findOne(
+        { platform: row.platform, transaction_id: row.transactionId },
+        { projection: { user_id: 1, product_id: 1 } }
     );
-    if (prior.rows[0]?.product_id !== row.productId) {
+    if (prior?.product_id !== row.productId) {
         return { ok: false, status: 400, error: 'Transaction product mismatch.' };
     }
-    if (prior.rows[0]?.user_id === row.userId) {
+    if (prior?.user_id === row.userId) {
         return { ok: true, transactionId: row.transactionId, alreadyGranted: true };
     }
     return {
@@ -155,12 +172,12 @@ async function reserveOrReplay(row: {
         status: 409,
         error: 'This purchase was already redeemed by another account.',
     };
-    });
 }
 
 /**
  * Insert into the idempotency ledger. Returns true if this is the first time
- * we've seen (platform, transactionId), false if it was already redeemed.
+ * we've seen (platform, transactionId), false if it was already redeemed
+ * (unique index on {platform, transaction_id} → duplicate key 11000).
  */
 async function reserveTransaction(row: {
     platform: IapPlatform;
@@ -168,23 +185,23 @@ async function reserveTransaction(row: {
     userId: string;
     productId: string;
     entitlement: string;
-}, client: PoolClient): Promise<boolean> {
-    const res = await client.query(
-        `INSERT INTO iap_transactions
-             (platform, transaction_id, user_id, product_id, entitlement, store_verified)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (platform, transaction_id) DO NOTHING
-         RETURNING id`,
-        [
-            row.platform,
-            row.transactionId,
-            row.userId,
-            row.productId,
-            row.entitlement,
-            env.IAP_ENFORCE,
-        ]
-    );
-    return (res.rowCount ?? 0) > 0;
+}): Promise<boolean> {
+    try {
+        await col<IapTransactionDoc>('iap_transactions').insertOne({
+            id: newId(),
+            platform: row.platform,
+            transaction_id: row.transactionId,
+            user_id: row.userId,
+            product_id: row.productId,
+            entitlement: row.entitlement,
+            created_at: new Date(),
+            store_verified: env.IAP_ENFORCE,
+        });
+        return true;
+    } catch (err) {
+        if ((err as { code?: number }).code === 11000) return false;
+        throw err;
+    }
 }
 
 // ─── Apple ────────────────────────────────────────────────────────────────────

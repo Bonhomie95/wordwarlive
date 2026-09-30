@@ -28,7 +28,7 @@ import { requireAuth, requireAdmin } from '../auth/middleware.js';
 import { findUserByEmail, getPasswordHash } from '../services/userService.js';
 import { verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
-import { query } from '../db/pool.js';
+import { col } from '../db/mongo.js';
 import { authLimiter } from '../middleware/rateLimit.js';
 import { env } from '../config/env.js';
 import * as admin from '../services/adminService.js';
@@ -64,7 +64,7 @@ adminRouter.post('/admin/login', authLimiter, async (req, res) => {
     if (!(await admin.isAdmin(user.id))) {
         return res.status(403).json({ error: 'This account is not an administrator.' });
     }
-    if ((await query<{ banned: boolean }>('SELECT banned FROM users WHERE id = $1', [user.id]))[0]?.banned) return res.status(403).json({ error: 'Account suspended.' });
+    if ((await col('users').findOne({ id: user.id }, { projection: { banned: 1 } }))?.banned) return res.status(403).json({ error: 'Account suspended.' });
     const token = signSession({
         userId: user.id,
         username: user.username,
@@ -105,12 +105,12 @@ adminRouter.get('/admin/overview', wrap(async (_req, res) => {
 adminRouter.use('/admin/players/:id', async (req, res, next) => {
     const id = String(req.params.id);
     if (!z.string().uuid().safeParse(id).success) return res.status(400).json({ error: 'Invalid player ID' });
-    const target = await query<{ is_admin: boolean; is_super_admin: boolean }>('SELECT is_admin, is_super_admin FROM users WHERE id = $1', [id]);
-    if (!target[0]) return res.status(404).json({ error: 'Player not found' });
-    if (req.method !== 'GET' && target[0].is_admin && !(await admin.isSuperAdmin(req.session!.userId))) {
+    const target = await col('users').findOne({ id }, { projection: { is_admin: 1, is_super_admin: 1 } });
+    if (!target) return res.status(404).json({ error: 'Player not found' });
+    if (req.method !== 'GET' && target.is_admin && !(await admin.isSuperAdmin(req.session!.userId))) {
         return res.status(403).json({ error: 'Super-admin access required to manage administrators.' });
     }
-    if (req.method !== 'GET' && target[0].is_super_admin && (req.method === 'DELETE' || req.path === '/ban' || req.path === '/role')) {
+    if (req.method !== 'GET' && target.is_super_admin && (req.method === 'DELETE' || req.path === '/ban' || req.path === '/role')) {
         return res.status(403).json({ error: 'Super-admin access is managed by the server operator.' });
     }
     if (req.method !== 'GET' && !z.string().trim().min(3).max(500).safeParse(req.body?.reason).success) return res.status(400).json({ error: 'A reason of 3–500 characters is required.' });
@@ -129,7 +129,7 @@ const supportSchema = z.object({
 adminRouter.post('/admin/players/:id/support', wrap(async (req, res) => {
     const parsed = supportSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Choose a valid adjustment and provide a reason.' });
-    if (parsed.data.cosmeticId && !(await query('SELECT id FROM cosmetics WHERE id = $1', [parsed.data.cosmeticId])).length) {
+    if (parsed.data.cosmeticId && !(await col('cosmetics').findOne({ id: parsed.data.cosmeticId }, { projection: { id: 1 } }))) {
         return res.status(400).json({ error: 'Unknown cosmetic ID' });
     }
     await admin.supportPlayer(String(req.params.id), req.session!.userId, req.session!.username, parsed.data);
@@ -220,12 +220,9 @@ adminRouter.delete('/admin/players/:id', wrap(async (req, res) => {
     const a = await actor(req);
     if (id === a.id) return res.status(400).json({ error: "You can't delete your own account here." });
     // Snapshot a little identity before the row is gone, for the audit trail.
-    const who = await query<{ username: string; email: string | null }>(
-        'SELECT username, email FROM users WHERE id = $1',
-        [id]
-    );
+    const who = await col('users').findOne({ id }, { projection: { username: 1 } });
     await admin.deletePlayer(id);
-    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'delete', targetType: 'user', targetId: id, detail: { username: who[0]?.username, reason: req.body.reason } });
+    await admin.logAdminAction({ adminId: a.id, adminName: a.name, action: 'delete', targetType: 'user', targetId: id, detail: { username: who?.username, reason: req.body.reason } });
     res.json({ ok: true });
 }));
 
@@ -268,13 +265,13 @@ adminRouter.get('/admin/economy', wrap(async (_req, res) => {
 
 adminRouter.get('/admin/leaderboard', wrap(async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const rows = await query(
-        `SELECT rank() OVER (ORDER BY rank_points DESC) AS position,
-                id, username, rank_points, rank_tier, wins, losses, play_streak, play_streak_best
-         FROM users WHERE NOT (auth_subject LIKE 'bot-%')
-         ORDER BY rank_points DESC LIMIT $1`,
-        [limit]
-    );
+    const rows = await col('users').aggregate([
+        { $match: { auth_subject: { $not: /^bot-/ } } },
+        { $setWindowFields: { sortBy: { rank_points: -1 }, output: { position: { $rank: {} } } } },
+        { $sort: { rank_points: -1 } },
+        { $limit: limit },
+        { $project: { _id: 0, position: 1, id: 1, username: 1, rank_points: 1, rank_tier: 1, wins: 1, losses: 1, play_streak: 1, play_streak_best: 1 } },
+    ]).toArray();
     res.json(rows);
 }));
 
@@ -296,7 +293,19 @@ adminRouter.get('/admin/players/:id/timeline',wrap(async(req,res)=>{
  res.json(await playerTimeline(String(req.params.id),parsed.data.search,parsed.data.before));
 }));
 adminRouter.get('/admin/product-metrics',wrap(async(_req,res)=>{
- const events=await query(`SELECT event,offer,count(*)::int events,count(DISTINCT e.user_id)::int players FROM product_events e JOIN users u ON u.id=e.user_id WHERE e.created_at>=now()-interval '30 days' AND u.auth_subject NOT LIKE 'bot-%' GROUP BY event,offer ORDER BY event,offer`);
- const purchases=await query(`SELECT product_id,count(*)::int purchases,count(DISTINCT t.user_id)::int buyers FROM iap_transactions t JOIN users u ON u.id=t.user_id WHERE store_verified AND t.created_at>=now()-interval '30 days' AND u.auth_subject NOT LIKE 'bot-%' GROUP BY product_id`);
+ const since=new Date(Date.now()-30*86_400_000);
+ // Inner-join users (non-bot) via $lookup, then group.
+ const realUser=[{$lookup:{from:'users',localField:'user_id',foreignField:'id',as:'u',pipeline:[{$match:{auth_subject:{$not:/^bot-/}}},{$project:{_id:0,id:1}}]}},{$match:{'u.0':{$exists:true}}}];
+ const events=await col('product_events').aggregate([
+  {$match:{created_at:{$gte:since}}},...realUser,
+  {$group:{_id:{event:'$event',offer:'$offer'},events:{$sum:1},players:{$addToSet:'$user_id'}}},
+  {$project:{_id:0,event:'$_id.event',offer:'$_id.offer',events:1,players:{$size:'$players'}}},
+  {$sort:{event:1,offer:1}},
+ ]).toArray();
+ const purchases=await col('iap_transactions').aggregate([
+  {$match:{store_verified:true,created_at:{$gte:since}}},...realUser,
+  {$group:{_id:'$product_id',purchases:{$sum:1},buyers:{$addToSet:'$user_id'}}},
+  {$project:{_id:0,product_id:'$_id',purchases:1,buyers:{$size:'$buyers'}}},
+ ]).toArray();
  res.json({events,purchases});
 }));

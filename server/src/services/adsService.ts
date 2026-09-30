@@ -1,4 +1,3 @@
-import type { PoolClient } from 'pg';
 // AdMob Server-Side Verification (SSV) and reward granting.
 //
 // Flow:
@@ -14,7 +13,7 @@ import type { PoolClient } from 'pg';
 // Docs:       https://developers.google.com/admob/android/ssv
 
 import crypto from 'node:crypto';
-import { pool, query, transaction } from '../db/pool.js';
+import { col, newId, registerIndexes, todayStr } from '../db/mongo.js';
 import { logger } from '../utils/logger.js';
 import { awardMatchXp } from './battlePassService.js';
 
@@ -35,6 +34,14 @@ const XP_BOOST_AMOUNT = 50;
 const XP_BOOST_DAILY_LIMIT = 5;
 export const COIN_AD_AMOUNT = 25;
 export const COIN_AD_DAILY_LIMIT = 3;
+
+registerIndexes('ad_rewards', [
+    { key: { transaction_id: 1 }, unique: true },
+    { key: { user_id: 1, created_at: -1 } },
+]);
+registerIndexes('users', [{ key: { id: 1 }, unique: true }]);
+registerIndexes('coin_grants', [{ key: { id: 1 }, unique: true }]);
+registerIndexes('battle_pass_seasons', [{ key: { starts_at: 1, ends_at: 1 } }]);
 
 // ─── Public keys cache ──────────────────────────────────────────────────────
 
@@ -148,179 +155,137 @@ export async function processSsvReward(p: SsvParams): Promise<GrantResult> {
     }
 
     const reportedAmount = Number(p.reward_amount) || 0;
+    const rewards = col('ad_rewards');
+    const users = col('users');
 
-    const client = await pool.connect();
+    // Insert the reward record first. The unique transaction_id index makes
+    // duplicate callbacks no-op — AdMob's retries become safe.
     try {
-        await client.query('BEGIN');
-
-        // Insert the reward record. ON CONFLICT DO NOTHING means duplicate
-        // transaction_ids no-op — AdMob's retries become safe.
-        const insertRes = await client.query<{ transaction_id: string }>(
-            `INSERT INTO ad_rewards
-                (transaction_id, user_id, reward_kind, reported_amount, granted)
-             VALUES ($1, $2, $3, $4, FALSE)
-             ON CONFLICT (transaction_id) DO NOTHING
-             RETURNING transaction_id`,
-            [p.transaction_id, userId, rewardKind, reportedAmount]
-        );
-
-        if (insertRes.rowCount === 0) {
-            // Already processed.
-            await client.query('COMMIT');
+        await rewards.insertOne({
+            transaction_id: p.transaction_id, user_id: userId, reward_kind: rewardKind,
+            reported_amount: reportedAmount, granted: false, granted_at: null, created_at: new Date(),
+        });
+    } catch (err) {
+        if ((err as { code?: number }).code === 11000) {
             return { granted: false, error: 'Duplicate transaction', rewardKind };
         }
+        throw err;
+    }
 
-        // Apply the reward and check daily limits server-side.
+    // ponytail: no multi-doc transaction. Each grant is ONE conditional user
+    // update (daily-limit check in the filter), so limits can't be raced past;
+    // on any non-grant we delete the ad_rewards row, mirroring the old ROLLBACK.
+    const discard = () => rewards.deleteOne({ transaction_id: p.transaction_id });
+    const markGranted = () => rewards.updateOne(
+        { transaction_id: p.transaction_id },
+        { $set: { granted: true, granted_at: new Date() } }
+    );
+    const logCoins = (amount: number, kind: RewardKind) =>
+        col('coin_grants').insertOne({
+            id: newId(), user_id: userId, amount, source: 'ad_reward', metadata: { kind }, created_at: new Date(),
+        });
+
+    try {
         if (rewardKind === 'daily_bonus') {
-            const okRes = await client.query<{
-                last_daily_ad_at: Date | null;
-            }>(
-                'SELECT last_daily_ad_at FROM users WHERE id = $1 FOR UPDATE',
-                [userId]
-            );
-            const last = okRes.rows[0]?.last_daily_ad_at;
-            if (
-                last &&
-                sameLocalDay(new Date(last), new Date(), p.tz_offset_minutes ?? 0)
-            ) {
-                await client.query('ROLLBACK');
-                return { granted: false, error: 'Daily bonus already claimed today' };
-            }
+            // "Not yet claimed today (player-local)" ⇔ last_daily_ad_at < start of local day.
+            const tz = p.tz_offset_minutes ?? 0;
+            const localNow = new Date(Date.now() + tz * 60_000);
+            const dayStart = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate()) - tz * 60_000);
 
             // Pick a random power-up.
             const powerups = ['reveal', 'scramble', 'lock'] as const;
             const pick = powerups[Math.floor(Math.random() * powerups.length)]!;
 
-            // Grant the power-up, coins, and battle-pass XP as ONE atomic unit
-            // with the completion flag. Previously coins/XP were granted AFTER
-            // commit (via helpers that each open their own connection — they'd
-            // otherwise deadlock on the row we lock here). But that lost the
-            // coins permanently on any transient failure: ad_rewards was already
-            // granted=TRUE, so AdMob's retry was deduped away. Inlining them
-            // (safe — same already-locked row, one connection) means a failure
-            // rolls the whole reward back and the retry re-grants cleanly.
-            const seasonRes = await client.query<{ season_number: number }>(
-                `SELECT season_number FROM battle_pass_seasons
-                 WHERE now() BETWEEN starts_at AND ends_at
-                 ORDER BY season_number DESC LIMIT 1`
+            const seasonNo = (await currentSeason())?.season_number ?? null;
+            const r = await users.updateOne(
+                { id: userId, $or: [{ last_daily_ad_at: null }, { last_daily_ad_at: { $lt: dayStart } }] },
+                [{ $set: {
+                    last_daily_ad_at: '$$NOW',
+                    [`powerup_${pick}`]: { $add: [{ $ifNull: [`$powerup_${pick}`, 0] }, 1] },
+                    coins: { $add: ['$coins', DAILY_BONUS_COINS] },
+                    ...bpXpSet(seasonNo, DAILY_BONUS_XP),
+                    updated_at: '$$NOW',
+                } }]
             );
-            const seasonNo = seasonRes.rows[0]?.season_number ?? null;
-            await client.query(
-                `UPDATE users SET
-                    last_daily_ad_at = now(),
-                    powerup_${pick} = powerup_${pick} + 1,
-                    coins = coins + $2,
-                    battle_pass_xp = CASE
-                        WHEN $3::int IS NULL THEN battle_pass_xp
-                        WHEN battle_pass_season = $3 THEN battle_pass_xp + $4
-                        ELSE $4 END,
-                    battle_pass_premium = CASE WHEN $3::int IS NULL OR battle_pass_season = $3 THEN battle_pass_premium ELSE FALSE END,
-                    battle_pass_season = COALESCE($3::int, battle_pass_season),
-                    updated_at = now()
-                 WHERE id = $1`,
-                [userId, DAILY_BONUS_COINS, seasonNo, DAILY_BONUS_XP]
-            );
-            await client.query(
-                `INSERT INTO coin_grants (user_id, amount, source, metadata)
-                 VALUES ($1, $2, 'ad_reward', $3)`,
-                [userId, DAILY_BONUS_COINS, { kind: 'daily_bonus' }]
-            );
-            await client.query(
-                `UPDATE ad_rewards SET granted = TRUE, granted_at = now()
-                 WHERE transaction_id = $1`,
-                [p.transaction_id]
-            );
-            await client.query('COMMIT');
+            if (!r.matchedCount) {
+                await discard();
+                return { granted: false, error: 'Daily bonus already claimed today' };
+            }
+            await logCoins(DAILY_BONUS_COINS, 'daily_bonus');
+            await markGranted();
             return { granted: true, rewardKind };
         }
 
         if (rewardKind === 'bp_xp_boost') {
-            const today = new Date().toISOString().slice(0, 10);
-            const userRes = await client.query<{
-                xp_boost_ads_today: number;
-                xp_boost_ads_day: string | null;
-            }>(
-                `SELECT xp_boost_ads_today, to_char(xp_boost_ads_day, 'YYYY-MM-DD') AS xp_boost_ads_day
-                 FROM users WHERE id = $1 FOR UPDATE`,
-                [userId]
+            const today = todayStr();
+            const r = await users.updateOne(
+                { id: userId, $or: [{ xp_boost_ads_day: { $ne: today } }, { xp_boost_ads_today: { $lt: XP_BOOST_DAILY_LIMIT } }] },
+                [{ $set: {
+                    xp_boost_ads_today: { $cond: [{ $eq: ['$xp_boost_ads_day', today] }, { $add: ['$xp_boost_ads_today', 1] }, 1] },
+                    xp_boost_ads_day: today,
+                    updated_at: '$$NOW',
+                } }]
             );
-            const u = userRes.rows[0];
-            if (!u) {
-                await client.query('ROLLBACK');
-                return { granted: false, error: 'User not found' };
+            if (!r.matchedCount) {
+                await discard();
+                const exists = await users.countDocuments({ id: userId }, { limit: 1 });
+                return { granted: false, error: exists ? 'Daily XP boost limit reached' : 'User not found' };
             }
-            const onSameDay = u.xp_boost_ads_day === today;
-            const watchedToday = onSameDay ? u.xp_boost_ads_today : 0;
-            if (watchedToday >= XP_BOOST_DAILY_LIMIT) {
-                await client.query('ROLLBACK');
-                return { granted: false, error: 'Daily XP boost limit reached' };
-            }
-            await client.query(
-                `UPDATE users SET
-                    xp_boost_ads_today = $1,
-                    xp_boost_ads_day = $2::date,
-                    updated_at = now()
-                 WHERE id = $3`,
-                [watchedToday + 1, today, userId]
-            );
-            await client.query(
-                `UPDATE ad_rewards SET granted = TRUE, granted_at = now()
-                 WHERE transaction_id = $1`,
-                [p.transaction_id]
-            );
-            await bumpBattlePassXp(userId, XP_BOOST_AMOUNT, client);
-            await client.query('COMMIT');
+            await markGranted();
+            await bumpBattlePassXp(userId, XP_BOOST_AMOUNT);
             return { granted: true, rewardKind };
         }
 
         if (rewardKind === 'coin_boost') {
-            const today = new Date().toISOString().slice(0, 10);
-            const userRes = await client.query<{
-                coin_ads_today: number;
-                coin_ads_day: string | null;
-            }>(
-                `SELECT coin_ads_today, to_char(coin_ads_day, 'YYYY-MM-DD') AS coin_ads_day
-                 FROM users WHERE id = $1 FOR UPDATE`,
-                [userId]
+            const today = todayStr();
+            const r = await users.updateOne(
+                { id: userId, $or: [{ coin_ads_day: { $ne: today } }, { coin_ads_today: { $lt: COIN_AD_DAILY_LIMIT } }] },
+                [{ $set: {
+                    coin_ads_today: { $cond: [{ $eq: ['$coin_ads_day', today] }, { $add: ['$coin_ads_today', 1] }, 1] },
+                    coin_ads_day: today,
+                    coins: { $add: ['$coins', COIN_AD_AMOUNT] },
+                    updated_at: '$$NOW',
+                } }]
             );
-            const u = userRes.rows[0];
-            if (!u) {
-                await client.query('ROLLBACK');
-                return { granted: false, error: 'User not found' };
+            if (!r.matchedCount) {
+                await discard();
+                const exists = await users.countDocuments({ id: userId }, { limit: 1 });
+                return { granted: false, error: exists ? 'Daily coin ad limit reached' : 'User not found' };
             }
-            const watchedToday = u.coin_ads_day === today ? u.coin_ads_today : 0;
-            if (watchedToday >= COIN_AD_DAILY_LIMIT) {
-                await client.query('ROLLBACK');
-                return { granted: false, error: 'Daily coin ad limit reached' };
-            }
-            await client.query(
-                `UPDATE users SET coin_ads_today = $1, coin_ads_day = $2::date,
-                                  coins = coins + $3, updated_at = now()
-                 WHERE id = $4`,
-                [watchedToday + 1, today, COIN_AD_AMOUNT, userId]
-            );
-            await client.query(
-                `INSERT INTO coin_grants (user_id, amount, source, metadata)
-                 VALUES ($1, $2, 'ad_reward', $3)`,
-                [userId, COIN_AD_AMOUNT, { kind: 'coin_boost' }]
-            );
-            await client.query(
-                `UPDATE ad_rewards SET granted = TRUE, granted_at = now()
-                 WHERE transaction_id = $1`,
-                [p.transaction_id]
-            );
-            await client.query('COMMIT');
+            await logCoins(COIN_AD_AMOUNT, 'coin_boost');
+            await markGranted();
             return { granted: true, rewardKind };
         }
 
-        await client.query('ROLLBACK');
+        await discard();
         return { granted: false, error: 'Unhandled reward kind' };
     } catch (err) {
-        await client.query('ROLLBACK');
+        await discard();
         throw err;
-    } finally {
-        client.release();
     }
+}
+
+async function currentSeason(): Promise<{ season_number: number } | null> {
+    const now = new Date();
+    return col<{ season_number: number }>('battle_pass_seasons').findOne(
+        { starts_at: { $lte: now }, ends_at: { $gte: now } },
+        { sort: { season_number: -1 }, projection: { _id: 0, season_number: 1 } }
+    );
+}
+
+/**
+ * Pipeline-update fields that add `xp` to the user's battle-pass progress
+ * for `seasonNo`, resetting XP/premium if the user is still on an old season.
+ * No-op when there is no active season.
+ */
+function bpXpSet(seasonNo: number | null, xp: number): Record<string, unknown> {
+    if (seasonNo === null) return {};
+    const same = { $eq: ['$battle_pass_season', seasonNo] };
+    return {
+        battle_pass_xp: { $cond: [same, { $add: ['$battle_pass_xp', xp] }, xp] },
+        battle_pass_premium: { $cond: [same, '$battle_pass_premium', false] },
+        battle_pass_season: seasonNo,
+    };
 }
 
 /**
@@ -342,47 +307,13 @@ function sameLocalDay(a: Date, b: Date, tzOffsetMinutes: number): boolean {
  * Add raw XP to the user's current battle-pass progress. Bypasses the
  * match-result XP scaling (which is for played matches).
  */
-async function bumpBattlePassXp(userId: string, xp: number, existing?: PoolClient): Promise<void> {
-    // We piggy-back on awardMatchXp's logic; there's no other XP source
-    // currently. Using 'tie' would award the wrong number — instead we
-    // perform a direct increment, mirroring the row-level lock approach.
-    return transaction(async (c) => {
-        const seasonRes = await c.query<{
-            season_number: number;
-            xp_per_tier: number;
-            max_tier: number;
-        }>(
-            `SELECT season_number, xp_per_tier, max_tier
-             FROM battle_pass_seasons
-             WHERE now() BETWEEN starts_at AND ends_at
-             ORDER BY season_number DESC LIMIT 1`
-        );
-        const s = seasonRes.rows[0];
-        if (!s) {
-            return;
-        }
-        const userRow = await c.query<{
-            battle_pass_xp: number;
-            battle_pass_season: number;
-        }>(
-            `SELECT battle_pass_xp, battle_pass_season FROM users
-             WHERE id = $1 FOR UPDATE`,
-            [userId]
-        );
-        const u = userRow.rows[0];
-        if (!u) {
-            return;
-        }
-        const baseXp =
-            u.battle_pass_season === s.season_number ? u.battle_pass_xp : 0;
-        const newXp = baseXp + xp;
-        await c.query(
-            `UPDATE users SET battle_pass_xp = $1, battle_pass_premium = CASE WHEN battle_pass_season = $2 THEN battle_pass_premium ELSE FALSE END, battle_pass_season = $2,
-                              updated_at = now()
-             WHERE id = $3`,
-            [newXp, s.season_number, userId]
-        );
-    }, existing);
+async function bumpBattlePassXp(userId: string, xp: number): Promise<void> {
+    const s = await currentSeason();
+    if (!s) return;
+    await col('users').updateOne(
+        { id: userId },
+        [{ $set: { ...bpXpSet(s.season_number, xp), updated_at: '$$NOW' } }]
+    );
 }
 
 // ─── Remove Ads IAP ─────────────────────────────────────────────────────────
@@ -390,10 +321,7 @@ async function bumpBattlePassXp(userId: string, xp: number, existing?: PoolClien
 export async function applyRemoveAdsPurchase(userId: string): Promise<void> {
     // The IAP receipt is verified upstream in routes/ads.ts (verifyIapPurchase)
     // before this runs.
-    await query(
-        `UPDATE users SET ads_removed = TRUE, updated_at = now() WHERE id = $1`,
-        [userId]
-    );
+    await col('users').updateOne({ id: userId }, { $set: { ads_removed: true, updated_at: new Date() } });
 }
 
 // Reference imports so linters don't complain about awardMatchXp being

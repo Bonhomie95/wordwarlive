@@ -1,12 +1,10 @@
-import type { PoolClient } from 'pg';
-import { inTransactionScope, pool as checkpointPool, query as checkpointQuery } from '../db/pool.js';
+import { col, inTransactionScope, registerIndexes } from '../db/mongo.js';
 // Per-match runtime state. The server owns the target word and the clock;
 // clients see only their own letters and the opponent's tile colors. Guesses
 // are rate-limited via Redis so a malicious client can't hammer the engine.
 
 import { randomUUID } from 'node:crypto';
 import { redis } from '../db/redis.js';
-import { query } from '../db/pool.js';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -120,10 +118,24 @@ async function allRequired<T extends readonly unknown[] | []>(values: T): Promis
     return results.map(r => (r as PromiseFulfilledResult<unknown>).value) as { -readonly [P in keyof T]: Awaited<T[P]> };
 }
 
+registerIndexes('match_checkpoints', [
+    { key: { id: 1 }, unique: true },
+    { key: { node_id: 1, 'state.ended': 1 } },
+]);
+registerIndexes('node_leases', [{ key: { id: 1 }, unique: true }]);
+
+// Replaces pg_try_advisory_lock: a lease doc per NODE_ID, renewed by a
+// heartbeat and expiring on its own if the process dies without releasing.
+const LEASE_MS = 30_000;
+const LEASE_HEARTBEAT_MS = 10_000;
+interface NodeLease { id: string; lease_until: Date }
+
 export class MatchRegistry {
-    private ownerConnection: PoolClient | null = null;
+    private leaseTimer: NodeJS.Timeout | null = null;
     async releaseOwnership(): Promise<void> {
-        if(this.ownerConnection){await this.ownerConnection.query("SELECT pg_advisory_unlock(hashtext($1))",["wordwar-match-owner:"+env.nodeId]);this.ownerConnection.release();this.ownerConnection=null;}
+        if (!this.leaseTimer) return;
+        clearInterval(this.leaseTimer); this.leaseTimer = null;
+        await col<NodeLease>('node_leases').deleteOne({ id: env.nodeId });
     }
     private byMatchId = new Map<string, ActiveMatch>();
     /** userId -> matchId */
@@ -171,22 +183,53 @@ export class MatchRegistry {
 
     private async checkpoint(match: ActiveMatch): Promise<void> {
         match.checkpointVersion = (match.checkpointVersion ?? 0) + 1;
-        const state = JSON.stringify(match, (key, value) =>
-            key.endsWith('Handle') || key.endsWith('GraceTimer') || key.endsWith('SocketId') ? null : value);
-        await checkpointQuery(`INSERT INTO match_checkpoints(id,node_id,state) VALUES($1,$2,$3)
-            ON CONFLICT(id) DO UPDATE SET state=EXCLUDED.state,updated_at=now()
-            WHERE NOT (match_checkpoints.state->>'ended')::boolean
-            AND COALESCE((match_checkpoints.state->>'checkpointVersion')::int,0) < (EXCLUDED.state->>'checkpointVersion')::int`, [match.id, env.nodeId, state]);
+        const state = JSON.parse(JSON.stringify(match, (key, value) =>
+            key.endsWith('Handle') || key.endsWith('GraceTimer') || key.endsWith('SocketId') ? null : value)) as ActiveMatch;
+        // Upsert only over a live, older checkpoint. If the row exists but is
+        // ended / newer, the filter misses and the upsert-insert hits the
+        // unique id index — that duplicate is the "DO UPDATE ... WHERE" no-op.
+        try {
+            await col('match_checkpoints').updateOne(
+                {
+                    id: match.id,
+                    'state.ended': false,
+                    $or: [
+                        { 'state.checkpointVersion': { $exists: false } },
+                        { 'state.checkpointVersion': { $lt: match.checkpointVersion } },
+                    ],
+                },
+                { $set: { state, updated_at: new Date() }, $setOnInsert: { id: match.id, node_id: env.nodeId } },
+                { upsert: true }
+            );
+        } catch (err) {
+            if ((err as { code?: number }).code !== 11000) throw err;
+        }
     }
 
     /** Called before listening. Deployments must retain a unique stable NODE_ID. */
     async recover(io: AppIOServer): Promise<number> {
-        this.ownerConnection = await checkpointPool.connect();
-        const lock = await this.ownerConnection.query<{owned:boolean}>('SELECT pg_try_advisory_lock(hashtext($1)) owned',['wordwar-match-owner:'+env.nodeId]);
-        if(!lock.rows[0]?.owned){this.ownerConnection.release();this.ownerConnection=null;throw new Error('NODE_ID is already running; use one unique stable NODE_ID per instance.');}
-        this.ownerConnection.on('error', (error) => { logger.fatal({error}, 'Match ownership connection lost'); process.exit(1); });
-        const rows = await checkpointQuery<{ state: ActiveMatch }>(
-            "SELECT state FROM match_checkpoints WHERE node_id=$1 AND NOT (state->>'ended')::boolean", [env.nodeId]);
+        const leases = col<NodeLease>('node_leases');
+        const renew = () => leases.updateOne(
+            { id: env.nodeId, lease_until: { $lt: new Date() } },
+            { $set: { lease_until: new Date(Date.now() + LEASE_MS) }, $setOnInsert: { id: env.nodeId } },
+            { upsert: true }
+        );
+        // Acquire: insert if absent, or take over an expired lease. A live
+        // lease makes the upsert collide on the unique id index (11000).
+        try { await renew(); } catch (err) {
+            if ((err as { code?: number }).code !== 11000) throw err;
+            throw new Error('NODE_ID is already running; use one unique stable NODE_ID per instance.');
+        }
+        // Heartbeat renews our own (unexpired) lease; a lost DB kills the node
+        // like the old advisory-lock connection error did.
+        this.leaseTimer = setInterval(() => {
+            leases.updateOne({ id: env.nodeId }, { $set: { lease_until: new Date(Date.now() + LEASE_MS) } })
+                .catch((error) => { logger.fatal({ error }, 'Match ownership lease lost'); process.exit(1); });
+        }, LEASE_HEARTBEAT_MS);
+        this.leaseTimer.unref?.();
+        const rows = await col<{ state: ActiveMatch }>('match_checkpoints')
+            .find({ node_id: env.nodeId, 'state.ended': false }, { projection: { _id: 0, state: 1 } })
+            .toArray();
         for (const row of rows) {
             const match = row.state;
             match.p1SocketId = null; match.p2SocketId = null;
@@ -204,7 +247,9 @@ export class MatchRegistry {
             if(match.p1IsBot || match.p2IsBot) this.scheduleBotGuess(io, match);
         }
         // Ended checkpoints commit atomically with all rewards and prevent replay after a crash.
-        await checkpointQuery("DELETE FROM match_checkpoints WHERE node_id=$1 AND (state->>'ended')::boolean AND updated_at < now()-interval '7 days'", [env.nodeId]);
+        await col('match_checkpoints').deleteMany({
+            node_id: env.nodeId, 'state.ended': true, updated_at: { $lt: new Date(Date.now() - 7 * 86_400_000) },
+        });
         return rows.length;
     }
 
@@ -502,21 +547,20 @@ export class MatchRegistry {
 
         // Check + decrement inventory atomically. `kind` is whitelisted below
         // (never trust the wire type at runtime) and mapped to a fixed column
-        // name — no client string is ever interpolated into SQL.
+        // name — no client string is ever interpolated into the update.
         const COLS = {
             reveal: 'powerup_reveal',
             scramble: 'powerup_scramble',
             lock: 'powerup_lock',
         } as const;
-        const col = COLS[kind];
-        if (!col) return { ok: false, error: 'Unknown powerup' };
-        const rows = await query<{ remaining: number }>(
-            `UPDATE users SET ${col} = ${col} - 1, updated_at = now()
-             WHERE id = $1 AND ${col} > 0
-             RETURNING ${col} AS remaining`,
-            [userId]
+        const field = COLS[kind];
+        if (!field) return { ok: false, error: 'Unknown powerup' };
+        const updated = await col('users').findOneAndUpdate(
+            { id: userId, [field]: { $gt: 0 } },
+            { $inc: { [field]: -1 }, $set: { updated_at: new Date() } },
+            { returnDocument: 'after', projection: { _id: 0, [field]: 1 } }
         );
-        if (rows.length === 0) {
+        if (!updated) {
             return { ok: false, error: `You have no ${kind} powerups left.` };
         }
 
@@ -524,7 +568,7 @@ export class MatchRegistry {
 
         // The match can end while the inventory update is waiting on the DB.
         if (match.ended) {
-            await query(`UPDATE users SET ${col} = ${col} + 1 WHERE id = $1`, [userId]);
+            await col('users').updateOne({ id: userId }, { $inc: { [field]: 1 } });
             return { ok: false, error: 'Game not active' };
         }
         if (kind === 'reveal' && pick) {

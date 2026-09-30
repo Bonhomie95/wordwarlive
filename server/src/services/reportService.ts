@@ -2,7 +2,18 @@
 // opponents). Intake only — reports land in `content_reports` for out-of-band
 // review. A unique partial index dedups open reports per (reporter, target).
 
-import { query } from '../db/pool.js';
+import { col, newId, registerIndexes } from '../db/mongo.js';
+
+registerIndexes('content_reports', [
+    { key: { id: 1 }, unique: true },
+    { key: { status: 1, created_at: -1 } },
+    // One open report per (reporter, target) so a user can't spam-report.
+    {
+        key: { reporter_id: 1, target_type: 1, target_id: 1 },
+        unique: true,
+        partialFilterExpression: { status: 'open' },
+    },
+]);
 
 export type ReportTargetType = 'user' | 'mystery_word' | 'match';
 export type ReportReason =
@@ -25,22 +36,22 @@ export async function createReport(
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
     // Best-effort dedup: the partial unique index makes a second OPEN report
     // for the same target a no-op.
-    const rows = await query<{ id: string }>(
-        `INSERT INTO content_reports (reporter_id, target_type, target_id, reason, detail)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT DO NOTHING
-         RETURNING id`,
-        [
-            args.reporterId,
-            args.targetType,
-            args.targetId ?? null,
-            args.reason,
-            args.detail ? args.detail.slice(0, 1000) : null,
-        ]
-    );
-    if (rows.length === 0) {
+    const id = newId();
+    try {
+        await col('content_reports').insertOne({
+            id,
+            reporter_id: args.reporterId,
+            target_type: args.targetType,
+            target_id: args.targetId ?? null,
+            reason: args.reason,
+            detail: args.detail ? args.detail.slice(0, 1000) : null,
+            status: 'open',
+            created_at: new Date(),
+        });
+    } catch (err) {
+        if ((err as { code?: number }).code !== 11000) throw err;
         // Already reported (open) — treat as success so the UI is idempotent.
         return { ok: true, id: 'existing' };
     }
-    return { ok: true, id: rows[0]!.id };
+    return { ok: true, id };
 }

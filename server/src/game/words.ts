@@ -2,7 +2,12 @@
 // at boot (a few thousand strings is nothing) so guess validation never has
 // to hit the DB on the hot path.
 
-import { query } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
+
+registerIndexes('word_bank', [
+    { key: { word: 1 }, unique: true },
+    { key: { length: 1 } },
+]);
 import { logger } from '../utils/logger.js';
 
 interface WordEntry {
@@ -18,9 +23,9 @@ const difficultyByWord: Map<string, number> = new Map();
 let loaded = false;
 
 export async function loadWordBank(): Promise<void> {
-    const rows = await query<WordEntry>(
-        'SELECT word, length, difficulty FROM word_bank'
-    );
+    const rows = await col<WordEntry>('word_bank')
+        .find({}, { projection: { _id: 0, word: 1, length: 1, difficulty: 1 } })
+        .toArray();
 
     byLength.clear();
     wordSet.clear();

@@ -6,7 +6,7 @@
 //   XP Booster     — 250 coins, 2x battle-pass XP from matches for 24h
 //                    (stacks by extending the end time).
 
-import { transaction } from '../db/pool.js';
+import { col } from '../db/mongo.js';
 import { spendCoins } from './coinsService.js';
 
 export const STREAK_SHIELD_COST = 150;
@@ -18,22 +18,37 @@ export const XP_BOOST_MULTIPLIER = 2;
 export type BoostError = 'NOT_AFFORDABLE' | 'AT_MAX' | 'NOT_FOUND';
 
 export async function buyStreakShield(userId: string): Promise<{ ok: true; shields: number; coins: number } | { ok: false; error: BoostError }> {
-    return transaction(async (client) => {
-        const cur = await client.query('SELECT streak_shields FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (!cur.rows[0]) return { ok: false, error: 'NOT_FOUND' };
-        if (cur.rows[0].streak_shields >= STREAK_SHIELD_MAX) return { ok: false, error: 'AT_MAX' };
-        const coins = await spendCoins({ userId, amount: STREAK_SHIELD_COST, source: 'boost_spend', metadata: { boost: 'streak_shield' } }, client);
-        if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-        const result = await client.query('UPDATE users SET streak_shields = streak_shields + 1, updated_at = now() WHERE id = $1 RETURNING streak_shields', [userId]);
-        return { ok: true, shields: result.rows[0].streak_shields, coins };
-    });
+    const users = col<{ id: string; streak_shields: number }>('users');
+    const cur = await users.findOne({ id: userId }, { projection: { _id: 0, streak_shields: 1 } });
+    if (!cur) return { ok: false, error: 'NOT_FOUND' };
+    if (cur.streak_shields >= STREAK_SHIELD_MAX) return { ok: false, error: 'AT_MAX' };
+    const coins = await spendCoins({ userId, amount: STREAK_SHIELD_COST, source: 'boost_spend', metadata: { boost: 'streak_shield' } });
+    if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
+    // ponytail: no row lock — two concurrent buys can both pass the AT_MAX
+    // check; the $lt filter keeps the count capped, the second buyer is refunded.
+    const result = await users.findOneAndUpdate(
+        { id: userId, streak_shields: { $lt: STREAK_SHIELD_MAX } },
+        { $inc: { streak_shields: 1 }, $set: { updated_at: new Date() } },
+        { returnDocument: 'after', projection: { _id: 0, streak_shields: 1 } }
+    );
+    if (!result) {
+        await users.updateOne({ id: userId }, { $inc: { coins: STREAK_SHIELD_COST } });
+        return { ok: false, error: 'AT_MAX' };
+    }
+    return { ok: true, shields: result.streak_shields, coins };
 }
 
 export async function buyXpBoost(userId: string): Promise<{ ok: true; xpBoostUntil: string; coins: number } | { ok: false; error: BoostError }> {
-    return transaction(async (client) => {
-        const coins = await spendCoins({ userId, amount: XP_BOOST_COST, source: 'boost_spend', metadata: { boost: 'xp_boost', hours: XP_BOOST_HOURS } }, client);
-        if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-        const result = await client.query(`UPDATE users SET xp_boost_until = GREATEST(COALESCE(xp_boost_until, now()), now()) + ($2 || ' hours')::interval, updated_at = now() WHERE id = $1 RETURNING xp_boost_until`, [userId, String(XP_BOOST_HOURS)]);
-        return { ok: true, xpBoostUntil: new Date(result.rows[0].xp_boost_until).toISOString(), coins };
-    });
+    const coins = await spendCoins({ userId, amount: XP_BOOST_COST, source: 'boost_spend', metadata: { boost: 'xp_boost', hours: XP_BOOST_HOURS } });
+    if (coins === null) return { ok: false, error: 'NOT_AFFORDABLE' };
+    // GREATEST(COALESCE(xp_boost_until, now()), now()) + 24h, atomically.
+    const result = await col<{ xp_boost_until: Date }>('users').findOneAndUpdate(
+        { id: userId },
+        [{ $set: {
+            xp_boost_until: { $add: [{ $max: [{ $ifNull: ['$xp_boost_until', '$$NOW'] }, '$$NOW'] }, XP_BOOST_HOURS * 3_600_000] },
+            updated_at: '$$NOW',
+        } }],
+        { returnDocument: 'after', projection: { _id: 0, xp_boost_until: 1 } }
+    );
+    return { ok: true, xpBoostUntil: new Date(result!.xp_boost_until).toISOString(), coins };
 }

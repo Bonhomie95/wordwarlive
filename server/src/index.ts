@@ -16,7 +16,8 @@ import { createServer } from 'node:http';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { loadWordBank } from './game/words.js';
-import { pool } from './db/pool.js';
+import { db, connectMongo, closeMongo } from './db/mongo.js';
+import { seed } from './db/seed.js';
 import { redis } from './db/redis.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter } from './middleware/rateLimit.js';
@@ -74,6 +75,9 @@ async function main() {
     }
 
     // Word bank must be loaded before any guess validation runs.
+    await connectMongo();
+    // Indexes + word bank + shop/pass seed content; idempotent on every boot.
+    await seed();
     await loadWordBank();
 
     // Clear any stale matchmaking queue left behind by a previous run of this
@@ -108,15 +112,15 @@ async function main() {
         res.json({ ok: true, env: env.NODE_ENV });
     });
 
-    // Readiness — can we actually serve traffic? Checks Postgres + Redis.
+    // Readiness — can we actually serve traffic? Checks MongoDB + Redis.
     // Orchestrators should gate traffic on this, not /healthz.
     app.get('/readyz', async (_req, res) => {
         const checks = { db: false, redis: false };
         try {
-            await pool.query('SELECT 1');
+            await db.command({ ping: 1 });
             checks.db = true;
         } catch (err) {
-            logger.warn({ err }, 'Readiness: Postgres check failed');
+            logger.warn({ err }, 'Readiness: MongoDB check failed');
         }
         try {
             await redis.ping();
@@ -179,11 +183,6 @@ async function main() {
             activeMatches: matchRegistry.activeMatchCount(),
             queueDepth,
             onlineUsers: onlineCount,
-            pool: {
-                total: pool.totalCount,
-                idle: pool.idleCount,
-                waiting: pool.waitingCount,
-            },
             memory: process.memoryUsage(),
         });
     });
@@ -239,7 +238,7 @@ async function main() {
         try {
             await new Promise<void>((resolve) => io.close(() => resolve()));
             await matchRegistry.releaseOwnership();
-            await Promise.allSettled([pool.end(), redis.quit()]);
+            await Promise.allSettled([closeMongo(), redis.quit()]);
         } catch (err) {
             logger.error({ err }, 'Error draining connections on shutdown');
         }

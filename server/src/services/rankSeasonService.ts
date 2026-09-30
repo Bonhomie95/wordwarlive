@@ -13,8 +13,11 @@
 //   - Reset is idempotent: gated by users.last_rank_season_reset_id.
 
 import { tierFromPoints, softResetPoints } from '../game/ranks.js';
-import { query, transaction } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
 import { logger } from '../utils/logger.js';
+
+registerIndexes('rank_seasons', [{ key: { id: 1 }, unique: true }, { key: { starts_at: 1, ends_at: 1 } }]);
+registerIndexes('rank_season_results', [{ key: { season_id: 1, user_id: 1 }, unique: true }]);
 
 export interface RankSeason {
     id: number;
@@ -24,28 +27,36 @@ export interface RankSeason {
     softResetDelta: number;
 }
 
+interface SeasonDoc {
+    id: number;
+    name: string;
+    starts_at: Date;
+    ends_at: Date;
+    soft_reset_delta: number;
+}
+
+interface SeasonResultDoc {
+    season_id: number;
+    user_id: string;
+    peak_points: number;
+    final_points: number;
+    final_tier: string;
+    rewarded: boolean;
+}
+
 /** Get the currently-active season (the one we're inside). */
 export async function getCurrentSeason(): Promise<RankSeason | null> {
-    const rows = await query<{
-        id: number;
-        name: string;
-        starts_at: Date;
-        ends_at: Date;
-        soft_reset_delta: number;
-    }>(
-        `SELECT id, name, starts_at, ends_at, soft_reset_delta
-         FROM rank_seasons
-         WHERE now() BETWEEN starts_at AND ends_at
-         ORDER BY id DESC
-         LIMIT 1`
+    const now = new Date();
+    const r = await col<SeasonDoc>('rank_seasons').findOne(
+        { starts_at: { $lte: now }, ends_at: { $gte: now } },
+        { sort: { id: -1 }, projection: { _id: 0 } }
     );
-    const r = rows[0];
     if (!r) return null;
     return {
         id: r.id,
         name: r.name,
-        startsAt: r.starts_at.toISOString(),
-        endsAt: r.ends_at.toISOString(),
+        startsAt: new Date(r.starts_at).toISOString(),
+        endsAt: new Date(r.ends_at).toISOString(),
         softResetDelta: r.soft_reset_delta,
     };
 }
@@ -70,75 +81,71 @@ export async function applyResetIfNeeded(userId: string): Promise<{
     const season = await getCurrentSeason();
     if (!season) return { resetApplied: false };
 
-    return transaction(async (client) => {
-        const query = async <T = any>(sql: string, values?: unknown[]): Promise<T[]> => (await client.query(sql, values)).rows;
-        const userRows = await query<{
-            last_reset_id: number | null;
-            rank_points: number;
-            rank_tier: string;
-        }>(
-            `SELECT last_rank_season_reset_id AS last_reset_id, rank_points, rank_tier
-             FROM users WHERE id = $1 FOR UPDATE`,
-            [userId]
-        );
-        const u = userRows[0];
-        if (!u) return { resetApplied: false };
-        if (u.last_reset_id === season.id) return { resetApplied: false };
+    const users = col<{ last_rank_season_reset_id: number | null; rank_points: number; rank_tier: string }>('users');
+    const u = await users.findOne(
+        { id: userId },
+        { projection: { _id: 0, last_rank_season_reset_id: 1, rank_points: 1, rank_tier: 1 } }
+    );
+    if (!u) return { resetApplied: false };
+    const lastResetId = u.last_rank_season_reset_id ?? null;
+    if (lastResetId === season.id) return { resetApplied: false };
 
-        // Determine the previous season this player was last in, so we can
-        // record their final state there.
-        let previousResult: {
-            seasonId: number;
-            peakPoints: number;
-            finalPoints: number;
-            finalTier: string;
-        } | undefined;
-        if (u.last_reset_id !== null) {
-            // last_reset_id is the season they were last *reset for* — i.e., the
-            // season they just finished. Record their final.
-            const prevSeasonId = u.last_reset_id;
-            // Peak comes from the rank_season_results table (we update it on
-            // every match win); fall back to current points if no row.
-            const peakRows = await query<{ peak: number }>(
-                `SELECT peak_points AS peak FROM rank_season_results
-                 WHERE season_id = $1 AND user_id = $2`,
-                [prevSeasonId, userId]
-            );
-            const peakPoints = peakRows[0]?.peak ?? u.rank_points;
-            await query(
-                `INSERT INTO rank_season_results
-                    (season_id, user_id, peak_points, final_points, final_tier)
-                 VALUES ($1, $2, $3, $4, $5)
-                 ON CONFLICT (season_id, user_id) DO UPDATE SET
-                    final_points = EXCLUDED.final_points,
-                    final_tier = EXCLUDED.final_tier`,
-                [prevSeasonId, userId, peakPoints, u.rank_points, u.rank_tier]
-            );
-            previousResult = {
-                seasonId: prevSeasonId,
-                peakPoints,
-                finalPoints: u.rank_points,
-                finalTier: u.rank_tier,
-            };
+    // Determine the previous season this player was last in, so we can
+    // record their final state there.
+    let previousResult: {
+        seasonId: number;
+        peakPoints: number;
+        finalPoints: number;
+        finalTier: string;
+    } | undefined;
+    if (lastResetId !== null) {
+        // last_reset_id is the season they were last *reset for* — i.e., the
+        // season they just finished. Record their final.
+        const prevSeasonId = lastResetId;
+        // Peak comes from the rank_season_results collection (we update it on
+        // every match win); fall back to current points if no doc.
+        const results = col<SeasonResultDoc>('rank_season_results');
+        const peakRow = await results.findOne(
+            { season_id: prevSeasonId, user_id: userId },
+            { projection: { _id: 0, peak_points: 1 } }
+        );
+        const peakPoints = peakRow?.peak_points ?? u.rank_points;
+        await results.updateOne(
+            { season_id: prevSeasonId, user_id: userId },
+            {
+                $set: { final_points: u.rank_points, final_tier: u.rank_tier },
+                $setOnInsert: { season_id: prevSeasonId, user_id: userId, peak_points: peakPoints, rewarded: false },
+            },
+            { upsert: true }
+        );
+        previousResult = {
+            seasonId: prevSeasonId,
+            peakPoints,
+            finalPoints: u.rank_points,
+            finalTier: u.rank_tier,
+        };
+    }
+
+    // Apply the soft reset. The reset-id filter replaces the old row lock:
+    // a concurrent /me can only apply it once.
+    const newPoints = softResetPoints(u.rank_points, season.softResetDelta);
+    const written = await users.updateOne(
+        { id: userId, last_rank_season_reset_id: { $ne: season.id } },
+        {
+            $set: {
+                rank_points: newPoints,
+                rank_tier: tierFromPoints(newPoints),
+                last_rank_season_reset_id: season.id,
+                updated_at: new Date(),
+            },
         }
-
-        // Apply the soft reset.
-        const newPoints = softResetPoints(u.rank_points, season.softResetDelta);
-        await query(
-            `UPDATE users SET
-                rank_points = $1,
-                rank_tier = $4,
-                last_rank_season_reset_id = $2,
-                updated_at = now()
-             WHERE id = $3`,
-            [newPoints, season.id, userId, tierFromPoints(newPoints)]
-        );
-        logger.info(
-            { userId, oldPoints: u.rank_points, newPoints, seasonId: season.id },
-            'rank season soft-reset applied'
-        );
-        return { resetApplied: true, previousSeasonResult: previousResult };
-    });
+    );
+    if (!written.matchedCount) return { resetApplied: false };
+    logger.info(
+        { userId, oldPoints: u.rank_points, newPoints, seasonId: season.id },
+        'rank season soft-reset applied'
+    );
+    return { resetApplied: true, previousSeasonResult: previousResult };
 }
 
 /**
@@ -151,11 +158,12 @@ export async function updatePeak(
 ): Promise<void> {
     const season = await getCurrentSeason();
     if (!season) return;
-    await query(
-        `INSERT INTO rank_season_results (season_id, user_id, peak_points, final_points, final_tier)
-         VALUES ($1, $2, $3, $3, '')
-         ON CONFLICT (season_id, user_id) DO UPDATE SET
-            peak_points = GREATEST(rank_season_results.peak_points, EXCLUDED.peak_points)`,
-        [season.id, userId, currentPoints]
+    await col<SeasonResultDoc>('rank_season_results').updateOne(
+        { season_id: season.id, user_id: userId },
+        {
+            $max: { peak_points: currentPoints },
+            $setOnInsert: { season_id: season.id, user_id: userId, final_points: currentPoints, final_tier: '', rewarded: false },
+        },
+        { upsert: true }
     );
 }

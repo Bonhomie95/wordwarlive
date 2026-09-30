@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
 import {
+    applyRemoveAdsPurchase,
     processSsvReward,
     verifySsvSignature,
 } from '../services/adsService.js';
@@ -89,9 +90,7 @@ adsRouter.post('/ads/remove-ads-purchase', requireAuth, async (req, res) => {
         platform: parsed.data.platform,
         receipt: parsed.data.receipt,
         transactionId: parsed.data.transactionId,
-    }, async (client) => {
-        await client.query('UPDATE users SET ads_removed = TRUE, updated_at = now() WHERE id = $1', [req.session!.userId]);
-    });
+    }, () => applyRemoveAdsPurchase(req.session!.userId));
     if (!verified.ok) {
         return res.status(verified.status).json({ error: verified.error });
     }

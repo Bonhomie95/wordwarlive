@@ -10,12 +10,19 @@
 // the client can show "fresh in X hours" in local time.
 
 import { persistedDailySolvers } from './syntheticHistory.js';
-import { query } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
 import { isValidWord, pickRandomWord } from '../game/words.js';
 import { scoreGuess, validateGuess, type GuessResult } from '../game/engine.js';
 import { redeemHint, type HintResult, type HintError } from './hintService.js';
 import { grantCoins } from './coinsService.js';
 import { logger } from '../utils/logger.js';
+
+registerIndexes('daily_challenges', [{ key: { challenge_date: 1 }, unique: true }]);
+registerIndexes('daily_challenge_attempts', [
+    { key: { challenge_date: 1, user_id: 1 }, unique: true },
+    { key: { challenge_date: 1, solved: 1 } },
+]);
+registerIndexes('hint_uses', [{ key: { match_id: 1, user_id: 1 } }]);
 
 /** Coins for solving the day's word. Once per day; a hint costs 50. */
 export const DAILY_SOLVE_COINS = 15;
@@ -32,6 +39,17 @@ export interface DailyAttempt {
     durationMs: number;
     startedAt: number;
     coinsAwarded: number;
+}
+
+interface AttemptDoc {
+    challenge_date: string;
+    user_id: string;
+    guesses: DailyAttempt['guesses'];
+    solved: boolean;
+    guess_count: number;
+    duration_ms: number;
+    created_at: Date;
+    coins_awarded: number;
 }
 
 /**
@@ -51,12 +69,12 @@ function todayUtc(): string {
  */
 export async function getOrCreateTodaysChallenge(): Promise<DailyChallenge> {
     const date = todayUtc();
-    const rows = await query<{ challenge_date: Date; word_length: number }>(
-        'SELECT challenge_date, word_length FROM daily_challenges WHERE challenge_date = $1',
-        [date]
+    const row = await col<{ challenge_date: string; word_length: number }>('daily_challenges').findOne(
+        { challenge_date: date },
+        { projection: { _id: 0, word_length: 1 } }
     );
-    if (rows[0]) {
-        return { challengeDate: date, wordLength: rows[0].word_length };
+    if (row) {
+        return { challengeDate: date, wordLength: row.word_length };
     }
     // Pick length cyclically by day-of-year.
     const dayOfYear = Math.floor(
@@ -65,22 +83,21 @@ export async function getOrCreateTodaysChallenge(): Promise<DailyChallenge> {
     const lengthOptions = [5, 6, 5, 7, 6, 8, 5, 7, 6, 8]; // mostly 5-7, occasional 8
     const length = lengthOptions[dayOfYear % lengthOptions.length]!;
     const word = pickRandomWord(length);
-    await query(
-        `INSERT INTO daily_challenges(challenge_date, word, word_length)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (challenge_date) DO NOTHING`,
-        [date, word, length]
+    await col('daily_challenges').updateOne(
+        { challenge_date: date },
+        { $setOnInsert: { challenge_date: date, word, word_length: length, created_at: new Date() } },
+        { upsert: true }
     );
     return { challengeDate: date, wordLength: length };
 }
 
 /** Internal: fetch the word for a given date. NEVER expose to client. */
 async function getWord(date: string): Promise<string | null> {
-    const rows = await query<{ word: string }>(
-        'SELECT word FROM daily_challenges WHERE challenge_date = $1',
-        [date]
+    const row = await col<{ word: string }>('daily_challenges').findOne(
+        { challenge_date: date },
+        { projection: { _id: 0, word: 1 } }
     );
-    return rows[0]?.word ?? null;
+    return row?.word ?? null;
 }
 
 /**
@@ -88,20 +105,10 @@ async function getWord(date: string): Promise<string | null> {
  */
 export async function getMyAttempt(userId: string): Promise<DailyAttempt | null> {
     const date = todayUtc();
-    const rows = await query<{
-        guesses: DailyAttempt['guesses'];
-        solved: boolean;
-        guess_count: number;
-        duration_ms: number;
-        created_at: Date;
-        coins_awarded: number;
-    }>(
-        `SELECT guesses, solved, guess_count, duration_ms, created_at, coins_awarded
-         FROM daily_challenge_attempts
-         WHERE challenge_date = $1 AND user_id = $2`,
-        [date, userId]
+    const r = await col<AttemptDoc>('daily_challenge_attempts').findOne(
+        { challenge_date: date, user_id: userId },
+        { projection: { _id: 0 } }
     );
-    const r = rows[0];
     if (!r) return null;
     return {
         guesses: r.guesses,
@@ -109,7 +116,7 @@ export async function getMyAttempt(userId: string): Promise<DailyAttempt | null>
         guessCount: r.guess_count,
         durationMs: r.duration_ms,
         startedAt: new Date(r.created_at).getTime(),
-        coinsAwarded: r.coins_awarded,
+        coinsAwarded: r.coins_awarded ?? 0,
     };
 }
 
@@ -119,12 +126,22 @@ export async function getMyAttempt(userId: string): Promise<DailyAttempt | null>
  * would read 0 s). No-op once an attempt exists.
  */
 export async function ensureAttemptStarted(userId: string): Promise<void> {
-    await query(
-        `INSERT INTO daily_challenge_attempts
-            (challenge_date, user_id, guesses, solved, guess_count, duration_ms, created_at)
-         VALUES ($1, $2, '[]'::jsonb, FALSE, 0, 0, now())
-         ON CONFLICT (challenge_date, user_id) DO NOTHING`,
-        [todayUtc(), userId]
+    const date = todayUtc();
+    await col<AttemptDoc>('daily_challenge_attempts').updateOne(
+        { challenge_date: date, user_id: userId },
+        {
+            $setOnInsert: {
+                challenge_date: date,
+                user_id: userId,
+                guesses: [],
+                solved: false,
+                guess_count: 0,
+                duration_ms: 0,
+                created_at: new Date(),
+                coins_awarded: 0,
+            },
+        },
+        { upsert: true }
     );
 }
 
@@ -172,32 +189,27 @@ export async function submitGuess(
     ];
     const durationMs = solved ? Date.now() - startedAt : existing?.durationMs ?? 0;
 
-    // The WHERE guard makes a racing second solve a no-op (no row returned),
-    // so the coin grant below can only happen once per day.
-    const written = await query<{ solved: boolean }>(
-        `INSERT INTO daily_challenge_attempts
-            (challenge_date, user_id, guesses, solved, guess_count, duration_ms, created_at, coins_awarded)
-         VALUES ($1, $2, $3::jsonb, $4, $5, $6, to_timestamp($7 / 1000.0), $8)
-         ON CONFLICT (challenge_date, user_id) DO UPDATE SET
-            guesses = EXCLUDED.guesses,
-            solved = EXCLUDED.solved,
-            guess_count = EXCLUDED.guess_count,
-            duration_ms = EXCLUDED.duration_ms,
-            coins_awarded = EXCLUDED.coins_awarded
-         WHERE daily_challenge_attempts.solved = FALSE
-         RETURNING solved`,
-        [
-            date,
-            userId,
-            JSON.stringify(newGuesses),
-            solved,
-            newGuesses.length,
-            durationMs,
-            startedAt,
-            solved ? DAILY_SOLVE_COINS : 0,
-        ]
-    );
-    if (!written[0]) {
+    // The `solved: false` filter makes a racing second solve a no-op: the
+    // upsert then tries to insert a duplicate (challenge_date, user_id) and
+    // fails with 11000, so the coin grant below can only happen once per day.
+    const attempts = col<AttemptDoc>('daily_challenge_attempts');
+    try {
+        await attempts.updateOne(
+            { challenge_date: date, user_id: userId, solved: false },
+            {
+                $set: {
+                    guesses: newGuesses,
+                    solved,
+                    guess_count: newGuesses.length,
+                    duration_ms: durationMs,
+                    coins_awarded: solved ? DAILY_SOLVE_COINS : 0,
+                },
+                $setOnInsert: { challenge_date: date, user_id: userId, created_at: new Date(startedAt) },
+            },
+            { upsert: true }
+        );
+    } catch (err) {
+        if ((err as { code?: number }).code !== 11000) throw err;
         return {
             ok: false,
             error: "You've already solved today's challenge.",
@@ -212,10 +224,9 @@ export async function submitGuess(
             coinsAwarded = DAILY_SOLVE_COINS;
         } catch (err) {
             logger.error({ err, userId, date }, 'daily solve coin grant failed');
-            await query(
-                'UPDATE daily_challenge_attempts SET coins_awarded = 0 WHERE challenge_date = $1 AND user_id = $2',
-                [date, userId]
-            ).catch(() => {});
+            await attempts
+                .updateOne({ challenge_date: date, user_id: userId }, { $set: { coins_awarded: 0 } })
+                .catch(() => {});
         }
     }
 
@@ -248,16 +259,13 @@ export interface DailyHintState {
 export async function getMyDailyHints(userId: string): Promise<DailyHintState> {
     const date = todayUtc();
     const challenge = await getOrCreateTodaysChallenge();
-    const rows = await query<{ position: number; letter: string }>(
-        `SELECT position, letter FROM hint_uses
-         WHERE match_id = $1 AND user_id = $2
-         ORDER BY used_at ASC`,
-        [dailyHintKey(date), userId]
-    );
+    const rows = await col<{ position: number; letter: string }>('hint_uses')
+        .find({ match_id: dailyHintKey(date), user_id: userId }, { projection: { _id: 0, position: 1, letter: 1 }, sort: { used_at: 1 } })
+        .toArray();
     return {
         hintsUsed: rows.length,
         hintCap: dailyHintCap(challenge.wordLength),
-        hints: rows,
+        hints: rows.map((r) => ({ position: r.position, letter: r.letter })),
     };
 }
 
@@ -314,21 +322,17 @@ export async function todaysLeaderboard(
     total: number;
 }> {
     const date = todayUtc();
-    // ponytail: merges every real solver in memory; move ranking into SQL
+    // ponytail: merges every real solver in memory; move ranking into the DB
     // once daily solvers reach the tens of thousands.
-    const rows = await query<{
-        user_id: string;
-        username: string;
-        guess_count: number;
-        duration_ms: number;
-    }>(
-        `SELECT a.user_id, u.username, a.guess_count, a.duration_ms
-         FROM daily_challenge_attempts a
-         JOIN users u ON u.id = a.user_id
-         WHERE a.challenge_date = $1 AND a.solved = TRUE
-           AND u.auth_subject NOT LIKE 'bot-%' AND u.banned = false`,
-        [date]
-    );
+    const rows = await col<AttemptDoc>('daily_challenge_attempts')
+        .aggregate<{ user_id: string; username: string; guess_count: number; duration_ms: number }>([
+            { $match: { challenge_date: date, solved: true } },
+            { $lookup: { from: 'users', localField: 'user_id', foreignField: 'id', as: 'u' } },
+            { $unwind: '$u' },
+            { $match: { 'u.auth_subject': { $not: /^bot-/ }, 'u.banned': false } },
+            { $project: { _id: 0, user_id: 1, guess_count: 1, duration_ms: 1, username: '$u.username' } },
+        ])
+        .toArray();
     const all = [
         ...rows.map((r) => ({
             userId: r.user_id,

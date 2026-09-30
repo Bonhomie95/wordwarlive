@@ -7,6 +7,7 @@ import {
     findUserByEmail,
     findUserById,
     findUserByProviderSubject,
+    findUserIdByUsername,
     getPasswordHash,
     isValidUsername,
     setAppleRefreshToken,
@@ -14,7 +15,7 @@ import {
 } from '../services/userService.js';
 import { requireAuth } from '../auth/middleware.js';
 import { containsProfanity } from '../moderation/blocklist.js';
-import { query } from '../db/pool.js';
+import { col } from '../db/mongo.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
 import { verifyGoogleIdToken } from '../auth/google.js';
@@ -52,11 +53,7 @@ async function uniqueUsername(base: string): Promise<string> {
     for (let n = 0; n < 50; n++) {
         const candidate = n === 0 ? clean : `${clean}${n}`;
         if (!isValidUsername(candidate)) continue;
-        const rows = await query<{ id: string }>(
-            'SELECT id FROM users WHERE lower(username) = lower($1)',
-            [candidate]
-        );
-        if (rows.length === 0) return candidate;
+        if (!(await findUserIdByUsername(candidate))) return candidate;
     }
     // Fallback: random suffix
     return `${clean}${Math.random().toString(36).slice(2, 6)}`;
@@ -125,8 +122,7 @@ authRouter.post('/email/register', async (req, res) => {
     if (await findUserByEmail(email)) {
         return res.status(409).json({ error: 'Email already in use' });
     }
-    const exists = await query('SELECT id FROM users WHERE lower(username) = lower($1)', [username]);
-    if (exists.length > 0) {
+    if (await findUserIdByUsername(username)) {
         return res.status(409).json({ error: 'Username taken' });
     }
 
@@ -301,18 +297,19 @@ authRouter.post('/link/email', requireAuth, async (req, res) => {
         return res.status(409).json({ error: 'Email already in use by another account.' });
     }
 
-    const rows = await query<{ id: string }>(
-        `UPDATE users SET
-            auth_provider = 'email',
-            auth_subject = lower($1),
-            email = $1,
-            password_hash = $2,
-            updated_at = now()
-         WHERE id = $3 AND auth_provider = 'anonymous'
-         RETURNING id`,
-        [email, await hashPassword(password), check.user.id]
+    const upd = await col('users').updateOne(
+        { id: check.user.id, auth_provider: 'anonymous' },
+        {
+            $set: {
+                auth_provider: 'email',
+                auth_subject: email.toLowerCase(),
+                email,
+                password_hash: await hashPassword(password),
+                updated_at: new Date(),
+            },
+        }
     );
-    if (rows.length === 0) {
+    if (upd.matchedCount === 0) {
         return res.status(409).json({ error: 'Account was already linked.' });
     }
 
@@ -346,17 +343,18 @@ authRouter.post('/link/google', requireAuth, async (req, res) => {
         });
     }
 
-    const rows = await query<{ id: string }>(
-        `UPDATE users SET
-            auth_provider = 'google',
-            auth_subject = $1,
-            email = COALESCE($2, email),
-            updated_at = now()
-         WHERE id = $3 AND auth_provider = 'anonymous'
-         RETURNING id`,
-        [identity.sub, identity.email ?? null, check.user.id]
+    const upd = await col('users').updateOne(
+        { id: check.user.id, auth_provider: 'anonymous' },
+        {
+            $set: {
+                auth_provider: 'google',
+                auth_subject: identity.sub,
+                ...(identity.email ? { email: identity.email } : {}), // COALESCE($2, email)
+                updated_at: new Date(),
+            },
+        }
     );
-    if (rows.length === 0) {
+    if (upd.matchedCount === 0) {
         return res.status(409).json({ error: 'Account was already linked.' });
     }
 
@@ -395,17 +393,18 @@ authRouter.post('/link/apple', requireAuth, async (req, res) => {
     if (env.NODE_ENV === 'production' && !appleRefresh) {
         return res.status(503).json({ error: 'Apple sign-in could not finish. Please retry so account deletion can be supported.' });
     }
-    const rows = await query<{ id: string }>(
-        `UPDATE users SET
-            auth_provider = 'apple',
-            auth_subject = $1,
-            email = COALESCE($2, email),
-            updated_at = now()
-         WHERE id = $3 AND auth_provider = 'anonymous'
-         RETURNING id`,
-        [identity.sub, identity.email ?? null, check.user.id]
+    const upd = await col('users').updateOne(
+        { id: check.user.id, auth_provider: 'anonymous' },
+        {
+            $set: {
+                auth_provider: 'apple',
+                auth_subject: identity.sub,
+                ...(identity.email ? { email: identity.email } : {}), // COALESCE($2, email)
+                updated_at: new Date(),
+            },
+        }
     );
-    if (rows.length === 0) {
+    if (upd.matchedCount === 0) {
         return res.status(409).json({ error: 'Account was already linked.' });
     }
 

@@ -12,9 +12,14 @@
 //
 // Server is authoritative — picks the position, bills the user, logs.
 
-import { transaction } from '../db/pool.js';
+import { col, newId, registerIndexes } from '../db/mongo.js';
 import { spendCoins, HINT_COIN_COST } from './coinsService.js';
 import type { GuessResult } from '../game/engine.js';
+
+registerIndexes('hint_uses', [
+    { key: { id: 1 }, unique: true },
+    { key: { match_id: 1, user_id: 1 } },
+]);
 
 export interface HintResult {
     ok: true;
@@ -74,27 +79,34 @@ interface RedeemArgs {
 }
 
 export async function redeemHint(args: RedeemArgs): Promise<HintResult | HintError> {
-    return transaction(async (client): Promise<HintResult | HintError> => {
-        const user = await client.query<{ coins: number; hint_credits: number; lifetime_hints_used: number }>(
-            'SELECT coins, hint_credits, lifetime_hints_used FROM users WHERE id = $1 FOR UPDATE', [args.userId]);
-        const u = user.rows[0];
-        if (!u) return { ok: false, error: 'NOT_FOUND' };
-        const prior = await client.query<{ position: number }>('SELECT position FROM hint_uses WHERE match_id = $1 AND user_id = $2', [args.matchId, args.userId]);
-        if (prior.rows.length >= (args.target.length >= 8 ? 2 : 1)) return { ok: false, error: 'PER_MATCH_LIMIT' };
-        const pick = pickHintPosition(args.target, args.history, [...(args.excluded ?? []), ...prior.rows.map((h) => h.position)]);
-        if (!pick) return { ok: false, error: 'NO_POSITIONS_LEFT' };
-        const paidWith = u.lifetime_hints_used === 0 ? 'free' : u.hint_credits > 0 ? 'credit' : 'coins';
-        const coinsSpent = paidWith === 'coins' ? HINT_COIN_COST : 0;
-        let coinsRemaining = u.coins;
-        if (coinsSpent) {
-            const balance = await spendCoins({ userId: args.userId, amount: coinsSpent, source: 'hint_spend', metadata: { matchId: args.matchId } }, client);
-            if (balance === null) return { ok: false, error: 'NOT_AFFORDABLE' };
-            coinsRemaining = balance;
-        }
-        await client.query(`UPDATE users SET hint_credits = hint_credits - $2, lifetime_hints_used = lifetime_hints_used + 1, updated_at = now() WHERE id = $1`, [args.userId, paidWith === 'credit' ? 1 : 0]);
-        await client.query(`INSERT INTO hint_uses (match_id, user_id, paid_with, coins_spent, position, letter) VALUES ($1, $2, $3, $4, $5, $6)`, [args.matchId, args.userId, paidWith, coinsSpent, pick.position, pick.letter]);
-        return { ok: true, ...pick, paidWith, coinsSpent, coinsRemaining, hintCreditsRemaining: u.hint_credits - (paidWith === 'credit' ? 1 : 0), lifetimeHintsUsed: u.lifetime_hints_used + 1 };
+    const users = col<{ id: string; coins: number; hint_credits: number; lifetime_hints_used: number }>('users');
+    const u = await users.findOne({ id: args.userId }, { projection: { _id: 0, coins: 1, hint_credits: 1, lifetime_hints_used: 1 } });
+    if (!u) return { ok: false, error: 'NOT_FOUND' };
+    const prior = await col<{ position: number }>('hint_uses')
+        .find({ match_id: args.matchId, user_id: args.userId }, { projection: { _id: 0, position: 1 } }).toArray();
+    if (prior.length >= (args.target.length >= 8 ? 2 : 1)) return { ok: false, error: 'PER_MATCH_LIMIT' };
+    const pick = pickHintPosition(args.target, args.history, [...(args.excluded ?? []), ...prior.map((h) => h.position)]);
+    if (!pick) return { ok: false, error: 'NO_POSITIONS_LEFT' };
+    const paidWith = u.lifetime_hints_used === 0 ? 'free' : u.hint_credits > 0 ? 'credit' : 'coins';
+    const coinsSpent = paidWith === 'coins' ? HINT_COIN_COST : 0;
+    let coinsRemaining = u.coins;
+    if (coinsSpent) {
+        const balance = await spendCoins({ userId: args.userId, amount: coinsSpent, source: 'hint_spend', metadata: { matchId: args.matchId } });
+        if (balance === null) return { ok: false, error: 'NOT_AFFORDABLE' };
+        coinsRemaining = balance;
+    }
+    const creditUsed = paidWith === 'credit' ? 1 : 0;
+    // ponytail: no row lock — the $gte filter keeps hint_credits non-negative if two hints race.
+    const r = await users.updateOne(
+        creditUsed ? { id: args.userId, hint_credits: { $gte: 1 } } : { id: args.userId },
+        { $inc: creditUsed ? { hint_credits: -1, lifetime_hints_used: 1 } : { lifetime_hints_used: 1 }, $set: { updated_at: new Date() } }
+    );
+    if (!r.matchedCount) return { ok: false, error: 'NOT_AFFORDABLE' };
+    await col('hint_uses').insertOne({
+        id: newId(), match_id: args.matchId, user_id: args.userId, paid_with: paidWith,
+        coins_spent: coinsSpent, position: pick.position, letter: pick.letter, used_at: new Date(),
     });
+    return { ok: true, ...pick, paidWith, coinsSpent, coinsRemaining, hintCreditsRemaining: u.hint_credits - creditUsed, lifetimeHintsUsed: u.lifetime_hints_used + 1 };
 }
 
 export { HINT_COIN_COST };

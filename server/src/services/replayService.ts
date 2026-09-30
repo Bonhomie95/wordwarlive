@@ -10,7 +10,32 @@
 //   - Foundation for spectator mode later (a live replay is just a slow
 //     replay)
 
-import { query } from '../db/pool.js';
+import { col, registerIndexes } from '../db/mongo.js';
+
+registerIndexes('match_replays', [
+    { key: { match_id: 1 }, unique: true },
+    { key: { p1_user_id: 1, created_at: -1 } },
+    { key: { p2_user_id: 1, created_at: -1 } },
+]);
+
+interface ReplayDoc {
+    match_id: string;
+    mode: string;
+    word: string;
+    p2_word: string | null;
+    word_length: number;
+    p1_user_id: string;
+    p2_user_id: string;
+    p1_username: string;
+    p2_username: string;
+    p1_guesses: { guess: string; tiles: string[] }[];
+    p2_guesses: { guess: string; tiles: string[] }[];
+    winner: string;
+    outcome: string;
+    duration_ms: number;
+    started_at: Date;
+    created_at: Date;
+}
 
 export interface ReplayMeta {
     matchId: string;
@@ -48,36 +73,30 @@ export async function saveReplay(args: {
     durationMs: number;
     startedAtMs: number;
 }): Promise<void> {
-    await query(
-        `INSERT INTO match_replays(
-            match_id, mode, word, p2_word, word_length,
-            p1_user_id, p2_user_id, p1_username, p2_username,
-            p1_guesses, p2_guesses, winner, outcome,
-            duration_ms, started_at
-         ) VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7, $8, $9,
-            $10::jsonb, $11::jsonb, $12, $13,
-            $14, to_timestamp($15 / 1000.0)
-         )
-         ON CONFLICT (match_id) DO NOTHING`,
-        [
-            args.matchId,
-            args.mode,
-            args.word,
-            args.p2Word ?? null,
-            args.word.length,
-            args.p1UserId,
-            args.p2UserId,
-            args.p1Username,
-            args.p2Username,
-            JSON.stringify(args.p1Guesses),
-            JSON.stringify(args.p2Guesses),
-            args.winner,
-            args.outcome,
-            args.durationMs,
-            args.startedAtMs,
-        ]
+    // ON CONFLICT (match_id) DO NOTHING
+    await col<ReplayDoc>('match_replays').updateOne(
+        { match_id: args.matchId },
+        {
+            $setOnInsert: {
+                match_id: args.matchId,
+                mode: args.mode,
+                word: args.word,
+                p2_word: args.p2Word ?? null,
+                word_length: args.word.length,
+                p1_user_id: args.p1UserId,
+                p2_user_id: args.p2UserId,
+                p1_username: args.p1Username,
+                p2_username: args.p2Username,
+                p1_guesses: args.p1Guesses,
+                p2_guesses: args.p2Guesses,
+                winner: args.winner,
+                outcome: args.outcome,
+                duration_ms: args.durationMs,
+                started_at: new Date(args.startedAtMs),
+                created_at: new Date(),
+            },
+        },
+        { upsert: true }
     );
 }
 
@@ -90,29 +109,11 @@ export async function listReplaysForUser(
     userId: string,
     limit = 20
 ): Promise<ReplayMeta[]> {
-    const rows = await query<{
-        match_id: string;
-        mode: string;
-        word: string;
-        p2_word: string | null;
-        word_length: number;
-        p1_user_id: string;
-        p1_username: string;
-        p2_username: string;
-        winner: string;
-        outcome: string;
-        duration_ms: number;
-        created_at: Date;
-    }>(
-        `SELECT match_id, mode, word, p2_word, word_length,
-                p1_user_id, p1_username, p2_username,
-                winner, outcome, duration_ms, created_at
-         FROM match_replays
-         WHERE p1_user_id = $1 OR p2_user_id = $1
-         ORDER BY created_at DESC
-         LIMIT $2`,
-        [userId, limit]
-    );
+    const rows = await col<ReplayDoc>('match_replays')
+        .find({ $or: [{ p1_user_id: userId }, { p2_user_id: userId }] }, { projection: { _id: 0 } })
+        .sort({ created_at: -1 })
+        .limit(limit)
+        .toArray();
 
     return rows.map((r) => {
         const isP1 = r.p1_user_id === userId;
@@ -138,32 +139,10 @@ export async function getReplay(
     userId: string,
     matchId: string
 ): Promise<ReplayFull | null> {
-    const rows = await query<{
-        match_id: string;
-        mode: string;
-        word: string;
-        p2_word: string | null;
-        word_length: number;
-        p1_user_id: string;
-        p1_username: string;
-        p2_username: string;
-        p1_guesses: { guess: string; tiles: string[] }[];
-        p2_guesses: { guess: string; tiles: string[] }[];
-        winner: string;
-        outcome: string;
-        duration_ms: number;
-        created_at: Date;
-    }>(
-        `SELECT match_id, mode, word, p2_word, word_length,
-                p1_user_id, p1_username, p2_username,
-                p1_guesses, p2_guesses, winner, outcome,
-                duration_ms, created_at
-         FROM match_replays
-         WHERE match_id = $1
-           AND (p1_user_id = $2 OR p2_user_id = $2)`,
-        [matchId, userId]
+    const r = await col<ReplayDoc>('match_replays').findOne(
+        { match_id: matchId, $or: [{ p1_user_id: userId }, { p2_user_id: userId }] },
+        { projection: { _id: 0 } }
     );
-    const r = rows[0];
     if (!r) return null;
     const isP1 = r.p1_user_id === userId;
     return {

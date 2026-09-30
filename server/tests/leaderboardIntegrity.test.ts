@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ query: vi.fn(), get: vi.fn(), set: vi.fn() }));
-vi.mock('../src/db/pool.js', () => ({ query: mocks.query, pool: {} }));
+const mocks = vi.hoisted(() => ({ aggregate: vi.fn(), get: vi.fn(), set: vi.fn() }));
+vi.mock('../src/db/mongo.js', () => ({
+    col: () => ({ aggregate: (pipeline: unknown) => ({ toArray: () => mocks.aggregate(pipeline) }) }),
+    registerIndexes: () => {},
+}));
 vi.mock('../src/db/redis.js', () => ({ redis: { get: mocks.get, set: mocks.set } }));
 vi.mock('../src/services/syntheticHistory.js', async () => {
     const players = await import('../src/services/syntheticPlayers.js');
@@ -20,7 +23,7 @@ describe('combined leaderboard integrity', () => {
         vi.resetAllMocks();
         mocks.get.mockResolvedValue(null);
         mocks.set.mockResolvedValue('OK');
-        mocks.query.mockResolvedValue([]);
+        mocks.aggregate.mockResolvedValue([]);
     });
     afterEach(() => vi.useRealTimers());
     it('fills all twelve ranked period/mode boards', async () => {
@@ -37,15 +40,16 @@ describe('combined leaderboard integrity', () => {
     it('uses the same tiebreak for visible rows and the requesting player', async () => {
         const sample = syntheticLeaderboard('daily', 'overall', NOW)[4]!;
         const raw = { user_id: '11111111-1111-4111-8111-111111111111', username: 'player', rank_tier: sample.rankTier,
-            wins: sample.wins, losses: 1, rank_points: sample.rankPoints, equipped_avatar: null, equipped_profile_border: null, rank_in_leaderboard: '1' };
-        mocks.query.mockResolvedValue([raw]);
+            wins: sample.wins, losses: 1, rank_points: sample.rankPoints, equipped_avatar: null, equipped_profile_border: null };
+        // top-N rows, then the requester's own row, then the "humans ahead" count (none).
+        mocks.aggregate.mockResolvedValueOnce([raw]).mockResolvedValueOnce([raw]).mockResolvedValueOnce([]);
         const board = await getLeaderboard({ period: 'daily', requesterId: raw.user_id });
         const expected = 1 + syntheticLeaderboard('daily', 'overall', NOW).filter((s) => compareStandings(s, { userId: raw.user_id, wins: raw.wins, rankPoints: raw.rank_points }) < 0).length;
         expect(board.you?.rankInLeaderboard).toBe(expected);
         expect(board.entries.find((entry) => entry.userId === raw.user_id)?.rankInLeaderboard).toBe(expected);
     });
     it('combines daily solvers and keeps a one-guess human solution first', async () => {
-        mocks.query.mockResolvedValue([{ user_id: 'one', username: 'player', guess_count: 1, duration_ms: 10000 }]);
+        mocks.aggregate.mockResolvedValue([{ user_id: 'one', username: 'player', guess_count: 1, duration_ms: 10000 }]);
         const board = await todaysLeaderboard(50, 'one');
         expect(board.total).toBe(visibleSyntheticSolvers('2026-09-27', NOW).length + 1);
         expect(board.me?.rank).toBe(1);

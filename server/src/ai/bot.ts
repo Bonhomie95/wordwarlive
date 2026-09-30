@@ -400,7 +400,7 @@ export function plausibleStatsForRank(rankPoints: number): {
  */
 export async function createBotUser(rankPoints: number): Promise<{ id: string; username: string }> {
     const { createUser } = await import('../services/userService.js');
-    const { query } = await import('../db/pool.js');
+    const { col } = await import('../db/mongo.js');
     const { tierFromPoints } = await import('../game/ranks.js');
     const { randomUUID } = await import('node:crypto');
 
@@ -427,24 +427,26 @@ export async function createBotUser(rankPoints: number): Promise<{ id: string; u
             });
             break;
         } catch (err) {
-            const code = (err as { code?: string }).code;
-            // 23505 = unique_violation. Anything else is a real error.
-            if (code !== '23505') throw err;
+            const code = (err as { code?: number }).code;
+            // 11000 = duplicate key. Anything else is a real error.
+            if (code !== 11000) throw err;
         }
     }
     if (!bot) throw new Error('Could not allocate a bot username after retries');
 
     // Backfill rank + stats so the bot looks like an active player.
-    await query(
-        `UPDATE users SET
-            rank_points = $1,
-            rank_tier = $2,
-            wins = $3,
-            losses = $4,
-            best_streak = $5,
-            updated_at = now()
-         WHERE id = $6`,
-        [points, tier, stats.wins, stats.losses, stats.bestStreak, bot.id]
+    await col('users').updateOne(
+        { id: bot.id },
+        {
+            $set: {
+                rank_points: points,
+                rank_tier: tier,
+                wins: stats.wins,
+                losses: stats.losses,
+                best_streak: stats.bestStreak,
+                updated_at: new Date(),
+            },
+        }
     );
 
     return bot;

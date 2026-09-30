@@ -1,7 +1,6 @@
-import { connectTransactionClient } from '../db/pool.js';
 import { redis } from '../db/redis.js';
 import { logger } from '../utils/logger.js';
-import { query, pool } from '../db/pool.js';
+import { col, newId, registerIndexes } from '../db/mongo.js';
 import { tierFromPoints } from '../game/ranks.js';
 import { revokeAppleRefreshToken } from '../auth/apple.js';
 
@@ -47,59 +46,85 @@ export interface UserRow {
     username_changed_at: Date | null;
 }
 
-const SAFE_USER_FIELDS = `
-    id, username, auth_provider, auth_subject, email,
-    rank_points, rank_tier, wins, losses, win_streak, best_streak,
-    equipped_board_theme, equipped_victory_anim, equipped_avatar,
-    equipped_nameplate, equipped_profile_border,
-    battle_pass_xp, battle_pass_premium, battle_pass_season,
-    ads_removed, powerup_reveal, powerup_scramble, powerup_lock,
-    last_daily_ad_at,
-    xp_boost_ads_today,
-    to_char(xp_boost_ads_day, 'YYYY-MM-DD') AS xp_boost_ads_day,
-    coins, hint_credits, play_streak, play_streak_best,
-    to_char(last_play_date, 'YYYY-MM-DD') AS last_play_date,
-    lifetime_hints_used, token_version,
-    streak_shields, xp_boost_until, starter_bundle_at,
-    coin_ads_today, to_char(coin_ads_day, 'YYYY-MM-DD') AS coin_ads_day,
-    username_changed_at
-`;
+/** Full `users` document: UserRow plus the columns we never hand to callers. */
+export interface UserDoc extends UserRow {
+    password_hash: string | null;
+    apple_refresh_token: string | null;
+    settings: Record<string, unknown>;
+    created_at: Date;
+    updated_at: Date;
+    last_rank_season_reset_id: number | null;
+    is_admin: boolean;
+    is_super_admin: boolean;
+    banned: boolean;
+    banned_reason: string | null;
+    banned_at: Date | null;
+    banned_by: string | null;
+}
+
+/** Case-insensitive match, used for the username/email lookups and indexes. */
+export const CI = { locale: 'en', strength: 2 } as const;
+
+registerIndexes('users', [
+    { key: { id: 1 }, unique: true },
+    { key: { auth_provider: 1, auth_subject: 1 }, unique: true },
+    { key: { username: 1 }, unique: true, collation: CI },
+    { key: { email: 1 }, unique: true, collation: CI, partialFilterExpression: { email: { $type: 'string' } } },
+    { key: { rank_points: -1 } },
+    { key: { created_at: -1 } },
+    { key: { last_play_date: -1 } },
+    { key: { banned: 1 }, partialFilterExpression: { banned: true } },
+]);
+
+export const users = () => col<UserDoc>('users');
+
+const SAFE_USER_FIELDS: (keyof UserRow)[] = [
+    'id', 'username', 'auth_provider', 'auth_subject', 'email',
+    'rank_points', 'rank_tier', 'wins', 'losses', 'win_streak', 'best_streak',
+    'equipped_board_theme', 'equipped_victory_anim', 'equipped_avatar',
+    'equipped_nameplate', 'equipped_profile_border',
+    'battle_pass_xp', 'battle_pass_premium', 'battle_pass_season',
+    'ads_removed', 'powerup_reveal', 'powerup_scramble', 'powerup_lock',
+    'last_daily_ad_at', 'xp_boost_ads_today', 'xp_boost_ads_day',
+    'coins', 'hint_credits', 'play_streak', 'play_streak_best', 'last_play_date',
+    'lifetime_hints_used', 'token_version',
+    'streak_shields', 'xp_boost_until', 'starter_bundle_at',
+    'coin_ads_today', 'coin_ads_day', 'username_changed_at',
+];
+
+/** Projection equivalent of the old `SELECT <safe fields>`; shared by other services. */
+export const SAFE_USER_PROJECTION: Record<string, 0 | 1> = Object.fromEntries(
+    [['_id', 0], ...SAFE_USER_FIELDS.map((f) => [f, 1])]
+);
 
 export async function findUserById(id: string): Promise<UserRow | null> {
-    const rows = await query<UserRow>(
-        `SELECT ${SAFE_USER_FIELDS} FROM users WHERE id = $1`,
-        [id]
-    );
-    return rows[0] ?? null;
+    return (await users().findOne({ id }, { projection: SAFE_USER_PROJECTION })) as UserRow | null;
 }
 
 export async function findUserByProviderSubject(
     provider: UserRow['auth_provider'],
     subject: string
 ): Promise<UserRow | null> {
-    const rows = await query<UserRow>(
-        `SELECT ${SAFE_USER_FIELDS} FROM users
-         WHERE auth_provider = $1 AND auth_subject = $2`,
-        [provider, subject]
-    );
-    return rows[0] ?? null;
+    return (await users().findOne(
+        { auth_provider: provider, auth_subject: subject },
+        { projection: SAFE_USER_PROJECTION }
+    )) as UserRow | null;
 }
 
 export async function findUserByEmail(email: string): Promise<UserRow | null> {
-    const rows = await query<UserRow>(
-        `SELECT ${SAFE_USER_FIELDS} FROM users WHERE lower(email) = lower($1)`,
-        [email]
-    );
-    return rows[0] ?? null;
+    return (await users().findOne({ email }, { projection: SAFE_USER_PROJECTION, collation: CI })) as UserRow | null;
+}
+
+/** Id of the user holding `username` (case-insensitive), or null. */
+export async function findUserIdByUsername(username: string): Promise<string | null> {
+    const u = await users().findOne({ username }, { projection: { _id: 0, id: 1 }, collation: CI });
+    return u?.id ?? null;
 }
 
 /** Returns the password hash for an email-auth user, or null. */
 export async function getPasswordHash(userId: string): Promise<string | null> {
-    const rows = await query<{ password_hash: string | null }>(
-        'SELECT password_hash FROM users WHERE id = $1',
-        [userId]
-    );
-    return rows[0]?.password_hash ?? null;
+    const u = await users().findOne({ id: userId }, { projection: { _id: 0, password_hash: 1 } });
+    return u?.password_hash ?? null;
 }
 
 export interface CreateUserArgs {
@@ -111,87 +136,107 @@ export interface CreateUserArgs {
 }
 
 export async function createUser(args: CreateUserArgs): Promise<UserRow> {
-    const rows = await query<UserRow>(
-        `INSERT INTO users
-            (username, auth_provider, auth_subject, email, password_hash,
-             equipped_board_theme, equipped_victory_anim, equipped_avatar, equipped_nameplate)
-         VALUES ($1, $2, $3, $4, $5, 'theme_classic', 'victory_pulse', 'avatar_default', 'nameplate_plain')
-         RETURNING ${SAFE_USER_FIELDS}`,
-        [
-            args.username,
-            args.provider,
-            args.subject,
-            args.email ?? null,
-            args.passwordHash ?? null,
-        ]
-    );
-    const user = rows[0]!;
+    const now = new Date();
+    const doc: UserDoc = {
+        id: newId(),
+        username: args.username,
+        auth_provider: args.provider,
+        auth_subject: args.subject,
+        email: args.email ?? null,
+        password_hash: args.passwordHash ?? null,
+        rank_points: 1000,
+        rank_tier: 'stone',
+        wins: 0,
+        losses: 0,
+        win_streak: 0,
+        best_streak: 0,
+        equipped_board_theme: 'theme_classic',
+        equipped_victory_anim: 'victory_pulse',
+        equipped_avatar: 'avatar_default',
+        equipped_nameplate: 'nameplate_plain',
+        equipped_profile_border: null,
+        battle_pass_xp: 0,
+        battle_pass_premium: false,
+        battle_pass_season: 1,
+        created_at: now,
+        updated_at: now,
+        ads_removed: false,
+        powerup_reveal: 0,
+        powerup_scramble: 0,
+        powerup_lock: 0,
+        last_daily_ad_at: null,
+        xp_boost_ads_today: 0,
+        xp_boost_ads_day: null,
+        coins: 0,
+        hint_credits: 0,
+        play_streak: 0,
+        play_streak_best: 0,
+        last_play_date: null,
+        lifetime_hints_used: 0,
+        settings: { sound: true, haptics: true, colorBlindMode: false },
+        last_rank_season_reset_id: null,
+        token_version: 0,
+        is_admin: false,
+        is_super_admin: false,
+        banned: false,
+        banned_reason: null,
+        banned_at: null,
+        banned_by: null,
+        apple_refresh_token: null,
+        streak_shields: 0,
+        xp_boost_until: null,
+        starter_bundle_at: null,
+        coin_ads_today: 0,
+        coin_ads_day: null,
+        username_changed_at: null,
+    };
+    await users().insertOne({ ...doc });
     // Grant the default cosmetics to the new user so equipping logic stays
     // consistent (you can't equip something you don't own).
-    await query(
-        `INSERT INTO user_cosmetics (user_id, cosmetic_id, acquired_via)
-         VALUES ($1, 'theme_classic', 'grant'),
-                ($1, 'victory_pulse', 'grant'),
-                ($1, 'avatar_default', 'grant'),
-                ($1, 'nameplate_plain', 'grant')
-         ON CONFLICT DO NOTHING`,
-        [user.id]
-    );
-    return user;
+    const grants = ['theme_classic', 'victory_pulse', 'avatar_default', 'nameplate_plain'].map((cosmetic_id) => ({
+        user_id: doc.id, cosmetic_id, acquired_via: 'grant', acquired_at: now,
+    }));
+    await col('user_cosmetics').insertMany(grants, { ordered: false }).catch((err) => {
+        if (err?.code !== 11000) throw err; // ON CONFLICT DO NOTHING
+    });
+    const user: Record<string, unknown> = {};
+    for (const f of SAFE_USER_FIELDS) user[f] = doc[f];
+    return user as unknown as UserRow;
 }
 
 /**
- * Atomically update rank, win/loss, and streak after a match. Also recomputes
- * the cached rank_tier.
+ * Update rank, win/loss, and streak after a match. Also recomputes the cached
+ * rank_tier.
  */
+// ponytail: read-then-write, no row lock; two simultaneous match results for
+// the same user could clobber each other. Move to a $inc/$max pipeline update
+// if concurrent settlements for one user ever happen.
 export async function applyMatchResult(args: {
     userId: string;
     isWinner: boolean;
     rankDelta: number;
 }): Promise<UserRow> {
-    const client = await connectTransactionClient();
-    try {
-        await client.query('BEGIN');
-        const cur = await client.query<UserRow>(
-            `SELECT ${SAFE_USER_FIELDS} FROM users WHERE id = $1 FOR UPDATE`,
-            [args.userId]
-        );
-        const u = cur.rows[0];
-        if (!u) throw new Error(`User ${args.userId} not found`);
+    const u = await findUserById(args.userId);
+    if (!u) throw new Error(`User ${args.userId} not found`);
 
-        const newPoints = Math.max(0, u.rank_points + args.rankDelta);
-        const newWins = u.wins + (args.isWinner ? 1 : 0);
-        const newLosses = u.losses + (args.isWinner ? 0 : 1);
-        const newStreak = args.isWinner ? u.win_streak + 1 : 0;
-        const newBestStreak = Math.max(u.best_streak, newStreak);
-        const newTier = tierFromPoints(newPoints);
-
-        const result = await client.query<UserRow>(
-            `UPDATE users SET
-                rank_points = $1, rank_tier = $2,
-                wins = $3, losses = $4,
-                win_streak = $5, best_streak = $6,
-                updated_at = now()
-             WHERE id = $7
-             RETURNING ${SAFE_USER_FIELDS}`,
-            [
-                newPoints,
-                newTier,
-                newWins,
-                newLosses,
-                newStreak,
-                newBestStreak,
-                args.userId,
-            ]
-        );
-        await client.query('COMMIT');
-        return result.rows[0]!;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    const newPoints = Math.max(0, u.rank_points + args.rankDelta);
+    const newStreak = args.isWinner ? u.win_streak + 1 : 0;
+    const out = await users().findOneAndUpdate(
+        { id: args.userId },
+        {
+            $set: {
+                rank_points: newPoints,
+                rank_tier: tierFromPoints(newPoints),
+                wins: u.wins + (args.isWinner ? 1 : 0),
+                losses: u.losses + (args.isWinner ? 0 : 1),
+                win_streak: newStreak,
+                best_streak: Math.max(u.best_streak, newStreak),
+                updated_at: new Date(),
+            },
+        },
+        { returnDocument: 'after', projection: SAFE_USER_PROJECTION }
+    );
+    return out as unknown as UserRow;
 }
 
 export async function updateEquippedCosmetic(
@@ -206,55 +251,44 @@ export async function updateEquippedCosmetic(
         nameplate: 'equipped_nameplate',
         profile_border: 'equipped_profile_border',
     };
-    const col = colMap[category];
-    if (!col) throw new Error(`Unknown cosmetic category: ${category}`);
+    const field = colMap[category];
+    if (!field) throw new Error(`Unknown cosmetic category: ${category}`);
 
     // Verify ownership before equipping (defense in depth — the route also
     // checks).
-    const owns = await query<{ exists: boolean }>(
-        `SELECT TRUE AS exists FROM user_cosmetics
-         WHERE user_id = $1 AND cosmetic_id = $2`,
-        [userId, cosmeticId]
+    const owns = await col('user_cosmetics').findOne(
+        { user_id: userId, cosmetic_id: cosmeticId },
+        { projection: { _id: 1 } }
     );
-    if (owns.length === 0) throw new Error('Cosmetic not owned');
+    if (!owns) throw new Error('Cosmetic not owned');
 
-    await query(
-        `UPDATE users SET ${col} = $1, updated_at = now() WHERE id = $2`,
-        [cosmeticId, userId]
-    );
+    await users().updateOne({ id: userId }, { $set: { [field]: cosmeticId, updated_at: new Date() } });
 }
 
 /** Current token version for a user, or null if the user doesn't exist. */
 export async function getTokenVersion(userId: string): Promise<number | null> {
-    const rows = await query<{ token_version: number }>(
-        'SELECT token_version FROM users WHERE id = $1',
-        [userId]
-    );
-    return rows[0]?.token_version ?? null;
+    const u = await users().findOne({ id: userId }, { projection: { _id: 0, token_version: 1 } });
+    return u?.token_version ?? null;
 }
 
 /** Session validity snapshot: token version + banned flag. Used by auth. */
 export async function getSessionState(
     userId: string
 ): Promise<{ tokenVersion: number; banned: boolean } | null> {
-    const rows = await query<{ token_version: number; banned: boolean }>(
-        'SELECT token_version, banned FROM users WHERE id = $1',
-        [userId]
-    );
-    const r = rows[0];
-    return r ? { tokenVersion: r.token_version, banned: r.banned } : null;
+    const u = await users().findOne({ id: userId }, { projection: { _id: 0, token_version: 1, banned: 1 } });
+    return u ? { tokenVersion: u.token_version, banned: u.banned === true } : null;
 }
 
 /** Invalidate all outstanding sessions for a user by bumping their token
  *  version. Returns the new version. */
 export async function bumpTokenVersion(userId: string): Promise<number> {
-    const rows = await query<{ token_version: number }>(
-        `UPDATE users SET token_version = token_version + 1, updated_at = now()
-         WHERE id = $1 RETURNING token_version`,
-        [userId]
+    const u = await users().findOneAndUpdate(
+        { id: userId },
+        { $inc: { token_version: 1 }, $set: { updated_at: new Date() } },
+        { returnDocument: 'after', projection: { _id: 0, token_version: 1 } }
     );
     await redis.publish('wordwar:session-revoked', userId).catch((err) => logger.error({ err, userId }, 'Session revocation broadcast failed'));
-    return rows[0]?.token_version ?? 0;
+    return u?.token_version ?? 0;
 }
 
 /** Username must be 3-16 chars, letters/numbers/underscores only. */
@@ -280,69 +314,51 @@ export async function changeUsername(
     userId: string,
     username: string
 ): Promise<{ ok: true; coinsSpent: number } | { ok: false; error: 'TAKEN' | 'NOT_AFFORDABLE' | 'NOT_FOUND' }> {
-    const client = await connectTransactionClient();
+    const u = await users().findOne(
+        { id: userId },
+        { projection: { _id: 0, username_changed_at: 1, coins: 1, username: 1 } }
+    );
+    if (!u) return { ok: false, error: 'NOT_FOUND' };
+    const taken = await users().findOne(
+        { username, id: { $ne: userId } },
+        { projection: { _id: 1 }, collation: CI }
+    );
+    if (taken) return { ok: false, error: 'TAKEN' };
+    const cost = usernameChangeCost(u);
+    if (u.coins < cost) return { ok: false, error: 'NOT_AFFORDABLE' };
+    // The `coins >= cost` filter keeps the balance non-negative without a lock.
+    let res;
     try {
-        await client.query('BEGIN');
-        const cur = await client.query<{ username_changed_at: Date | null; coins: number; username: string }>(
-            'SELECT username_changed_at, coins, username FROM users WHERE id = $1 FOR UPDATE',
-            [userId]
+        res = await users().updateOne(
+            { id: userId, coins: { $gte: cost } },
+            { $set: { username, username_changed_at: new Date(), updated_at: new Date() }, $inc: { coins: -cost } }
         );
-        const u = cur.rows[0];
-        if (!u) {
-            await client.query('ROLLBACK');
-            return { ok: false, error: 'NOT_FOUND' };
-        }
-        const taken = await client.query(
-            'SELECT 1 FROM users WHERE lower(username) = lower($1) AND id <> $2',
-            [username, userId]
-        );
-        if ((taken.rowCount ?? 0) > 0) {
-            await client.query('ROLLBACK');
-            return { ok: false, error: 'TAKEN' };
-        }
-        const cost = usernameChangeCost(u);
-        if (u.coins < cost) {
-            await client.query('ROLLBACK');
-            return { ok: false, error: 'NOT_AFFORDABLE' };
-        }
-        await client.query(
-            `UPDATE users SET username = $1, coins = coins - $2,
-                              username_changed_at = now(), updated_at = now()
-             WHERE id = $3`,
-            [username, cost, userId]
-        );
-        if (cost > 0) {
-            await client.query(
-                `INSERT INTO coin_grants (user_id, amount, source, metadata)
-                 VALUES ($1, $2, 'username_spend', $3)`,
-                [userId, -cost, { from: u.username, to: username }]
-            );
-        }
-        await client.query('COMMIT');
-        return { ok: true, coinsSpent: cost };
-    } catch (err) {
-        await client.query('ROLLBACK');
+    } catch (err: any) {
+        if (err?.code === 11000) return { ok: false, error: 'TAKEN' };
         throw err;
-    } finally {
-        client.release();
     }
+    if (res.matchedCount === 0) return { ok: false, error: 'NOT_AFFORDABLE' };
+    if (cost > 0) {
+        await col('coin_grants').insertOne({
+            id: newId(), user_id: userId, amount: -cost, source: 'username_spend',
+            metadata: { from: u.username, to: username }, created_at: new Date(),
+        });
+    }
+    return { ok: true, coinsSpent: cost };
 }
 
 /** Persist the Apple refresh token captured at sign-in (see auth/apple.ts). */
 export async function setAppleRefreshToken(userId: string, token: string): Promise<void> {
-    await query('UPDATE users SET apple_refresh_token = $1, updated_at = now() WHERE id = $2', [
-        token,
-        userId,
-    ]);
+    await users().updateOne({ id: userId }, { $set: { apple_refresh_token: token, updated_at: new Date() } });
 }
 
 /**
  * Permanently delete a user and their data (GDPR / App Store "delete my
- * account" requirement). Most child tables cascade on the users FK; matches
- * and their guesses/replays do NOT cascade (they reference users without
- * ON DELETE), so we delete the user's matches first inside the same
- * transaction. Aggregate stats on the opponent's row (wins/losses) are
- * denormalized and unaffected.
+ * account" requirement). Postgres cascaded the child tables on the users FK;
+ * here every collection that referenced users(id) ON DELETE CASCADE is listed
+ * explicitly. Matches did NOT cascade, so the user's matches (and their
+ * guesses/replays, which cascade on the match) are removed first. Aggregate
+ * stats on the opponent's row (wins/losses) are denormalized and unaffected.
  */
 export class AppleRevocationPendingError extends Error {
     constructor() {
@@ -350,35 +366,51 @@ export class AppleRevocationPendingError extends Error {
     }
 }
 
+/** collection → fields that referenced users(id) ON DELETE CASCADE. */
+const USER_CASCADES: Array<[string, string[]]> = [
+    ['ad_rewards', ['user_id']],
+    ['battle_pass_claims', ['user_id']],
+    ['coin_grants', ['user_id']],
+    ['daily_challenge_attempts', ['user_id']],
+    ['friend_invite_codes', ['user_id']],
+    ['friendships', ['user_id', 'friend_id']],
+    ['hint_uses', ['user_id']],
+    ['leaderboard_entries', ['user_id']],
+    ['mystery_submissions', ['user_id']],
+    ['private_match_invites', ['host_id']],
+    ['rank_season_results', ['user_id']],
+    ['user_cosmetics', ['user_id']],
+    ['iap_transactions', ['user_id']],
+    ['content_reports', ['reporter_id']],
+    ['push_tokens', ['user_id']],
+    ['user_blocks', ['blocker_id', 'blocked_id']],
+    ['product_events', ['user_id']],
+    ['inventory_history', ['user_id']],
+    ['match_checkpoints', ['p1_id', 'p2_id', 'state.p1UserId', 'state.p2UserId']],
+];
+
 export async function deleteAccount(userId: string): Promise<void> {
     // Apple requires revoking Sign in with Apple tokens when the account goes
     // away. Keep the token/account available for retry if Apple is unavailable.
-    const tok = await query<{ apple_refresh_token: string | null }>(
-        'SELECT apple_refresh_token FROM users WHERE id = $1',
-        [userId]
-    );
-    const refresh = tok[0]?.apple_refresh_token;
+    const tok = await users().findOne({ id: userId }, { projection: { _id: 0, apple_refresh_token: 1 } });
+    const refresh = tok?.apple_refresh_token;
     if (refresh && !(await revokeAppleRefreshToken(refresh))) {
         throw new AppleRevocationPendingError();
     }
 
-    const client = await connectTransactionClient();
-    try {
-        await client.query('BEGIN');
-        // Removes the user's matches → cascades their guesses + replays.
-        await client.query(
-            'DELETE FROM matches WHERE player1_id = $1 OR player2_id = $1',
-            [userId]
-        );
-        // Removes the user → cascades coins, cosmetics, friendships,
-        // leaderboard entries, mystery submissions, iap_transactions, etc.
-        await client.query('DELETE FROM users WHERE id = $1', [userId]);
-        await client.query('COMMIT');
-        await redis.publish('wordwar:session-revoked', userId).catch((err) => logger.error({ err, userId }, 'Session revocation broadcast failed'));
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
+    // ponytail: no multi-document transaction; a crash mid-way leaves orphans
+    // that a re-run of deleteAccount cleans up (every step is idempotent).
+    const matchIds = (await col('matches')
+        .find({ $or: [{ player1_id: userId }, { player2_id: userId }] }, { projection: { _id: 0, id: 1 } })
+        .toArray()).map((m) => m.id as string);
+    if (matchIds.length) {
+        await col('guesses').deleteMany({ match_id: { $in: matchIds } });
+        await col('match_replays').deleteMany({ match_id: { $in: matchIds } });
+        await col('matches').deleteMany({ id: { $in: matchIds } });
     }
+    for (const [name, fields] of USER_CASCADES) {
+        await col(name).deleteMany({ $or: fields.map((f) => ({ [f]: userId })) });
+    }
+    await users().deleteOne({ id: userId });
+    await redis.publish('wordwar:session-revoked', userId).catch((err) => logger.error({ err, userId }, 'Session revocation broadcast failed'));
 }
