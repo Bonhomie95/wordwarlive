@@ -265,6 +265,10 @@ export interface MatchOver {
     word: string;
     /** Rank delta APPLIED to the recipient. Positive = gained points. */
     rankDelta: number;
+    /** Rank before this match, so the client can animate the transition
+     *  (and detect a tier promotion/demotion). */
+    previousRankPoints: number;
+    previousRankTier: RankTier;
     newRankPoints: number;
     newRankTier: RankTier;
     /** XP awarded toward the battle pass for this match. */

@@ -1,8 +1,18 @@
 // Server-authoritative word bank with in-memory caching. We load all words
 // at boot (a few thousand strings is nothing) so guess validation never has
 // to hit the DB on the hot path.
+//
+// Two lists: the curated `word_bank` collection is where ANSWERS come from
+// (so players never face an obscure target), while GUESSES are accepted
+// from the much larger public-domain ENABLE dictionary (data/dictionary.txt,
+// 4-10 letters) so a legitimate word is never rejected.
 
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { col, registerIndexes } from '../db/mongo.js';
+
+const DICTIONARY_PATH = join(dirname(fileURLToPath(import.meta.url)), '../data/dictionary.txt');
 
 registerIndexes('word_bank', [
     { key: { word: 1 }, unique: true },
@@ -18,6 +28,8 @@ interface WordEntry {
 
 const byLength: Map<number, string[]> = new Map();
 const wordSet: Set<string> = new Set();
+/** Every word accepted as a guess (dictionary ∪ curated bank), upper-cased. */
+const acceptedSet: Set<string> = new Set();
 const difficultyByWord: Map<string, number> = new Map();
 
 let loaded = false;
@@ -29,11 +41,23 @@ export async function loadWordBank(): Promise<void> {
 
     byLength.clear();
     wordSet.clear();
+    acceptedSet.clear();
     difficultyByWord.clear();
+
+    try {
+        const text = await readFile(DICTIONARY_PATH, 'utf8');
+        for (const line of text.split('\n')) {
+            const w = line.trim().toUpperCase();
+            if (w) acceptedSet.add(w);
+        }
+    } catch (err) {
+        logger.warn({ err }, 'Guess dictionary missing; only curated words will be accepted');
+    }
 
     for (const row of rows) {
         const w = row.word.toUpperCase();
         wordSet.add(w);
+        acceptedSet.add(w);
         difficultyByWord.set(w, row.difficulty);
         const arr = byLength.get(row.length) ?? [];
         arr.push(w);
@@ -44,6 +68,7 @@ export async function loadWordBank(): Promise<void> {
     logger.info(
         {
             total: wordSet.size,
+            accepted: acceptedSet.size,
             byLength: Object.fromEntries(
                 [...byLength.entries()].map(([len, arr]) => [len, arr.length])
             ),
@@ -58,9 +83,10 @@ function ensureLoaded() {
     }
 }
 
+/** Is this an acceptable guess (curated bank or the wider dictionary)? */
 export function isValidWord(word: string): boolean {
     ensureLoaded();
-    return wordSet.has(word.toUpperCase());
+    return acceptedSet.has(word.toUpperCase());
 }
 
 export function getDifficulty(word: string): number {
