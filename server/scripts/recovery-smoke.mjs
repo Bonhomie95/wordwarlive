@@ -43,7 +43,9 @@ async function boot() {
     });
     child.stdout.on('data', (b) => (output = (output + b).slice(-4000)));
     child.stderr.on('data', (b) => (output = (output + b).slice(-4000)));
-    for (let i = 0; i < 100; i++) {
+    // /readyz stays 503 until match recovery finishes; after a SIGKILL the
+    // previous lease can take up to 30s to expire, so allow a full minute.
+    for (let i = 0; i < 600; i++) {
         try {
             if ((await fetch(base + '/readyz')).ok) return;
         } catch {}

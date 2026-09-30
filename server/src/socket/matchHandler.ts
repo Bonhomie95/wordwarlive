@@ -170,6 +170,12 @@ export class MatchRegistry {
         }
     }
 
+    private recoveredFlag = false;
+    /** True once this node holds its lease and has reloaded its checkpoints. */
+    isRecovered(): boolean {
+        return this.recoveredFlag;
+    }
+
     /** Number of live (not-ended) matches — used by ops/metrics. */
     activeMatchCount(): number {
         return this.byMatchId.size;
@@ -259,6 +265,7 @@ export class MatchRegistry {
         await col('match_checkpoints').deleteMany({
             node_id: env.nodeId, 'state.ended': true, updated_at: { $lt: new Date(Date.now() - 7 * 86_400_000) },
         });
+        this.recoveredFlag = true;
         return rows.length;
     }
 
@@ -1265,6 +1272,8 @@ export class MatchRegistry {
             outcome,
             word: match.p1Word,
             rankDelta: p1Delta,
+            previousRankPoints: p1.rank_points,
+            previousRankTier: p1.rank_tier as MatchOver['previousRankTier'],
             newRankPoints: updatedP1.rank_points,
             newRankTier: updatedP1.rank_tier as MatchOver['newRankTier'],
             battlePassXpAwarded: p1XpResult.xpAwarded,
@@ -1294,6 +1303,8 @@ export class MatchRegistry {
             outcome,
             word: match.p2Word,
             rankDelta: p2Delta,
+            previousRankPoints: p2.rank_points,
+            previousRankTier: p2.rank_tier as MatchOver['previousRankTier'],
             newRankPoints: updatedP2.rank_points,
             newRankTier: updatedP2.rank_tier as MatchOver['newRankTier'],
             battlePassXpAwarded: p2XpResult.xpAwarded,

@@ -128,8 +128,11 @@ async function main() {
         } catch (err) {
             logger.warn({ err }, 'Readiness: Redis check failed');
         }
-        const ok = checks.db && checks.redis;
-        res.status(ok ? 200 : 503).json({ ok, checks });
+        // Not ready until match ownership is acquired and checkpoints are
+        // reloaded (the port opens before that during rolling deploys).
+        const recovered = matchRegistry.isRecovered();
+        const ok = checks.db && checks.redis && recovered;
+        res.status(ok ? 200 : 503).json({ ok, checks: { ...checks, recovered } });
     });
 
     // Broad limiter across the whole API; strict limiter on auth.
