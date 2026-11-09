@@ -136,7 +136,11 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "96bfbc46-8f28-4890-933d-561c67bd5fed"
       }
-    }
+    },
+    "owner": "bonhomie95"
   }
 }
