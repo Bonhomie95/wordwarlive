@@ -61,18 +61,12 @@ anything with it.)
 6. **In-app products**: create each row in section 4.
 7. **License testing**: add your Gmail so test purchases aren't charged.
 
-## 3. AdMob (apps.admob.com)
-
-1. Add two apps (iOS and Android) named WordWar. Send me both **App IDs**
-   (`ca-app-pub-…~…`).
-2. For each app create **Banner**, **Interstitial** and **Rewarded** units.
-   Send me the six unit IDs.
-3. On each Rewarded unit: Advanced → Server-side verification → the SSV URL
-   above.
-4. Complete the AdMob payment profile.
-
-Until I have these, store builds use Google's test ads, which is fine for
-TestFlight and Play closed testing but not for release.
+## 3. AdMob — done
+App IDs and the six ad units are in `mobile/eas.json` (production profile).
+Rewarded units point their server-side verification at
+`https://wordwar-server-1ujy.onrender.com/api/ads/ssv`. Once the apps are
+live on the stores, add the store listing in AdMob → App settings so ad
+serving leaves limited mode.
 
 ## 3b. Google Sign-In for Play builds (Google Cloud Console → Credentials)
 Create two **Android** OAuth client IDs for package `dev.bonhomieinc.wordwar`:
