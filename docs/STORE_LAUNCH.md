@@ -89,17 +89,31 @@ SHA-1** from A3.2, and another with the **EAS upload key SHA-1**. Send me all
 Android client IDs; I add them to the server's allowed list.
 
 ### A5. In-app products (same IDs in both stores)
-| Product ID | Type | Suggested price |
-|---|---|---|
-| `dev.bonhomieinc.wordwar.remove_ads` | Non-consumable | $2.99 |
-| `dev.bonhomieinc.wordwar.battlepass.premium` | Consumable (one per season) | $4.99 |
-| `dev.bonhomieinc.wordwar.bundle.starter` | Consumable | $0.99 |
-| `dev.bonhomieinc.wordwar.coins.pebble` | Consumable | $0.99 |
-| `dev.bonhomieinc.wordwar.coins.<packId>` | Consumable | per pack |
-| `dev.bonhomieinc.wordwar.cosmetic.<cosmeticId>` | Non-consumable | per item |
+Create every row below in App Store Connect and in Play Console. The IDs
+must match exactly; prices are the catalog prices the app displays.
 
-I'll generate the exact list of `<packId>` and `<cosmeticId>` values from the
-server catalog when you're ready to create them (see Part B).
+| Product ID | Type | Price (USD) | What it is |
+|---|---|---|---|
+| `dev.bonhomieinc.wordwar.remove_ads` | Non-consumable | 2.99 | Remove ads |
+| `dev.bonhomieinc.wordwar.battlepass.premium` | Consumable | 4.99 | Premium battle pass (one per season) |
+| `dev.bonhomieinc.wordwar.bundle.starter` | Consumable | 2.99 | Starter bundle: 500 coins + Fox avatar + Neon Pulse theme |
+| `dev.bonhomieinc.wordwar.coins.pebble` | Consumable | 0.99 | 100 coins |
+| `dev.bonhomieinc.wordwar.coins.pocket` | Consumable | 4.99 | 550 coins |
+| `dev.bonhomieinc.wordwar.coins.treasure` | Consumable | 9.99 | 1,200 coins |
+| `dev.bonhomieinc.wordwar.coins.vault` | Consumable | 19.99 | 2,700 coins |
+| `dev.bonhomieinc.wordwar.cosmetic.theme_neon` | Non-consumable | 2.99 | Neon Pulse board theme |
+| `dev.bonhomieinc.wordwar.cosmetic.theme_paper` | Non-consumable | 2.99 | Paperback board theme |
+| `dev.bonhomieinc.wordwar.cosmetic.theme_obsidian` | Non-consumable | 4.99 | Obsidian board theme |
+| `dev.bonhomieinc.wordwar.cosmetic.victory_confetti` | Non-consumable | 3.99 | Confetti Storm victory animation |
+| `dev.bonhomieinc.wordwar.cosmetic.victory_lightning` | Non-consumable | 7.99 | Lightning victory animation |
+| `dev.bonhomieinc.wordwar.cosmetic.avatar_fox_01` | Non-consumable | 1.99 | Fox avatar |
+| `dev.bonhomieinc.wordwar.cosmetic.avatar_owl_01` | Non-consumable | 1.99 | Owl avatar |
+| `dev.bonhomieinc.wordwar.cosmetic.nameplate_gold` | Non-consumable | 2.99 | Gold nameplate |
+| `dev.bonhomieinc.wordwar.cosmetic.nameplate_rainbow` | Non-consumable | 5.99 | Spectrum nameplate |
+
+Apple: pick the price tier closest to each USD price. Google: enter the USD
+price and let Play convert. Both stores need a display name and a
+description per product; the "What it is" column works for both.
 
 ### A6. AdMob
 1. **Apps → Add app** for iOS and for Android (link to the store listings
