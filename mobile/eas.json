@@ -9,7 +9,7 @@
       "distribution": "internal",
       "ios": {
         "simulator": true,
-        "image": "latest"
+        "image": "macos-tahoe-26.6-xcode-27.0"
       }
     },
     "preview": {
@@ -31,7 +31,7 @@
         "EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID": "ca-app-pub-3940256099942544/5224354917"
       },
       "ios": {
-        "image": "latest"
+        "image": "macos-tahoe-26.6-xcode-27.0"
       }
     },
     "production": {
@@ -43,7 +43,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "877002690568-3jr9clbamq82vfele2g9s4a59icle88v.apps.googleusercontent.com"
       },
       "ios": {
-        "image": "latest"
+        "image": "macos-tahoe-26.6-xcode-27.0"
       }
     },
     "testflight": {
@@ -63,7 +63,7 @@
         "EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID": "ca-app-pub-3940256099942544/5224354917"
       },
       "ios": {
-        "image": "latest"
+        "image": "macos-tahoe-26.6-xcode-27.0"
       }
     }
   },
