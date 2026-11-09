@@ -18,5 +18,7 @@ expo-env.d.ts
 # @end expo-cli
 .claude
 app.json
+# The Expo app config must ship with EAS uploads (EAS honours .gitignore).
+!mobile/app.json
 /brag-output
 /brag-output-2026-09-24-135350
