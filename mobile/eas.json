@@ -71,7 +71,7 @@
     "production": {
       "ios": {
         "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "REPLACE_WITH_TEAM_ID"
+        "appleTeamId": "S9XX65426W"
       },
       "android": {
         "serviceAccountKeyPath": "./play-service-account.json",
