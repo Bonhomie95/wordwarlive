@@ -34,10 +34,16 @@ adsRouter.get('/ads/ssv', async (req, res) => {
     const rewardAmount = q.reward_amount ?? '0';
     const rewardItem = q.reward_item ?? '';
 
-    if (!signature || !keyId || !transactionId || !customData) {
-        // Don't tell AdMob "ok" if the request is malformed — they'd never
-        // retry it. But we also don't want to leak detail.
-        logger.warn({ q }, 'SSV callback missing required params');
+    // AdMob pings the URL when it is saved in the console (and may send
+    // callbacks without custom_data). Nothing is granted without a valid
+    // signature AND our custom_data, but those pings must get a 200 or the
+    // console refuses to save the URL.
+    if (!signature || !keyId) {
+        if (!customData) {
+            logger.info({ q }, 'SSV reachability ping (unsigned, no custom data)');
+            return res.status(200).send('ok');
+        }
+        logger.warn({ q }, 'SSV callback missing signature');
         return res.status(400).send('bad request');
     }
 
@@ -51,6 +57,11 @@ adsRouter.get('/ads/ssv', async (req, res) => {
     if (!valid) {
         logger.warn({ transactionId }, 'SSV signature INVALID');
         return res.status(403).send('bad signature');
+    }
+    if (!transactionId || !customData) {
+        // Signed test callback with nothing to grant.
+        logger.info({ transactionId }, 'SSV callback without custom data; nothing to grant');
+        return res.status(200).send('ok');
     }
 
     try {

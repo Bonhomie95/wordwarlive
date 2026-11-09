@@ -40,7 +40,15 @@
         "EXPO_PUBLIC_API_URL": "https://wordwar-server-1ujy.onrender.com",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "877002690568-1s1773evobksaejfab5d2jrv690ps2ke.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "877002690568-8f91g9oqlvr8r79dl59hs3gupphcdiaf.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "877002690568-3jr9clbamq82vfele2g9s4a59icle88v.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "877002690568-3jr9clbamq82vfele2g9s4a59icle88v.apps.googleusercontent.com",
+        "ADMOB_IOS_APP_ID": "ca-app-pub-7361370703216043~6129942341",
+        "ADMOB_ANDROID_APP_ID": "ca-app-pub-7361370703216043~2058835397",
+        "EXPO_PUBLIC_ADMOB_BANNER_IOS_ID": "ca-app-pub-7361370703216043/4848650264",
+        "EXPO_PUBLIC_ADMOB_INTERSTITIAL_IOS_ID": "ca-app-pub-7361370703216043/3950501564",
+        "EXPO_PUBLIC_ADMOB_REWARDED_IOS_ID": "ca-app-pub-7361370703216043/2222486928",
+        "EXPO_PUBLIC_ADMOB_BANNER_ANDROID_ID": "ca-app-pub-7361370703216043/2637419896",
+        "EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID_ID": "ca-app-pub-7361370703216043/2425007765",
+        "EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID": "ca-app-pub-7361370703216043/2421797475"
       },
       "ios": {
         "image": "macos-tahoe-26.6-xcode-27.0"
