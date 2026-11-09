@@ -6,6 +6,9 @@
     "orientation": "portrait",
     "scheme": "wordwar",
     "userInterfaceStyle": "dark",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
