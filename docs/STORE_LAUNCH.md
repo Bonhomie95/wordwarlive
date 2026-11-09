@@ -36,6 +36,13 @@ Identifiers:
 
 ## 2. Google Play Console
 
+Already built: the Android app bundle (version 1.0.0, build 2) signed with
+the EAS upload key. Upload key SHA-1:
+`E6:14:7A:AC:EF:C7:31:23:FE:A0:99:B3:05:65:CB:13:CF:28:E9:98`
+(I use it for the Google Sign-In Android client; you don't need to do
+anything with it.)
+
+
 1. Create the app *WordWar* (game, free, has ads, has in-app purchases).
 2. **App signing**: choose Google-generated key. Copy the **App signing key
    SHA-1** and send it to me.
