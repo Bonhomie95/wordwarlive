@@ -117,6 +117,23 @@ if (parsed.data.NODE_ENV === 'production' &&
     throw new Error('Apple sign-in requires token revocation credentials in production');
 }
 
+// Fail fast on the remaining production misconfigurations: each of these
+// would otherwise surface as a broken purchase/login or an open endpoint.
+if (parsed.data.NODE_ENV === 'production') {
+    const problems: string[] = [];
+    if (!parsed.data.GOOGLE_PLAY_PACKAGE_NAME || !parsed.data.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)
+        problems.push('GOOGLE_PLAY_PACKAGE_NAME and GOOGLE_PLAY_SERVICE_ACCOUNT_JSON are required to verify Android purchases');
+    if (!parsed.data.GOOGLE_CLIENT_IDS.trim())
+        problems.push('GOOGLE_CLIENT_IDS is empty, so Google sign-in would reject every token');
+    if (parsed.data.CORS_ORIGINS.trim() === '*')
+        problems.push('CORS_ORIGINS must list the admin dashboard origin(s), not "*"');
+    if (!parsed.data.METRICS_TOKEN)
+        problems.push('METRICS_TOKEN is required so GET /metrics is not public');
+    if (problems.length) {
+        throw new Error('Production configuration errors:\n  • ' + problems.join('\n  • '));
+    }
+}
+
 export const env = {
     ...parsed.data,
     // Resolve a stable node id: explicit NODE_ID → OS hostname → random.

@@ -43,6 +43,11 @@ if (isProductionBuild) {
         'EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID_ID',
         'EXPO_PUBLIC_ADMOB_REWARDED_IOS_ID',
         'EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID',
+        // Without these the Google button is hidden and the iOS OAuth
+        // redirect scheme is never registered.
+        'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID',
+        'EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID',
+        'EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID',
     ]);
     const adUnits = Object.entries(process.env).filter(([key]) => key.startsWith('EXPO_PUBLIC_ADMOB_') && key.endsWith('_ID'));
     if (adUnits.some(([, value]) => !/^ca-app-pub-\d{16}\/\d{10}$/.test(value ?? '') || value?.includes('3940256099942544'))) {
@@ -93,7 +98,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         ios: {
             ...config.ios,
             bundleIdentifier: APP_ID,
-            buildNumber: '1',
             supportsTablet: true,
             // Portrait-only + iPad requires opting out of multitasking, or
             // App Store Connect rejects the binary (ITMS-90474).
@@ -127,7 +131,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         android: {
             ...config.android,
             package: APP_ID,
-            versionCode: 1,
             blockedPermissions: [
                 'android.permission.READ_EXTERNAL_STORAGE',
                 'android.permission.WRITE_EXTERNAL_STORAGE',

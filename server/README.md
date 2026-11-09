@@ -1,6 +1,6 @@
 # WordWar Server
 
-Real-time game server for WordWar. Node + Express + Socket.io, Postgres for persistent state, Redis for matchmaking and rate limiting, Groq for AI bots and word curation.
+Real-time game server for WordWar. Node + Express + Socket.io, MongoDB for persistent state, Redis for matchmaking and rate limiting, Groq for AI bots and word curation.
 
 ## Run it
 
@@ -69,10 +69,9 @@ is documented in the root README.
   idle sockets. Incoming socket actions also re-check account validity.
 - Admin has protected super-admin roles, support adjustments, reports, audit
   logs, and verified-purchase/rewarded-ad metrics. See [admin README](../admin/README.md).
-- Migrations 024 and 025 add super-admin access and purchase provenance, retaining
-  receipt tombstones after account deletion to prevent receipt reuse.
+- Super-admin access and purchase provenance are stored on the `users` and `iap_transactions` collections (indexes created at boot).
 
-See [QA-REPORT.md](../QA-REPORT.md) for verification and remaining store checks.
+See [LAUNCH-NEXT-STEPS.md](../LAUNCH-NEXT-STEPS.md) and [docs/STORE_LAUNCH.md](../docs/STORE_LAUNCH.md) for the release checklist.
 The Redis adapter and per-node matchmaking are implemented; consult the root
 README before adding match-serving nodes.
 

@@ -1,7 +1,7 @@
 import { redis } from '../db/redis.js';
 import { logger } from '../utils/logger.js';
 import { col, newId, registerIndexes } from '../db/mongo.js';
-import { tierFromPoints } from '../game/ranks.js';
+import { TIER_BANDS } from '../game/ranks.js';
 import { revokeAppleRefreshToken } from '../auth/apple.js';
 
 export interface UserRow {
@@ -208,35 +208,47 @@ export async function createUser(args: CreateUserArgs): Promise<UserRow> {
  * Update rank, win/loss, and streak after a match. Also recomputes the cached
  * rank_tier.
  */
-// ponytail: read-then-write, no row lock; two simultaneous match results for
-// the same user could clobber each other. Move to a $inc/$max pipeline update
-// if concurrent settlements for one user ever happen.
 export async function applyMatchResult(args: {
     userId: string;
     isWinner: boolean;
     rankDelta: number;
 }): Promise<UserRow> {
-    const u = await findUserById(args.userId);
-    if (!u) throw new Error(`User ${args.userId} not found`);
-
-    const newPoints = Math.max(0, u.rank_points + args.rankDelta);
-    const newStreak = args.isWinner ? u.win_streak + 1 : 0;
+    // Single atomic pipeline update so two settlements for one user can
+    // never clobber each other's points or win counts.
+    const win = args.isWinner ? 1 : 0;
+    const newStreak = args.isWinner ? { $add: ['$win_streak', 1] } : 0;
+    const newPoints = { $max: [0, { $add: ['$rank_points', args.rankDelta] }] };
     const out = await users().findOneAndUpdate(
         { id: args.userId },
-        {
-            $set: {
-                rank_points: newPoints,
-                rank_tier: tierFromPoints(newPoints),
-                wins: u.wins + (args.isWinner ? 1 : 0),
-                losses: u.losses + (args.isWinner ? 0 : 1),
-                win_streak: newStreak,
-                best_streak: Math.max(u.best_streak, newStreak),
-                updated_at: new Date(),
+        [
+            {
+                $set: {
+                    rank_points: newPoints,
+                    wins: { $add: ['$wins', win] },
+                    losses: { $add: ['$losses', 1 - win] },
+                    win_streak: newStreak,
+                    best_streak: { $max: ['$best_streak', newStreak] },
+                    updated_at: '$$NOW',
+                },
             },
-        },
+            { $set: { rank_tier: tierSwitch('$rank_points') } },
+        ],
         { returnDocument: 'after', projection: SAFE_USER_PROJECTION }
     );
+    if (!out) throw new Error(`User ${args.userId} not found`);
     return out as unknown as UserRow;
+}
+
+/** Aggregation expression mirroring tierFromPoints() for pipeline updates. */
+function tierSwitch(pointsExpr: string) {
+    return {
+        $switch: {
+            branches: [...TIER_BANDS]
+                .reverse()
+                .map((b) => ({ case: { $gte: [pointsExpr, b.min] }, then: b.tier })),
+            default: 'stone',
+        },
+    };
 }
 
 export async function updateEquippedCosmetic(

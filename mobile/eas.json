@@ -10,8 +10,7 @@
       "ios": {
         "simulator": true,
         "image": "macos-sequoia-15.6-xcode-26.2"
-      },
-      "channel": "development"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -19,9 +18,14 @@
       "android": {
         "buildType": "apk"
       },
-      "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.wordwar.app"
+        "EXPO_PUBLIC_API_URL": "https://wordwar-server-1ujy.onrender.com",
+        "EXPO_PUBLIC_ADMOB_BANNER_IOS_ID": "ca-app-pub-3940256099942544/2435281174",
+        "EXPO_PUBLIC_ADMOB_BANNER_ANDROID_ID": "ca-app-pub-3940256099942544/9214589741",
+        "EXPO_PUBLIC_ADMOB_INTERSTITIAL_IOS_ID": "ca-app-pub-3940256099942544/4411468910",
+        "EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID_ID": "ca-app-pub-3940256099942544/1033173712",
+        "EXPO_PUBLIC_ADMOB_REWARDED_IOS_ID": "ca-app-pub-3940256099942544/1712485313",
+        "EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID": "ca-app-pub-3940256099942544/5224354917"
       },
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2"
@@ -29,9 +33,8 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.wordwar.app"
+        "EXPO_PUBLIC_API_URL": "https://wordwar-server-1ujy.onrender.com"
       },
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2"
@@ -39,6 +42,15 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "REPLACE_WITH_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./play-service-account.json",
+        "track": "internal"
+      }
+    }
   }
 }

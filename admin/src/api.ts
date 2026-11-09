@@ -2,6 +2,9 @@
 // and is attached to every request. A 401/403 clears it and bounces to login.
 
 const TOKEN_KEY = 'ww_admin_token';
+// Same-origin by default (dev proxy / reverse proxy). When the dashboard is
+// hosted separately, set VITE_API_URL to the API origin at build time.
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 
 export function getToken(): string | null {
     return localStorage.getItem(TOKEN_KEY);
@@ -26,7 +29,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    const res = await fetch(`/api${path}`, {
+    const res = await fetch(`${API_BASE}/api${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),

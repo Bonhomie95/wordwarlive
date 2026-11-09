@@ -166,11 +166,14 @@ export default function Pass() {
                 return;
             }
             if (r.earned) {
-                // Dev fallback for localhost (SSV can't reach us).
-                try {
-                    await adsApi.devClaimReward('bp_xp_boost');
-                } catch {
-                    /* prod 404 / cap-exceeded 409 — no-op */
+                // Dev fallback for localhost (SSV can't reach us). Release
+                // builds rely on AdMob server-side verification alone.
+                if (__DEV__) {
+                    try {
+                        await adsApi.devClaimReward('bp_xp_boost');
+                    } catch {
+                        /* cap-exceeded 409 — no-op */
+                    }
                 }
                 setTimeout(() => {
                     refreshMe().catch(() => {});

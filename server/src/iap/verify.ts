@@ -151,10 +151,19 @@ async function reserveOrReplay(row: {
     const user = await col('users').findOne({ id: row.userId }, { projection: { _id: 1 } });
     if (!user) return { ok: false, status: 404, error: 'User not found' };
     if (await reserveTransaction(row)) {
-        // ponytail: no transaction — if fulfill throws, the reservation stays
-        // and the same user's retry returns alreadyGranted. Upgrade to a
-        // session/withTransaction if that ever bites in production.
-        if (fulfill) await fulfill();
+        // No multi-document transaction: if granting fails, release the ledger
+        // row so the client's retry (or Restore Purchases) grants it instead
+        // of being told it was already fulfilled.
+        if (fulfill) {
+            try {
+                await fulfill();
+            } catch (err) {
+                await col('iap_transactions')
+                    .deleteOne({ platform: row.platform, transaction_id: row.transactionId })
+                    .catch(() => {});
+                throw err;
+            }
+        }
         return { ok: true, transactionId: row.transactionId, alreadyGranted: false };
     }
     const prior = await col<IapTransactionDoc>('iap_transactions').findOne(

@@ -19,7 +19,7 @@ interface TierBand {
 }
 
 // Bands are ordered low → high so we can reverse-iterate to find the tier.
-const TIER_BANDS: readonly TierBand[] = [
+export const TIER_BANDS: readonly TierBand[] = [
     { tier: 'stone', min: 0 },
     { tier: 'bronze', min: 1100 },
     { tier: 'silver', min: 1300 },
