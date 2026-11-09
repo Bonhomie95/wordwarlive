@@ -1,7 +1,7 @@
 # WordWar store launch — your part
 
-Updated 2026-11-09. Only the steps that need your logins are listed. I handle
-builds, signing, server configuration and submission.
+Updated 2026-11-09 (evening). ✅ = done, ⬜ = still yours to do. I handle
+builds, signing, server configuration and submissions.
 
 Identifiers:
 
@@ -12,69 +12,96 @@ Identifiers:
 | Privacy policy | `https://wordwar-server-1ujy.onrender.com/legal/privacy` |
 | Terms | `https://wordwar-server-1ujy.onrender.com/legal/terms` |
 | Delete account | `https://wordwar-server-1ujy.onrender.com/legal/delete-account` |
+| Support | `https://wordwar-server-1ujy.onrender.com/legal/support` |
 | Rewarded ad SSV callback | `https://wordwar-server-1ujy.onrender.com/api/ads/ssv` |
+| App Store Connect app | WordWar Game Live, Apple ID 6832551406 |
+| Play app | WordWar, organization account Bonhomie LLC |
 
-## 1. Apple (developer.apple.com and App Store Connect)
+## Status
 
-1. **Sign in with Apple key.** Certificates, Identifiers & Profiles → Keys →
-   "+" → name `WordWar Sign in` → tick *Sign in with Apple* → Configure →
-   primary App ID `dev.bonhomieinc.wordwar` → Register → Download the `.p8`.
-   Send me the **Key ID** and the `.p8` file (privately). Your **Team ID** is
-   shown top right of that page; send it too.
-2. **Agreements, Tax, and Banking** in App Store Connect: accept the *Paid
-   Apps* agreement and complete banking and tax. Without it, purchases can't
-   be tested or sold.
-3. **Shared secret.** App Store Connect → the WordWar app (I create it during
-   the first submit) → App Information → *App-Specific Shared Secret* →
-   Generate → send it to me.
-4. **In-app purchases.** In the WordWar app → In-App Purchases → create each
-   row in section 4. Submit them with the first build for review.
-5. **App Privacy** questionnaire: data collected = user ID, email, device ID,
-   purchase history, gameplay content; advertising ID used for tracking
-   (AdMob). **Age rating**: no mature content, ads = yes, purchases = yes.
-6. **Sandbox tester**: Users and Access → Sandbox → add a tester Apple ID.
+### Done
+- ✅ Apple: paid team (Bonhomie LLC, S9XX65426W), Sign in with Apple key on
+  the server, Paid Apps agreement + banking, app record, shared secret on
+  the server, distribution certificate / provisioning profile / push key on
+  EAS, first TestFlight build (1.0.0 build 5) uploaded.
+- ✅ Google Play: app created, all App content declarations (privacy, sign in
+  details with review account, ads, content rating, target audience, data
+  safety, advertising ID, health, trader status, government, financial),
+  store listing, closed testing release 1.0.0 (3) live to testers, license
+  testing, Google-generated app signing.
+- ✅ AdMob: both apps, six ad units, rewarded SSV callback verified.
+- ✅ Review account for both stores: `~/Downloads/wordwar-play-listing/review-account.txt`.
 
-## 2. Google Play Console
+### Remaining — in the order to do them
 
-Already built: the Android app bundle `~/Downloads/wordwar-1.0.0-3.aab`
-(version 1.0.0, build 3) signed with the EAS upload key. Upload it in
-Testing → Closed testing → Create release, choosing the Google-generated
-signing key. Upload key SHA-1:
-`E6:14:7A:AC:EF:C7:31:23:FE:A0:99:B3:05:65:CB:13:CF:28:E9:98`
-(I use it for the Google Sign-In Android client; you don't need to do
-anything with it.)
+#### 1. ⬜ Google Cloud Console: two Android OAuth clients (5 min)
+console.cloud.google.com → the WordWar project → APIs & Services →
+Credentials → Create credentials → OAuth client ID → type **Android**.
+- Client A: name `WordWar Android (Play signing)`, package
+  `dev.bonhomieinc.wordwar`, SHA-1
+  `E2:51:54:5E:F3:85:4F:D8:77:03:D2:1A:C1:CD:B2:E6:CD:02:13:4E`
+- Client B: name `WordWar Android (upload key)`, same package, SHA-1
+  `E6:14:7A:AC:EF:C7:31:23:FE:A0:99:B3:05:65:CB:13:CF:28:E9:98`
+Send me both client IDs (they end in `.apps.googleusercontent.com`).
 
+#### 2. ⬜ Play Console: API access service account (10 min)
+Play Console → Home → **Manage account** → **API access** → link (or create)
+a Google Cloud project → **Create new service account** → follow the link to
+Cloud Console → create account `play-publisher` → back in Play Console press
+**Done** → next to the new account choose **Manage Play Console permissions**
+→ grant it to the WordWar app with **Admin (all permissions)** → Invite.
+Then in Cloud Console → IAM & Admin → Service accounts → the account →
+Keys → Add key → JSON. Save the file to Downloads and tell me its filename.
 
-1. Create the app *WordWar* (game, free, has ads, has in-app purchases).
-2. **App signing**: Google-generated key (done). App signing key SHA-1:
-   `E2:51:54:5E:F3:85:4F:D8:77:03:D2:1A:C1:CD:B2:E6:CD:02:13:4E`.
-3. **API access**: link a Cloud project → create a service account → grant it
-   *Admin (all permissions)* or at least Finance + release → create a **JSON
-   key** → send me the file privately.
-4. **App content**: privacy policy URL (table above), ads = yes, Data safety
-   (same as 1.5 plus Advertising ID shared with AdMob), target audience 13+,
-   account deletion URL (table above), content rating questionnaire.
-5. **Closed testing**: create a track and an email list with at least 12
-   testers. Google requires 14 days of closed testing before a new account
-   can publish to production, so start it as soon as I upload the first
-   build.
-6. **In-app products**: create each row in section 4.
-7. **License testing**: add your Gmail so test purchases aren't charged.
+#### 3. ⬜ Play Console: payments profile, then import the products (15 min)
+Monetize with Play → **Get started** → create/select the Google Payments
+merchant profile (business name Bonhomie LLC, address, bank for payouts).
+When it finishes, Monetize → Products → **In-app products** → **Import** →
+`~/Downloads/wordwar-play-listing/in-app-products.csv` (all 16 products,
+USD prices, auto-converted). Confirm 16 products show as Active.
 
-## 3. AdMob — done
-App IDs and the six ad units are in `mobile/eas.json` (production profile).
-Rewarded units point their server-side verification at
-`https://wordwar-server-1ujy.onrender.com/api/ads/ssv`. Once the apps are
-live on the stores, add the store listing in AdMob → App settings so ad
-serving leaves limited mode.
+#### 4. ⬜ MongoDB Atlas: new password and network access (5 min)
+Atlas → Database Access → user `joe` → Edit → Edit password → Autogenerate →
+copy → Update user. Then Network Access → Add IP → **Allow access from
+anywhere** (0.0.0.0/0). Send me the new password privately. The old one
+was pasted in chat, so this matters before real users arrive.
 
-## 3b. Google Sign-In for Play builds (Google Cloud Console → Credentials)
-Create two **Android** OAuth client IDs for package `dev.bonhomieinc.wordwar`:
-one with the App signing SHA-1 above, one with the upload key SHA-1
-`E6:14:7A:AC:EF:C7:31:23:FE:A0:99:B3:05:65:CB:13:CF:28:E9:98`. Send me both
-client IDs.
+#### 5. ⬜ Hosting decisions (1 min, just say yes/no)
+- Render web service → Starter (~$7/mo) so the API never sleeps.
+- Render Key Value (Redis) Starter (~$10/mo) instead of the shared `fault`
+  one, or a free Upstash Redis.
 
-## 4. In-app products (identical in both stores)
+#### 6. ⬜ App Store Connect: in-app purchases (30 min)
+App Store Connect → WordWar Game Live → **In-App Purchases** → "+" for each
+row in the table below. Type: *Consumable* or *Non-Consumable* as listed.
+Reference name = display name. Product ID exactly as listed. Add a price
+(pick the tier matching the USD value), then under App Store Localization
+add the display name and a one-line description. Save each; they are
+submitted together with the first app version.
+
+#### 7. ⬜ App Store Connect: sandbox tester + App Privacy check (5 min)
+Users and Access → Sandbox → "+" → add a tester (any email you can
+receive mail at; Apple sends a verification). App Privacy: confirm the
+seven data types are answered as in the table I sent (Device ID and
+Advertising Data = used for tracking).
+
+#### 8. ⬜ App Store Connect: the 1.0 page (20 min)
+Open iOS App 1.0. Paste from `~/Downloads/wordwar-appstore-listing/app-store-text.txt`:
+subtitle, promotional text, description, keywords, support URL, copyright,
+review notes (plus the review account). Upload screenshots from
+`iphone-6.9/` (6.9" iPhone) and `ipad-12.9/` (13" iPad). App Information:
+category Games → Word, secondary Puzzle, privacy policy URL. Pricing:
+Free, all countries. Age rating questionnaire: no mature content.
+Then **TestFlight → Internal Testing → "+"** → add yourself and testers →
+the processed build appears there to install via the TestFlight app.
+
+#### 9. Then I do
+Flip the server to production (verified purchases, real sign-in keys,
+dedicated database), build the `production` profile with the real AdMob
+units for both stores, upload to Play Production and App Store, and you
+press "Send for review" on each.
+
+## In-app products (identical in both stores)
 
 | Product ID | Type | USD | Display name |
 |---|---|---|---|
@@ -95,24 +122,11 @@ client IDs.
 | `dev.bonhomieinc.wordwar.cosmetic.nameplate_gold` | Non-consumable | 2.99 | Gold Nameplate |
 | `dev.bonhomieinc.wordwar.cosmetic.nameplate_rainbow` | Non-consumable | 5.99 | Spectrum Nameplate |
 
-## 5. Hosting (say yes or no to each)
+Play import file: `~/Downloads/wordwar-play-listing/in-app-products.csv`.
 
-1. Render web service → **Starter** (about $7/month) so the API never sleeps.
-2. Render Key Value (Redis) **Starter** (about $10/month) instead of sharing
-   the `fault` project's free one. Free alternative: an Upstash Redis URL.
-3. MongoDB Atlas: **rotate the `joe` password** (it was pasted in chat) and
-   send me the new connection string; optionally move to M2/M10 for backups.
-4. Atlas → Network Access → allow `0.0.0.0/0` (or Render's outbound IPs).
-
-## 6. During the first iOS build
-
-EAS will ask for your Apple ID password and two-factor code once in the
-terminal; it then creates the certificate, provisioning profile, push key
-and App Store Connect record itself. Watch the terminal tab I open and type
-when prompted.
-
-## What I need back from you, in one private message
-
-Team ID · Sign in with Apple Key ID + `.p8` · shared secret · Play signing
-SHA-1 · Play service-account JSON · AdMob two app IDs + six unit IDs ·
-new Atlas connection string · yes/no on section 5.
+## Reference: fingerprints and IDs
+- Play app-signing SHA-1: `E2:51:54:5E:F3:85:4F:D8:77:03:D2:1A:C1:CD:B2:E6:CD:02:13:4E`
+- EAS upload-key SHA-1: `E6:14:7A:AC:EF:C7:31:23:FE:A0:99:B3:05:65:CB:13:CF:28:E9:98`
+- AdMob app + unit IDs: `mobile/eas.json` → build.production.env
+- Android bundles in Downloads: `wordwar-1.0.0-3.aab` (live to testers),
+  `wordwar-1.0.0-4.aab` (spare)
