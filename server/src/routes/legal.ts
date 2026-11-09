@@ -7,6 +7,7 @@
 //   GET /legal/terms           Terms of Service
 //   GET /legal/delete-account  How to delete your account (Play "delete
 //                              account URL")
+//   GET /legal/support         Support page (App Store "Support URL")
 
 import { Router } from 'express';
 import { readFileSync } from 'node:fs';
@@ -92,7 +93,7 @@ a{color:#3DDC97}code{background:#1F232B;padding:1px 5px;border-radius:4px}
 nav{font-size:14px;color:#9AA1AC;margin-bottom:24px}nav a{margin-right:14px}
 .box{background:#16191F;border:1px solid #2A2E37;border-radius:12px;padding:16px 20px;margin:16px 0}
 </style></head><body><main>
-<nav><a href="/legal/privacy">Privacy Policy</a><a href="/legal/terms">Terms of Service</a><a href="/legal/delete-account">Delete account</a></nav>
+<nav><a href="/legal/privacy">Privacy Policy</a><a href="/legal/terms">Terms of Service</a><a href="/legal/delete-account">Delete account</a><a href="/legal/support">Support</a></nav>
 ${body}
 </main></body></html>`;
 }
@@ -129,6 +130,26 @@ delete the account within 30 days, then confirm by reply.</div>
 we do not receive card or payment details. See the <a href="/legal/privacy">Privacy Policy</a>.</p>`
 );
 
+const SUPPORT_HTML = page(
+    'Support',
+    `<h1>WordWar support</h1>
+<p>WordWar is a real-time 1v1 word game by Bonhomie LLC. If something isn't
+working or a purchase didn't arrive, we'll sort it out.</p>
+<h2>Contact</h2>
+<div class="box">Email <a href="mailto:${escapeHtml(env.SUPPORT_EMAIL)}?subject=${encodeURIComponent('WordWar support')}">${escapeHtml(env.SUPPORT_EMAIL)}</a>.
+Include your in-game username and, for purchase issues, the store receipt or
+order number. We reply within two business days.</div>
+<h2>Common questions</h2>
+<ul>
+<li><strong>A purchase didn't show up.</strong> Open the Shop and pull down to refresh, or use <em>Restore Purchases</em> in Settings. If it still hasn't appeared, email us with the receipt.</li>
+<li><strong>I lost my progress.</strong> Guest progress lives on one device. Link an Apple or Google account from Profile → Link account to keep it across devices.</li>
+<li><strong>I was matched with a computer player.</strong> When no human opponent is available quickly, WordWar may match you with a computer player; this is disclosed in the <a href="/legal/terms">Terms of Service</a>.</li>
+<li><strong>Someone is misbehaving.</strong> Use <em>Report</em> or <em>Block</em> on their profile; reports are reviewed by a human.</li>
+<li><strong>Delete my account.</strong> See <a href="/legal/delete-account">Delete account</a>.</li>
+</ul>
+<p>See also the <a href="/legal/privacy">Privacy Policy</a> and <a href="/legal/terms">Terms of Service</a>.</p>`
+);
+
 export const legalRouter = Router();
 
 legalRouter.use((_req, res, next) => {
@@ -140,3 +161,4 @@ legalRouter.use((_req, res, next) => {
 legalRouter.get('/legal/privacy', (_req, res) => res.type('html').send(PRIVACY_HTML));
 legalRouter.get('/legal/terms', (_req, res) => res.type('html').send(TERMS_HTML));
 legalRouter.get('/legal/delete-account', (_req, res) => res.type('html').send(DELETE_HTML));
+legalRouter.get('/legal/support', (_req, res) => res.type('html').send(SUPPORT_HTML));
