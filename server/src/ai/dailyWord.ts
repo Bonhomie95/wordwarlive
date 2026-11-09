@@ -9,7 +9,7 @@
 import { col, registerIndexes } from '../db/mongo.js';
 import { groqJSON, isGroqEnabled } from './groq.js';
 import { logger } from '../utils/logger.js';
-import { pickRandomWord, isValidWord } from '../game/words.js';
+import { pickRandomWord, isCuratedWord } from '../game/words.js';
 
 registerIndexes('daily_words', [{ key: { day: 1 }, unique: true }]);
 registerIndexes('word_bank', [{ key: { length: 1, difficulty: 1 } }]);
@@ -57,7 +57,7 @@ export async function getOrPickDailyWord(): Promise<{ word: string; theme: strin
     }
 
     // Defensive: don't trust Groq's word — verify it's in our bank.
-    if (!isValidWord(chosen.word)) {
+    if (!isCuratedWord(chosen.word)) {
         logger.warn({ chosen }, 'Groq picked a word not in the bank; falling back');
         chosen = { word: candidates[0] ?? pickRandomWord(5), theme: chosen.theme };
     }

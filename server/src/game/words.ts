@@ -89,6 +89,14 @@ export function isValidWord(word: string): boolean {
     return acceptedSet.has(word.toUpperCase());
 }
 
+/** Is this one of OUR curated answer words? Use for anything another player
+ *  will be shown as a target (mystery submissions, daily word) so the open
+ *  dictionary's offensive entries can never become someone's puzzle. */
+export function isCuratedWord(word: string): boolean {
+    ensureLoaded();
+    return wordSet.has(word.toUpperCase());
+}
+
 export function getDifficulty(word: string): number {
     ensureLoaded();
     return difficultyByWord.get(word.toUpperCase()) ?? 3;

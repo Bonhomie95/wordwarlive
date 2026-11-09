@@ -18,7 +18,7 @@
 // small blocklist for (b).
 
 import { col, newId, registerIndexes } from '../db/mongo.js';
-import { isValidWord } from '../game/words.js';
+import { isCuratedWord } from '../game/words.js';
 import { containsProfanity } from '../moderation/blocklist.js';
 import { logger } from '../utils/logger.js';
 
@@ -66,7 +66,7 @@ export async function submitWord(
     if (!/^[A-Z]+$/.test(w)) return { ok: false, error: 'Letters only.' };
     if (w.length < 4 || w.length > 10)
         return { ok: false, error: 'Word must be 4-10 letters.' };
-    if (!isValidWord(w))
+    if (!isCuratedWord(w))
         return { ok: false, error: 'Not in our word list.' };
     // Shared moderation backstop (leetspeak-folded slur/profanity check) on
     // top of the curated word bank.
