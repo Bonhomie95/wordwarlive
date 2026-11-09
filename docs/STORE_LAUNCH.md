@@ -46,8 +46,8 @@ anything with it.)
 
 
 1. Create the app *WordWar* (game, free, has ads, has in-app purchases).
-2. **App signing**: choose Google-generated key. Copy the **App signing key
-   SHA-1** and send it to me.
+2. **App signing**: Google-generated key (done). App signing key SHA-1:
+   `E2:51:54:5E:F3:85:4F:D8:77:03:D2:1A:C1:CD:B2:E6:CD:02:13:4E`.
 3. **API access**: link a Cloud project → create a service account → grant it
    *Admin (all permissions)* or at least Finance + release → create a **JSON
    key** → send me the file privately.
@@ -73,6 +73,12 @@ anything with it.)
 
 Until I have these, store builds use Google's test ads, which is fine for
 TestFlight and Play closed testing but not for release.
+
+## 3b. Google Sign-In for Play builds (Google Cloud Console → Credentials)
+Create two **Android** OAuth client IDs for package `dev.bonhomieinc.wordwar`:
+one with the App signing SHA-1 above, one with the upload key SHA-1
+`E6:14:7A:AC:EF:C7:31:23:FE:A0:99:B3:05:65:CB:13:CF:28:E9:98`. Send me both
+client IDs.
 
 ## 4. In-app products (identical in both stores)
 
