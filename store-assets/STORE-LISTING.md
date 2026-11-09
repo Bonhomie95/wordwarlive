@@ -66,9 +66,9 @@ can rise.
 • Daily Challenge — one shared word for the whole world, ranked by guess count
 • Friends — private live matches by invite or code
 
-⚡ EARN POWER-UPS (never pay-to-win)
-Reveal a letter, Scramble your rival’s view, or Lock their power-ups. All earned
-through play — win streaks and daily rewards — never bought.
+⚡ EARN POWER-UPS
+Reveal a letter, Scramble your rival’s view, or Lock their power-ups. Earn them
+through play, win streaks and daily rewards.
 
 🎨 MAKE IT YOURS
 Unlock board themes, victory animations, avatars, nameplates, and profile
