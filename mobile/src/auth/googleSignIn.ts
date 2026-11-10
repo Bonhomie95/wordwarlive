@@ -1,9 +1,38 @@
-// Google Sign-In with expo-auth-session. Returns the id_token which we hand
-// to the server for verification.
+// Google Sign-In. Returns the id_token which we hand to the server for
+// verification.
+//
+//   iOS:     expo-auth-session in the system browser sheet (iOS OAuth client).
+//   Android: the native Google Sign-In SDK. Google no longer accepts the
+//            custom-URI-scheme redirect the browser flow needs for Android
+//            OAuth clients, so the browser flow cannot work there. The native
+//            SDK matches the app's package + signing SHA-1 against an Android
+//            client in the same Cloud project as the Web client below, and the
+//            returned id_token's audience is that Web client.
 
 import * as Google from 'expo-auth-session/providers/google';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
+import { GoogleSignin, isSuccessResponse } from '@react-native-google-signin/google-signin';
+
+const androidWebClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_WEB_CLIENT_ID;
+let nativeConfigured = false;
+
+/** Native Android sign-in; null when cancelled. Throws with a readable message. */
+async function nativeAndroidSignIn(): Promise<string | null> {
+    if (!androidWebClientId) throw new Error('Google Sign-In is not configured.');
+    if (!nativeConfigured) {
+        GoogleSignin.configure({ webClientId: androidWebClientId });
+        nativeConfigured = true;
+    }
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    // Clear the cached account so the chooser always appears (lets players
+    // pick a different Google account when linking).
+    await GoogleSignin.signOut().catch(() => {});
+    const res = await GoogleSignin.signIn();
+    if (!isSuccessResponse(res)) return null;
+    if (!res.data.idToken) throw new Error('Google did not return an ID token.');
+    return res.data.idToken;
+}
 
 export interface GoogleSignInHook {
     /** True while the OAuth dance is in progress. */
@@ -25,7 +54,10 @@ export function useGoogleSignIn(): GoogleSignInHook {
     const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
     const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
 
-    const available = Boolean(webClientId || iosClientId || androidClientId);
+    const available =
+        Platform.OS === 'android'
+            ? Boolean(androidWebClientId)
+            : Boolean(webClientId || iosClientId || androidClientId);
 
     // iOS: Google only accepts the reversed-client-ID redirect for this iOS
     // client (the default `<bundleId>:/oauthredirect` came back as
@@ -78,6 +110,16 @@ export function useGoogleSignIn(): GoogleSignInHook {
         }
         setError(null);
         setInProgress(true);
+        if (Platform.OS === 'android') {
+            try {
+                return await nativeAndroidSignIn();
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Google sign-in failed');
+                return null;
+            } finally {
+                setInProgress(false);
+            }
+        }
         return new Promise<string | null>((resolve) => {
             setPendingResolver(() => resolve);
             promptAsync();

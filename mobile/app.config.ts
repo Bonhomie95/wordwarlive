@@ -48,6 +48,7 @@ if (isProductionBuild) {
         'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID',
         'EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID',
         'EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID',
+        'EXPO_PUBLIC_GOOGLE_ANDROID_WEB_CLIENT_ID',
     ]);
     const adUnits = Object.entries(process.env).filter(([key]) => key.startsWith('EXPO_PUBLIC_ADMOB_') && key.endsWith('_ID'));
     if (adUnits.some(([, value]) => !/^ca-app-pub-\d{16}\/\d{10}$/.test(value ?? '') || value?.includes('3940256099942544'))) {
@@ -77,6 +78,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         }
         return p;
     });
+    // Native Google Sign-In (used on Android). Its iOS side needs the reversed
+    // iOS client id as a URL scheme, which we already register below.
+    const iosClient = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    plugins.push(
+        iosClient
+            ? ['@react-native-google-signin/google-signin', { iosUrlScheme: `com.googleusercontent.apps.${iosClient.replace('.apps.googleusercontent.com', '')}` }]
+            : '@react-native-google-signin/google-signin'
+    );
     // Keep every pod buildable on current Xcode (see plugins/withPodDeploymentTarget.js).
     plugins.push('./plugins/withPodDeploymentTarget.js');
 
