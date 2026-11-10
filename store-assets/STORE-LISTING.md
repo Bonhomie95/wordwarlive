@@ -24,7 +24,7 @@ Generated assets live alongside this file; copy blocks below are paste-ready.
 ## 2. Keywords (App Store — one field, ≤100 chars)
 
 ```
-word game,wordle,1v1,multiplayer,word duel,anagram,puzzle,vocabulary,pvp,daily word,brain,spelling
+word game,1v1,multiplayer,word duel,word race,anagram,puzzle,vocabulary,pvp,daily word,spelling
 ```
 
 Google Play has no keyword field — weave terms into the description naturally.
@@ -47,7 +47,7 @@ New season live now. Climb from Stone to Legend, earn power-ups, and challenge f
 Think you’re fast with words? Prove it — live.
 
 WordWar is a real-time 1v1 word game: you and your opponent get the SAME hidden
-word and race the same clock. Guess in Wordle-style rows — green means right
+word and race the same clock. Guess in rows of letter tiles — green means right
 letter, right spot; yellow means right letter, wrong spot. You see your rival’s
 tile colors update in real time, but never their letters. First to crack it wins.
 
