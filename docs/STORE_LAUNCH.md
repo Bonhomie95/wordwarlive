@@ -21,7 +21,8 @@ Identifiers:
 
 ### Done
 - ✅ Apple: paid team (Bonhomie LLC, S9XX65426W), Sign in with Apple key on
-  the server, Paid Apps agreement + banking, app record, shared secret on
+  the server, banking for the Paid Apps agreement (the agreement goes active
+  after the tax form, step 3), app record, shared secret on
   the server, distribution certificate / provisioning profile / push key on
   EAS, TestFlight build 1.0.0 (5) uploaded, internal TestFlight group.
 - ✅ App Store Connect, 1.0.0 page: description, keywords, promotional text,
@@ -48,10 +49,17 @@ Identifiers:
 
 ### Remaining — in the order to do them
 
-- ✅ 2026-11-10 20:15 UTC: iOS 1.0.0 (build 10, production) and all 17 in-app
-  purchases in App Review — "Waiting for Review". Build 9 was rejected
-  (ITMS-91064: the privacy manifest said tracking with no tracking domains;
-  fixed in app.config.ts). Release is manual: approval publishes nothing.
+- ✅ 2026-11-10 21:57 UTC: iOS 1.0.0 (build 11, production) and all 17 in-app
+  purchases in App Review — "Waiting for Review". Build 11 replaced build 10
+  (practice round now uses the game keyboard; friendlier no-ad messages).
+  Build 9 was rejected (ITMS-91064: the privacy manifest said tracking with
+  no tracking domains; fixed in app.config.ts). Release is manual: approval
+  publishes nothing.
+- ✅ 2026-11-10 22:27 UTC: Android 1.0.0 (6) on the Play **Production** track
+  (`eas submit --profile play-production`), sent to Google review
+  automatically after the quick checks. The fixed full description is
+  approved and waits under "Changes ready to publish". Managed publishing is
+  on, so nothing goes live until you press Publish.
 - ✅ Google Cloud key-creation policy restored; Play payout bank account
   added (Google verification pending).
 
@@ -67,19 +75,31 @@ backup (GitHub had not run its schedule yet). Before real users arrive,
 upgrade the web service to Starter (~$7/mo), move Redis off the shared
 `fault` instance, and delete both pings.
 
-#### 3. ⬜ EU Digital Services Act (5 min)
+#### 3. ⬜ Tax form → Paid Apps agreement
+App Store Connect → Business → Tax forms: W-8BEN (foreign owner of a
+single-member LLC). In-app purchases can't be bought, even in TestFlight
+sandbox, until the Paid Apps agreement is active.
+
+#### 4. ⬜ Cloudflare: let crawlers read app-ads.txt
+`https://bonhomieinc.dev/app-ads.txt` has all three publisher lines, but
+Cloudflare's **Security level** answers every request on the site (Google's
+crawler included) with a "Just a moment…" challenge. Edit the "Skip App Ads"
+custom rule and also tick **Security Level** under "More components to skip"
+(and turn off Under Attack mode if it's on). AdMob usually verifies the file
+within a day after that.
+
+#### 5. ⬜ EU Digital Services Act (5 min)
 App Store Connect → Business (or App Information) → Digital Services Act →
 declare trader status for Bonhomie LLC (address, phone, email). Without it
 the app is not offered in EU storefronts.
 
-#### 4. Before you release the approved app
-Approval does not publish anything (manual release). Before you press
-"Release this version" in App Store Connect:
+#### 6. Before you release the approved apps
+Approval publishes nothing on either store. Before you press "Release this
+version" (App Store Connect) or Publishing overview → Publish (Play):
+- You make one TestFlight sandbox purchase (needs step 3) so we know
+  verified purchases work end to end.
 - I flip the server to production (NODE_ENV=production, verified purchases,
-  CORS origin, metrics token) on a dedicated database — needs step 1.
-- I build the Android `production` profile and upload it to Play
-  Production; you press Publishing overview → Submit changes for review (the
-  release plus the queued listing fix).
+  CORS origin, metrics token).
 
 Optional: the macOS, tvOS and visionOS 1.0 drafts in App Store Connect are
 unused (WordWar is iPhone/iPad only). They forced the Apple TV privacy-policy
