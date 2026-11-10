@@ -159,10 +159,7 @@ export default function Pass() {
         try {
             const r = await showRewarded('bp_xp_boost', user.id);
             if (r.unavailable) {
-                appAlert(
-                    'Ads not available',
-                    'XP boost needs the production / dev-client build (not Expo Go).'
-                );
+                appAlert('No ad right now', 'Ads are not available at the moment. Please try again later.');
                 return;
             }
             if (r.earned) {
@@ -181,7 +178,7 @@ export default function Pass() {
                 }, 1200);
                 appAlert('+50 XP incoming', 'Updating your battle pass…');
             } else if (r.error) {
-                appAlert('Ad not available', r.error);
+                appAlert('No ad right now', 'There is no ad to show at the moment. Please try again in a few minutes.');
             }
         } finally {
             setAdBusy(false);

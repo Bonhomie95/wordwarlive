@@ -64,7 +64,12 @@ const KeyRaw: React.FC<{
                 { backgroundColor: bg, flex, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 },
             ]}
         >
-            <Text style={[styles.keyLabel, { color: fg }]} allowFontScaling={false}>
+            <Text
+                style={[styles.keyLabel, { color: fg }]}
+                allowFontScaling={false}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+            >
                 {label}
             </Text>
         </Pressable>

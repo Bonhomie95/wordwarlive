@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, Text, TextInput, View } from 'react-native';
+import { Modal, ScrollView, Text, View } from 'react-native';
 import { colors } from '../../theme/colors';
 import { Button } from './Button';
 import { Tile } from '../game/Tile';
+import { Keyboard, deriveLetterStates } from '../game/Keyboard';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { track } from '../../observability';
 import type { Tile as TileState } from '../../types';
@@ -32,21 +33,29 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
 }) => {
     const reduced = useReducedMotion();
     const [input, setInput] = useState('');
-    const [guess, setGuess] = useState('');
+    // Same on-screen keyboard as a real match (the system keyboard could
+    // fail to open inside this modal, leaving "Skip" as the only way out).
+    const [guesses, setGuesses] = useState<{ guess: string; tiles: TileState[] }[]>([]);
     const [hint, setHint] = useState(false);
     const [error, setError] = useState('');
     useEffect(() => {
         if (visible) track('tutorial_started');
     }, [visible]);
-    const solved = guess === 'PLANT';
+    const last = guesses[guesses.length - 1]?.guess ?? '';
+    const solved = last === 'PLANT';
+    function type(letter: string) {
+        if (solved || input.length >= 5) return;
+        setError('');
+        setInput(input + letter);
+    }
     function submit() {
-        const word = input.trim().toUpperCase();
-        if (!/^[A-Z]{5}$/.test(word)) {
+        if (input.length !== 5) {
             setError('Enter five letters. Try TRAIN first.');
             return;
         }
         setError('');
-        setGuess(word);
+        setGuesses([...guesses, { guess: input, tiles: score(input) }]);
+        setInput('');
     }
     return (
         <Modal
@@ -61,9 +70,16 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
             <View
                 style={{ flex: 1, backgroundColor: '#000b', justifyContent: 'center', padding: 20 }}
             >
+                <View
+                    style={{
+                        maxHeight: '92%',
+                        backgroundColor: colors.surface,
+                        borderRadius: 20,
+                        overflow: 'hidden',
+                    }}
+                >
                 <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    style={{ maxHeight: '92%', backgroundColor: colors.surface, borderRadius: 20 }}
+                    style={{ flexShrink: 1 }}
                     contentContainerStyle={{ padding: 24, gap: 16 }}
                 >
                     <Text
@@ -74,22 +90,28 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
                     </Text>
                     <Text style={{ color: colors.textDim }}>
                         Practice without a timer or opponent. No coins, items or rank are used. The
-                        word is something that grows in a garden. Try TRAIN.
+                        word is something that grows in a garden. Type TRAIN on the keyboard below
+                        and press ENTER.
                     </Text>
-                    <View style={{ flexDirection: 'row', gap: 5, justifyContent: 'center' }}>
-                        {Array.from({ length: 5 }, (_, i) => (
-                            <Tile
-                                key={i}
-                                size={42}
-                                letter={guess[i] ?? null}
-                                state={guess ? score(guess)[i]! : null}
-                            />
-                        ))}
-                    </View>
+                    {[...guesses.map((g) => g.guess), ...(solved ? [] : [input])].map((word, row) => (
+                        <View
+                            key={row}
+                            style={{ flexDirection: 'row', gap: 5, justifyContent: 'center' }}
+                        >
+                            {Array.from({ length: 5 }, (_, i) => (
+                                <Tile
+                                    key={i}
+                                    size={42}
+                                    letter={word[i] ?? null}
+                                    state={guesses[row] ? guesses[row]!.tiles[i]! : null}
+                                />
+                            ))}
+                        </View>
+                    ))}
                     <Text style={{ color: colors.text }}>
                         ✓ Correct spot · ● Move this letter · × No extra copy of this letter
                     </Text>
-                    {guess && (
+                    {last !== '' && (
                         <Text accessibilityLiveRegion="polite" style={{ color: colors.text }}>
                             {solved
                                 ? 'Solved! You are ready for a real match.'
@@ -98,23 +120,6 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
                     )}
                     {!solved && (
                         <>
-                            <TextInput
-                                accessibilityLabel="Five-letter practice guess"
-                                autoCapitalize="characters"
-                                autoCorrect={false}
-                                maxLength={5}
-                                value={input}
-                                onChangeText={setInput}
-                                onSubmitEditing={submit}
-                                style={{
-                                    color: colors.text,
-                                    borderColor: colors.border,
-                                    borderWidth: 1,
-                                    padding: 14,
-                                    borderRadius: 10,
-                                }}
-                            />
-                            <Button label="Check my guess" onPress={submit} />
                             <Button
                                 label="Try a free practice Reveal"
                                 variant="secondary"
@@ -150,12 +155,23 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
                         onPress={() => {
                             track(solved ? 'tutorial_completed' : 'tutorial_skipped');
                             setInput('');
-                            setGuess('');
+                            setGuesses([]);
                             setHint(false);
                             onDone();
                         }}
                     />
                 </ScrollView>
+                {!solved && (
+                    <View style={{ paddingVertical: 10, borderTopWidth: 1, borderColor: colors.border }}>
+                        <Keyboard
+                            onLetter={type}
+                            onBackspace={() => setInput(input.slice(0, -1))}
+                            onEnter={submit}
+                            letterStates={deriveLetterStates(guesses)}
+                        />
+                    </View>
+                )}
+                </View>
             </View>
         </Modal>
     );

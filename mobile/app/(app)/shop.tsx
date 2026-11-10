@@ -300,7 +300,7 @@ export default function Shop() {
         try {
             const r = await showRewarded('coin_boost', user.id);
             if (r.unavailable) {
-                appAlert('Ads not available', 'Coin ads need the production / dev-client build (not Expo Go).');
+                appAlert('No ad right now', 'Ads are not available at the moment. Please try again later.');
                 return;
             }
             if (r.earned) {
@@ -312,7 +312,7 @@ export default function Shop() {
                 setTimeout(() => refreshMe().catch(() => {}), 1200);
                 appAlert('+25 coins incoming', 'Updating your balance…');
             } else if (r.error) {
-                appAlert('Ad not available', r.error);
+                appAlert('No ad right now', 'There is no ad to show at the moment. Please try again in a few minutes.');
             }
         } finally {
             setAdBusy(false);
