@@ -19,8 +19,12 @@ export const powerUpSchema = z.object({
     targetGuessIndex: z.number().int().nonnegative().optional(),
 });
 
+/** Reactions players may send an opponent. A fixed set, so the relay can
+ *  never carry free text (it would otherwise be an unmoderated chat channel). */
+export const ALLOWED_EMOJI = ['👍', '👏', '😂', '😮', '😅', '😤', '🔥', '🎉'] as const;
+
 export const emojiSchema = z.object({
-    emoji: z.string().min(1).max(8),
+    emoji: z.enum(ALLOWED_EMOJI),
 });
 
 export const privateJoinSchema = z.object({
