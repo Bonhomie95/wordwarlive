@@ -83,9 +83,9 @@ export const COIN_PACKS: readonly CoinPack[] = [
 
 export const HINT_COIN_COST = 50;
 
-/** One-time starter bundle: a cheap, high-value first purchase. Store product
- *  is NON-consumable (one per Apple/Google account) and the server also caps it
- *  to one per WordWar account (users.starter_bundle_at). */
+/** One-time starter bundle: a cheap, high-value first purchase. The App Store
+ *  product is consumable; the server caps it to one per WordWar account
+ *  (users.starter_bundle_at) and the shop hides it once owned. */
 export const STARTER_BUNDLE = {
     id: 'starter',
     name: 'Starter Bundle',

@@ -288,7 +288,8 @@ export function purchaseCosmetic(cosmeticId: string) {
     });
 }
 
-/** One per account: non-consumable, and the server refuses a second one. */
+/** One per WordWar account (server-capped; consumable in App Store Connect).
+ *  Acknowledged rather than consumed on Play, so one per Google account too. */
 export function purchaseStarterBundle() {
     return runPurchase({
         productId: STARTER_BUNDLE_PRODUCT_ID,

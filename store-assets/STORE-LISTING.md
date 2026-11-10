@@ -182,7 +182,7 @@ accounts/keys.
 |---|---|---|---|
 | `dev.bonhomieinc.wordwar.remove_ads` | Non-consumable | $4.99 | Removes banner + interstitial ads |
 | `dev.bonhomieinc.wordwar.battlepass.premium` | **Consumable** | $3.99 | Premium track for the current season (re-buyable next season) |
-| `dev.bonhomieinc.wordwar.bundle.starter` | Non-consumable | $2.99 | Starter Bundle: 500 coins + Fox avatar + Neon Pulse theme (one per account) |
+| `dev.bonhomieinc.wordwar.bundle.starter` | Consumable (App Store) | $2.99 | Starter Bundle: 500 coins + Fox avatar + Neon Pulse theme (one per account, server-capped) |
 | `dev.bonhomieinc.wordwar.coins.pebble` | Consumable | $0.99 | 100 coins |
 | `dev.bonhomieinc.wordwar.coins.pocket` | Consumable | $4.99 | 550 coins |
 | `dev.bonhomieinc.wordwar.coins.treasure` | Consumable | $9.99 | 1,200 coins |
