@@ -203,6 +203,13 @@ async function main() {
     );
     await matchRegistry.recover(io);
 
+    // Render's free plan sleeps after 15 idle minutes; a request to our own
+    // public URL counts as traffic. ponytail: delete once on a paid instance.
+    const selfUrl = process.env.RENDER_EXTERNAL_URL;
+    if (selfUrl) {
+        setInterval(() => void fetch(`${selfUrl}/healthz`).catch(() => {}), 10 * 60_000).unref();
+    }
+
     let shuttingDown = false;
     const shutdown = async () => {
         if (shuttingDown) return; // ignore a second SIGTERM/SIGINT
