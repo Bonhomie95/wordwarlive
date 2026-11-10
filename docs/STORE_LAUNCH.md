@@ -61,7 +61,7 @@ Identifiers:
   approved and waits under "Changes ready to publish". Managed publishing is
   on, so nothing goes live until you press Publish.
 - ✅ Google Cloud key-creation policy restored; Play payout bank account
-  added (Google verification pending).
+  verified. Apple bank account (UK, GBP) added — "Processing" for up to 24 h.
 
 #### 1. ✅ MongoDB Atlas: password rotated
 Done 2026-11-10: the `joe` password was rotated and the new connection
@@ -88,10 +88,9 @@ custom rule and also tick **Security Level** under "More components to skip"
 (and turn off Under Attack mode if it's on). AdMob usually verifies the file
 within a day after that.
 
-#### 5. ⬜ EU Digital Services Act (5 min)
-App Store Connect → Business (or App Information) → Digital Services Act →
-declare trader status for Bonhomie LLC (address, phone, email). Without it
-the app is not offered in EU storefronts.
+#### 5. ✅ EU Digital Services Act
+Trader status is Active for all 27 EU countries (App Store Connect →
+Business → Compliance, 2026-11-10).
 
 #### 6. Before you release the approved apps
 Approval publishes nothing on either store. Before you press "Release this
