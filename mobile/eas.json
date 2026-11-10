@@ -88,6 +88,13 @@
         "serviceAccountKeyPath": "./play-service-account.json",
         "track": "internal"
       }
+    },
+    "play-production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-service-account.json",
+        "track": "production",
+        "releaseStatus": "completed"
+      }
     }
   }
 }
