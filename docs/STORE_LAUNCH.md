@@ -80,13 +80,12 @@ App Store Connect → Business → Tax forms: W-8BEN (foreign owner of a
 single-member LLC). In-app purchases can't be bought, even in TestFlight
 sandbox, until the Paid Apps agreement is active.
 
-#### 4. ⬜ Cloudflare: let crawlers read app-ads.txt
-`https://bonhomieinc.dev/app-ads.txt` has all three publisher lines, but
-Cloudflare's **Security level** answers every request on the site (Google's
-crawler included) with a "Just a moment…" challenge. Edit the "Skip App Ads"
-custom rule and also tick **Security Level** under "More components to skip"
-(and turn off Under Attack mode if it's on). AdMob usually verifies the file
-within a day after that.
+#### 4. ✅ Cloudflare: crawlers can read app-ads.txt
+`https://bonhomieinc.dev/app-ads.txt` returns 200 with all three publisher
+lines (the "Skip App Ads" rule now also skips Security Level). AdMob checks
+it once the apps are live: Android uses the Play listing website
+(bonhomieinc.dev); iOS needs the App Store Marketing URL set to
+https://bonhomieinc.dev in the next version.
 
 #### 5. ✅ EU Digital Services Act
 Trader status is Active for all 27 EU countries (App Store Connect →
