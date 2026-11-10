@@ -125,7 +125,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             // First-party data collection for the App Privacy report. SDKs
             // (AdMob, Expo modules) ship their own manifests which Xcode merges.
             privacyManifests: {
-                NSPrivacyTracking: true,
+                // Our own code doesn't track. Apple rejects true with no
+                // tracking domains (ITMS-91064), and listing AdMob's domains
+                // would make iOS block all ads when ATT is declined. AdMob's
+                // tracking is disclosed in the App Store privacy labels + ATT.
+                NSPrivacyTracking: false,
                 NSPrivacyTrackingDomains: [],
                 NSPrivacyCollectedDataTypes: [
                     collected('NSPrivacyCollectedDataTypeUserID'),
