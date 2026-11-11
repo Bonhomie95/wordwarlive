@@ -26,7 +26,8 @@ export default function Welcome() {
     const busy = useAuthStore((s) => s.busy);
     const google = useGoogleSignIn();
     const appleAvailable = useAppleAvailable();
-    const [oauthBusy, setOauthBusy] = useState(false);
+    // Which provider's sign-in is running, so only that button shows busy.
+    const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
 
     async function onGuest() {
         try {
@@ -37,30 +38,32 @@ export default function Welcome() {
     }
 
     async function onGoogle() {
+        if (oauthBusy) return;
         if (!google.available) {
             appAlert('Not configured', 'Google Sign-In env vars are missing.');
             return;
         }
-        setOauthBusy(true);
+        setOauthBusy('google');
         try {
             const idToken = await google.signIn();
             if (idToken) await signInGoogle(idToken);
         } catch (err) {
             appAlert('Google sign-in failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
-            setOauthBusy(false);
+            setOauthBusy(null);
         }
     }
 
     async function onApple() {
-        setOauthBusy(true);
+        if (oauthBusy) return;
+        setOauthBusy('apple');
         try {
             const cred = await appleSignIn();
             if (cred) await signInApple(cred);
         } catch (err) {
             appAlert('Apple sign-in failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
-            setOauthBusy(false);
+            setOauthBusy(null);
         }
     }
 
@@ -93,7 +96,8 @@ export default function Welcome() {
                             buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
                             buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
                             cornerRadius={radius.md}
-                            style={styles.appleButton}
+                            // The native button has no spinner; dim it while Apple sign-in runs.
+                            style={[styles.appleButton, oauthBusy === 'apple' && { opacity: 0.5 }]}
                             onPress={onApple}
                         />
                     ) : null}
@@ -103,7 +107,7 @@ export default function Welcome() {
                             onPress={onGoogle}
                             variant="secondary"
                             icon="logo-google"
-                            busy={oauthBusy || google.inProgress}
+                            busy={oauthBusy === 'google' || google.inProgress}
                         />
                     ) : null}
                     <Button

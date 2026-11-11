@@ -6,7 +6,9 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store';
+// AsyncStorage (not SecureStore): iOS keeps Keychain items after the app is
+// deleted, so a reinstall would never show the practice word again.
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
 import { Screen } from '../../src/components/ui/Screen';
@@ -71,7 +73,7 @@ export default function Home() {
     }, [refreshMe]);
 
     useEffect(() => {
-        SecureStore.getItemAsync('wordwar.onboarded.practice.v2')
+        AsyncStorage.getItem('wordwar.onboarded.practice.v2')
             .then((v) => {
                 if (v !== '1') setShowOnboarding(true);
             })
@@ -80,7 +82,7 @@ export default function Home() {
 
     function dismissOnboarding() {
         setShowOnboarding(false);
-        SecureStore.setItemAsync('wordwar.onboarded.practice.v2', '1').catch(() => {});
+        AsyncStorage.setItem('wordwar.onboarded.practice.v2', '1').catch(() => {});
     }
 
     // Start fetching the rewarded ad as soon as the daily bonus is claimable so

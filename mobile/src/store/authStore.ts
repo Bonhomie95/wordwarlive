@@ -30,6 +30,10 @@ const DEVICE_KEY = "wordwar.deviceId";
 /** Last-known profile, cached so cold starts render instantly (and offline)
  *  instead of blanking until /me responds. Not secret → AsyncStorage. */
 const USER_CACHE_KEY = "wordwar.userCache";
+/** Set on first launch. AsyncStorage is wiped when the app is deleted, but the
+ *  iOS Keychain (SecureStore, where the token lives) is not: no marker means a
+ *  fresh install, so the old session is dropped instead of silently restored. */
+const INSTALL_KEY = "wordwar.installed";
 
 async function getOrCreateDeviceId(): Promise<string> {
   const existing = await SecureStore.getItemAsync(DEVICE_KEY);
@@ -133,6 +137,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   hydrate: async () => {
     try {
+      if (!(await AsyncStorage.getItem(INSTALL_KEY))) {
+        await clearStoredToken();
+        await AsyncStorage.setItem(INSTALL_KEY, "1");
+      }
       const token = await getStoredToken();
       if (!token) {
         set({ hydrated: true });

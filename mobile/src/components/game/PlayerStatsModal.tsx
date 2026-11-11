@@ -31,11 +31,11 @@ interface Props {
 function confirmBlock(player: PublicUser, onDone: () => void) {
     appAlert(
         `Block ${player.username}?`,
-        "You won't be matched with this player again, and they can't challenge you. You can unblock them later in Settings.",
+        "This ends the match (it counts as leaving). You won't be matched with this player again, and they can't challenge you. You can unblock them later in Settings.",
         [
             { text: 'Cancel', style: 'cancel' },
             {
-                text: 'Block',
+                text: 'Block & leave',
                 style: 'destructive',
                 onPress: async () => {
                     try {

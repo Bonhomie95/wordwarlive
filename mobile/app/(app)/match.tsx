@@ -254,6 +254,8 @@ export default function Match() {
                 player={statsPlayer?.player ?? null}
                 title={statsPlayer?.title ?? ''}
                 reportable={statsPlayer?.title === 'Opponent'}
+                // Blocking your opponent also leaves the match (same as Quit).
+                onBlocked={quitMatch}
                 onClose={() => setStatsPlayer(null)}
             />
             {/* VS splash before the game starts. Auto-dismisses when phase

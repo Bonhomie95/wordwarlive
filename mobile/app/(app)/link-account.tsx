@@ -37,7 +37,8 @@ export default function LinkAccount() {
     const busy = useAuthStore((s) => s.busy);
     const google = useGoogleSignIn();
     const appleAvailable = useAppleAvailable();
-    const [oauthBusy, setOauthBusy] = useState(false);
+    // Which provider's linking is running, so only that button shows busy.
+    const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
@@ -85,11 +86,12 @@ export default function LinkAccount() {
     }
 
     async function onLinkGoogle() {
+        if (oauthBusy) return;
         if (!google.available) {
             appAlert('Not configured', 'Google Sign-In env vars are missing.');
             return;
         }
-        setOauthBusy(true);
+        setOauthBusy('google');
         try {
             const idToken = await google.signIn();
             if (idToken) {
@@ -102,12 +104,13 @@ export default function LinkAccount() {
                 err instanceof Error ? err.message : 'Try again.'
             );
         } finally {
-            setOauthBusy(false);
+            setOauthBusy(null);
         }
     }
 
     async function onLinkApple() {
-        setOauthBusy(true);
+        if (oauthBusy) return;
+        setOauthBusy('apple');
         try {
             const cred = await appleSignIn();
             if (cred) {
@@ -120,7 +123,7 @@ export default function LinkAccount() {
                 err instanceof Error ? err.message : 'Try again.'
             );
         } finally {
-            setOauthBusy(false);
+            setOauthBusy(null);
         }
     }
 
@@ -157,7 +160,7 @@ export default function LinkAccount() {
                             label="Link with Google"
                             onPress={onLinkGoogle}
                             variant="secondary"
-                            busy={oauthBusy || google.inProgress}
+                            busy={oauthBusy === 'google' || google.inProgress}
                         />
                     ) : null}
                     {appleAvailable ? (
@@ -171,7 +174,8 @@ export default function LinkAccount() {
                                     .WHITE
                             }
                             cornerRadius={10}
-                            style={styles.appleButton}
+                            // The native button has no spinner; dim it while Apple linking runs.
+                            style={[styles.appleButton, oauthBusy === 'apple' && { opacity: 0.5 }]}
                             onPress={onLinkApple}
                         />
                     ) : null}
