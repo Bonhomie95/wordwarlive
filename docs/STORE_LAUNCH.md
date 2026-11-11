@@ -49,6 +49,12 @@ Identifiers:
 
 ### Remaining — in the order to do them
 
+- ⬜ 2026-11-11 05:06 UTC: Apple rejected 1.0.0 under Guideline 2.1
+  "Information Needed" (no bug found; the 17 purchases stay Ready for Review).
+  Apple wants written answers plus a screen recording. The answers are in the
+  App Review notes. Still needed: the tax form, so the recording can show a
+  purchase, then your recording on a physical iPhone running the latest iOS.
+  After that I attach the recording and resubmit.
 - ✅ 2026-11-10 21:57 UTC: iOS 1.0.0 (build 11, production) and all 17 in-app
   purchases in App Review — "Waiting for Review". Build 11 replaced build 10
   (practice round now uses the game keyboard; friendlier no-ad messages).
