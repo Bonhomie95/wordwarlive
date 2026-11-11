@@ -49,15 +49,16 @@ Identifiers:
 
 ### Remaining — in the order to do them
 
-- ⬜ 2026-11-11 05:06 UTC: Apple rejected 1.0.0 under Guideline 2.1
-  "Information Needed" (no bug found; the 17 purchases stay Ready for Review).
-  Apple wants written answers plus a screen recording. The answers are in the
-  App Review notes. Build 12 (in TestFlight 2026-11-11, now attached to
-  1.0.0) adds: blocking your opponent leaves the match, the Apple button no
-  longer spins the Google one, and a reinstall starts fresh (practice word,
-  signed out). Still needed: the tax form, so the recording can show a
-  purchase, then your recording of build 12 on a physical iPhone running the
-  latest iOS. After that I attach the recording and resubmit.
+- ✅ 2026-11-11 07:36 UTC: iOS 1.0.0 resubmitted with build 12 and all 17
+  in-app purchases — "Waiting for Review". Apple had paused it at 05:06 UTC
+  (Guideline 2.1 "Information Needed", no bug found) and asked for written
+  answers plus a screen recording; both are now in App Review Information.
+  Build 12 adds: blocking your opponent leaves the match, the Apple button no
+  longer spins the Google one, a reinstall starts fresh (practice word,
+  signed out). The recording shows everything Apple listed except a
+  purchase, which can't work until the Paid Apps agreement is active (step
+  3). If Apple asks again, record a short clip of a Shop purchase once the
+  agreement shows Active.
 - ✅ 2026-11-10 21:57 UTC: iOS 1.0.0 (build 11, production) and all 17 in-app
   purchases in App Review — "Waiting for Review". Build 11 replaced build 10
   (practice round now uses the game keyboard; friendlier no-ad messages).
