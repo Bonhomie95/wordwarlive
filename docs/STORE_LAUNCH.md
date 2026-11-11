@@ -1,6 +1,6 @@
 # WordWar store launch — your part
 
-Updated 2026-11-10. ✅ = done, ⬜ = still yours to do. I handle builds,
+Updated 2026-11-11. ✅ = done, ⬜ = still yours to do. I handle builds,
 signing, server configuration and submissions.
 
 Identifiers:
@@ -73,7 +73,9 @@ minutes (`server/src/index.ts`, only when `RENDER_EXTERNAL_URL` is set) so App
 Review never hits a 50 s cold start; `.github/workflows/keep-awake.yml` is a
 backup (GitHub had not run its schedule yet). Before real users arrive,
 upgrade the web service to Starter (~$7/mo), move Redis off the shared
-`fault` instance, and delete both pings.
+`fault` instance, delete both pings, and confirm `TRUST_PROXY=1` gives each
+player their own rate-limit bucket (Render sits behind Cloudflare; the hop
+count isn't documented).
 
 #### 3. ⬜ Tax form → Paid Apps agreement
 App Store Connect → Business → Tax forms: W-8BEN (foreign owner of a
@@ -94,10 +96,19 @@ Business → Compliance, 2026-11-10).
 #### 6. Before you release the approved apps
 Approval publishes nothing on either store. Before you press "Release this
 version" (App Store Connect) or Publishing overview → Publish (Play):
-- You make one TestFlight sandbox purchase (needs step 3) so we know
-  verified purchases work end to end.
-- I flip the server to production (NODE_ENV=production, verified purchases,
-  CORS origin, metrics token).
+- ⬜ You make one TestFlight sandbox purchase (needs step 3). The server now
+  verifies every purchase with Apple/Google, so this proves the whole path.
+- ✅ 2026-11-11 03:41 UTC: server switched to production (NODE_ENV=production,
+  verified purchases, CORS limited to the admin panel, metrics token — it's in
+  Render → wordwar-server → Environment, TRUST_PROXY=1). Smoke-tested: guest
+  sign-in works, receipt-less and fake purchases are refused.
+
+#### 7. ⬜ Right after release: link the stores in AdMob
+AdMob shows both WordWar apps as "Requires review — Limited ad serving: Add
+store to lift limit". AdMob → Apps → Add store can only find the app once its
+store page is public (searching `dev.bonhomieinc.wordwar` finds nothing yet).
+After linking, AdMob reviews the app (usually a few days), lifts the limit
+and starts reading app-ads.txt (already live). I can do the linking.
 
 Optional: the macOS, tvOS and visionOS 1.0 drafts in App Store Connect are
 unused (WordWar is iPhone/iPad only). They forced the Apple TV privacy-policy
