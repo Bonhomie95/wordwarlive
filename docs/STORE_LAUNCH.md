@@ -49,16 +49,14 @@ Identifiers:
 
 ### Remaining — in the order to do them
 
-- ⬜ 2026-11-11 14:29 (your time): **Apple approved iOS 1.0.0** (build 12) and
-  all 17 in-app purchases. It waits as "Pending Developer Release" until you
-  press **Release this version**:
-  https://appstoreconnect.apple.com/apps/6832551406/distribution/ios/version/inflight
-  Purchases stay unavailable to players until the Paid Apps agreement is
-  active (step 3); the free game works fully.
-- ⬜ iOS 1.0.1 (build 13): the same app with the App Store **Marketing URL**
-  set to https://bonhomieinc.dev, which is where AdMob looks for app-ads.txt
-  on iOS (1.0.0 has none and it can only change in a new version). I create
-  the 1.0.1 version and submit it once 1.0.0 is released.
+- ✅ 2026-11-11: **iOS 1.0.0 released** (build 12, all 17 in-app purchases
+  approved) — "Ready for Distribution". Apple says the store page can take up
+  to 24 h to appear. Purchases stay unavailable to players until the Paid Apps
+  agreement is active (step 3); the free game works fully.
+- ✅ 2026-11-12 06:14 UTC: **iOS 1.0.1** (build 13) in App Review — the same
+  app with the App Store Marketing URL set to https://bonhomieinc.dev, where
+  AdMob looks for app-ads.txt on iOS. Release is manual: press "Release this
+  version" when Apple approves it.
 - ⬜ Google Play: Android 1.0.0 (6) still "Changes in review" (sent
   2026-11-10 22:27 UTC). Google emails when it's done; then Publishing
   overview → Publish.
