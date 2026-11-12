@@ -49,6 +49,19 @@ Identifiers:
 
 ### Remaining — in the order to do them
 
+- ⬜ 2026-11-11 14:29 (your time): **Apple approved iOS 1.0.0** (build 12) and
+  all 17 in-app purchases. It waits as "Pending Developer Release" until you
+  press **Release this version**:
+  https://appstoreconnect.apple.com/apps/6832551406/distribution/ios/version/inflight
+  Purchases stay unavailable to players until the Paid Apps agreement is
+  active (step 3); the free game works fully.
+- ⬜ iOS 1.0.1 (build 13): the same app with the App Store **Marketing URL**
+  set to https://bonhomieinc.dev, which is where AdMob looks for app-ads.txt
+  on iOS (1.0.0 has none and it can only change in a new version). I create
+  the 1.0.1 version and submit it once 1.0.0 is released.
+- ⬜ Google Play: Android 1.0.0 (6) still "Changes in review" (sent
+  2026-11-10 22:27 UTC). Google emails when it's done; then Publishing
+  overview → Publish.
 - ✅ 2026-11-11 07:36 UTC: iOS 1.0.0 resubmitted with build 12 and all 17
   in-app purchases — "Waiting for Review". Apple had paused it at 05:06 UTC
   (Guideline 2.1 "Information Needed", no bug found) and asked for written
