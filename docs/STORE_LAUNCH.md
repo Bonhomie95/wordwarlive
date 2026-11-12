@@ -53,10 +53,14 @@ Identifiers:
   approved) — "Ready for Distribution". Apple says the store page can take up
   to 24 h to appear. Purchases stay unavailable to players until the Paid Apps
   agreement is active (step 3); the free game works fully.
-- ✅ 2026-11-12 06:14 UTC: **iOS 1.0.1** (build 13) in App Review — the same
-  app with the App Store Marketing URL set to https://bonhomieinc.dev, where
-  AdMob looks for app-ads.txt on iOS. Release is manual: press "Release this
-  version" when Apple approves it.
+- ✅ 2026-11-12 11:55 UTC: **iOS 1.0.1** (build 13) in App Review — the same
+  app with: the Marketing URL https://bonhomieinc.dev (where AdMob looks for
+  app-ads.txt on iOS), the new store name **"WordWar: 1v1 Word Game"**
+  (was "WordWar Game Live"), the subtitle "Race a live rival to the word" and
+  keywords without words already in the name/subtitle. The home-screen name
+  stays "WordWar". Release is manual: press "Release this version" when Apple
+  approves it. Google Play keeps the title "WordWar" until Google finishes its
+  first review; then I'll rename it to match.
 - ⬜ Google Play: Android 1.0.0 (6) still "Changes in review" (sent
   2026-11-10 22:27 UTC). Google emails when it's done; then Publishing
   overview → Publish.
