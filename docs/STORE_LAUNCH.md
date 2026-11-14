@@ -61,9 +61,18 @@ Identifiers:
   stays "WordWar". Release is manual: press "Release this version" when Apple
   approves it. Google Play keeps the title "WordWar" until Google finishes its
   first review; then I'll rename it to match.
-- ⬜ Google Play: Android 1.0.0 (6) still "Changes in review" (sent
-  2026-11-10 22:27 UTC). Google emails when it's done; then Publishing
-  overview → Publish.
+- ⬜ 2026-11-14: **Google approved Android 1.0.0 (6)** and the description fix.
+  Both wait under Publishing overview → "Changes ready to publish" until you
+  press **Publish**:
+  https://play.google.com/console/developers/4852878029712266831/app/4974758962474734649/publishing
+- ⬜ 2026-11-14: **Apple approved iOS 1.0.1** (new name, Marketing URL) —
+  "Pending Developer Release". Press **Release this version**:
+  https://appstoreconnect.apple.com/apps/6832551406/distribution/ios/version/inflight
+- ✅ 2026-11-14: AdMob iOS app linked to the App Store listing (found by
+  searching the full US App Store URL; the store ID and name searches didn't
+  find it). app-ads.txt verification fails until 1.0.1 is live, because 1.0.0
+  has no Marketing URL; then AdMob → Apps → WordWar iOS → Check for updates.
+  Android gets linked after you press Publish on Play.
 - ✅ 2026-11-11 07:36 UTC: iOS 1.0.0 resubmitted with build 12 and all 17
   in-app purchases — "Waiting for Review". Apple had paused it at 05:06 UTC
   (Guideline 2.1 "Information Needed", no bug found) and asked for written
