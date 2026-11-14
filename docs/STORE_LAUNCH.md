@@ -79,10 +79,10 @@ Identifiers:
   (iOS, neutral wording: "Either choice is fine") published.
 - ✅ 2026-11-14 App Store promotional text: "Race a live opponent to the hidden
   word. Fast 1v1 matches, daily challenges and season rewards. Free to play!"
-- ⬜ iOS 1.0.2 (build 14): Google consent runs before Apple's tracking prompt so
-  the ATT explainer can show (more players allow tracking → better-paying
-  ads). Submitted for review once build 14 is processed; press Release when
-  approved.
+- ⬜ 2026-11-14 08:13 UTC: iOS 1.0.2 (build 14) in App Review. Google consent
+  now runs before Apple's tracking prompt so the ATT explainer can show (more
+  players allow tracking → better-paying ads). Press Release when approved:
+  https://appstoreconnect.apple.com/apps/6832551406/distribution/ios/version/inflight
 - ⬜ AdMob → Payments → Settings: **United States tax info is empty** — add it
   (yours to do) or Google can hold/withhold ad payouts.
 - ✅ 2026-11-14 AdMob → Privacy & messaging → European regulations: message
