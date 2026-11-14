@@ -70,8 +70,13 @@ Identifiers:
   iOS linked to the App Store listing (search the full US App Store URL); its
   app-ads.txt check ("Verify app" in AdMob → WordWar iOS → App settings) works
   once Apple's public data shows 1.0.1 with the Marketing URL.
-- ⬜ AdMob → Privacy & messaging has no European (GDPR) consent message yet;
-  the app's consent SDK (UMP) shows nothing until one is created.
+- ✅ 2026-11-14 AdMob → Privacy & messaging → European regulations: message
+  "WordWar EU consent" **published** for both WordWar apps (English; buttons
+  Consent / Do not consent / Manage options; privacy policy
+  https://wordwar-server-1ujy.onrender.com/legal/privacy; Google's 199 common
+  ad partners). Players in the EEA, UK and Switzerland see it on first launch
+  (it can take up to an hour to start showing); Settings → "Privacy options"
+  reopens it.
 - ⬜ 2026-11-14: Android 1.0.1 (Block & leave fix) building → Play production;
   Play title renamed to "WordWar: 1v1 Word Game". Both go to Google review and
   then wait for Publish (managed publishing).
