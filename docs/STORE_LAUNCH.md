@@ -70,6 +70,21 @@ Identifiers:
   iOS linked to the App Store listing (search the full US App Store URL); its
   app-ads.txt check ("Verify app" in AdMob → WordWar iOS → App settings) works
   once Apple's public data shows 1.0.1 with the Marketing URL.
+- ✅ 2026-11-14 Availability: iOS app and all 17 purchases on sale in all 175
+  App Store countries (new countries auto-added); Play app in all 177
+  countries + rest of world, all 17 products active in all 174 billing
+  regions (new regions auto-added).
+- ✅ 2026-11-14 AdMob → Privacy & messaging: "WordWar US states" (opt-out of
+  sale/sharing, US states with privacy laws) and "WordWar ATT explainer"
+  (iOS, neutral wording: "Either choice is fine") published.
+- ✅ 2026-11-14 App Store promotional text: "Race a live opponent to the hidden
+  word. Fast 1v1 matches, daily challenges and season rewards. Free to play!"
+- ⬜ iOS 1.0.2 (build 14): Google consent runs before Apple's tracking prompt so
+  the ATT explainer can show (more players allow tracking → better-paying
+  ads). Submitted for review once build 14 is processed; press Release when
+  approved.
+- ⬜ AdMob → Payments → Settings: **United States tax info is empty** — add it
+  (yours to do) or Google can hold/withhold ad payouts.
 - ✅ 2026-11-14 AdMob → Privacy & messaging → European regulations: message
   "WordWar EU consent" **published** for both WordWar apps (English; buttons
   Consent / Do not consent / Manage options; privacy policy
