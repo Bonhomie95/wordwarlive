@@ -223,10 +223,13 @@ export async function initAds(): Promise<void> {
             return;
         }
         try {
-            // ATT + regulatory consent must be resolved BEFORE the SDK
-            // initializes so the first ad requests already honor the choice.
-            await requestTrackingIfNeeded();
+            // Regulatory consent, then ATT, both BEFORE the SDK initializes so
+            // the first ad requests already honor the choices. UMP goes first:
+            // it shows the EEA/UK and US-state messages and, on iOS, AdMob's
+            // ATT explainer followed by Apple's prompt. Our ATT call then only
+            // reads the result (or prompts itself if no explainer is live).
             await gatherConsentIfNeeded(m);
+            await requestTrackingIfNeeded();
             if (!consentAllowsAds) return;
             // The app is rated 12+/Teen (user-generated names + words); never
             // pull mature ad creatives regardless of the AdMob account setting.
