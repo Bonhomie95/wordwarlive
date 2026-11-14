@@ -61,6 +61,28 @@ Identifiers:
   stays "WordWar". Release is manual: press "Release this version" when Apple
   approves it. Google Play keeps the title "WordWar" until Google finishes its
   first review; then I'll rename it to match.
+- ✅ 2026-11-14: **Both apps are live.** Google Play:
+  https://play.google.com/store/apps/details?id=dev.bonhomieinc.wordwar —
+  App Store: https://apps.apple.com/us/app/id6832551406 (1.0.1 released; the
+  public page switches to the new name within ~24 h).
+- ✅ 2026-11-14 AdMob: Android linked and verified (app-ads.txt found through
+  the Play website) — AdMob review 2–3 days, then "Limited ad serving" lifts.
+  iOS linked to the App Store listing (search the full US App Store URL); its
+  app-ads.txt check ("Verify app" in AdMob → WordWar iOS → App settings) works
+  once Apple's public data shows 1.0.1 with the Marketing URL.
+- ⬜ AdMob → Privacy & messaging has no European (GDPR) consent message yet;
+  the app's consent SDK (UMP) shows nothing until one is created.
+- ⬜ 2026-11-14: Android 1.0.1 (Block & leave fix) building → Play production;
+  Play title renamed to "WordWar: 1v1 Word Game". Both go to Google review and
+  then wait for Publish (managed publishing).
+- ✅ 2026-11-12 11:55 UTC: **iOS 1.0.1** (build 13) in App Review — the same
+  app with: the Marketing URL https://bonhomieinc.dev (where AdMob looks for
+  app-ads.txt on iOS), the new store name **"WordWar: 1v1 Word Game"**
+  (was "WordWar Game Live"), the subtitle "Race a live rival to the word" and
+  keywords without words already in the name/subtitle. The home-screen name
+  stays "WordWar". Release is manual: press "Release this version" when Apple
+  approves it. Google Play keeps the title "WordWar" until Google finishes its
+  first review; then I'll rename it to match.
 - ⬜ 2026-11-14: **Google approved Android 1.0.0 (6)** and the description fix.
   Both wait under Publishing overview → "Changes ready to publish" until you
   press **Publish**:
