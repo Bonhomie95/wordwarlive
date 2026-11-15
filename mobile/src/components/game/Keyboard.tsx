@@ -19,6 +19,8 @@ interface Props {
     letterStates: Record<string, TileColor | undefined>;
     /** Disable input (during submission, post-game, etc). */
     disabled?: boolean;
+    /** Key height; the match screen lowers it on short screens. */
+    keyHeight?: number;
 }
 
 const KeyRaw: React.FC<{
@@ -26,11 +28,12 @@ const KeyRaw: React.FC<{
     onPress: () => void;
     state?: TileColor;
     flex?: number;
+    height: number;
     disabled?: boolean;
     /** 'enter' tints the label green, 'backspace' shows a wider neutral key. */
     accent?: 'enter';
     a11yLabel?: string;
-}> = ({ label, onPress, state, flex = 1, disabled, accent, a11yLabel }) => {
+}> = ({ label, onPress, state, flex = 1, height, disabled, accent, a11yLabel }) => {
     const bg = state
         ? state === 'correct'
             ? colors.tileCorrect
@@ -61,7 +64,7 @@ const KeyRaw: React.FC<{
             style={({ pressed }) => [
                 styles.key,
                 state ? null : styles.keyIdle,
-                { backgroundColor: bg, flex, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 },
+                { backgroundColor: bg, flex, height, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 },
             ]}
         >
             <Text
@@ -84,6 +87,7 @@ const KeyboardRaw: React.FC<Props> = ({
     onBackspace,
     letterStates,
     disabled,
+    keyHeight = 46,
 }) => {
     const rows = useMemo(() => ROWS, []);
     return (
@@ -98,6 +102,7 @@ const KeyboardRaw: React.FC<Props> = ({
                                     label="ENTER"
                                     onPress={onEnter}
                                     flex={1.7}
+                                    height={keyHeight}
                                     disabled={disabled}
                                     accent="enter"
                                     a11yLabel="Submit guess"
@@ -111,6 +116,7 @@ const KeyboardRaw: React.FC<Props> = ({
                                     label="⌫"
                                     onPress={onBackspace}
                                     flex={1.7}
+                                    height={keyHeight}
                                     disabled={disabled}
                                     a11yLabel="Delete letter"
                                 />
@@ -122,6 +128,7 @@ const KeyboardRaw: React.FC<Props> = ({
                                 label={label}
                                 onPress={() => onLetter(label)}
                                 state={letterStates[label]}
+                                height={keyHeight}
                                 disabled={disabled}
                             />
                         );
@@ -169,7 +176,6 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         justifyContent: 'center',
     },
     key: {
-        height: 46,
         borderRadius: radius.sm,
         alignItems: 'center',
         justifyContent: 'center',

@@ -17,7 +17,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -139,6 +139,13 @@ export default function Match() {
     type StatsPlayer = { player: NonNullable<typeof matchFound>['you']; title: string } | null;
     const [statsPlayer, setStatsPlayer] = useState<StatsPlayer>(null);
 
+    // Small or zoomed-in phones (with the banner and tab bar showing) can't
+    // fit the full-size layout: the screen is measured, the opponent board
+    // and the keyboard shrink a step, and the player's grid takes the rest.
+    const insets = useSafeAreaInsets();
+    const [screenH, setScreenH] = useState(0);
+    const [gridH, setGridH] = useState(0);
+
     // VS splash — shown for a fixed 2.5s when the match screen first
     // mounts with a match. We DON'T gate it on `phase === 'matched'`
     // because the server flips matched→playing within ~half a second,
@@ -247,8 +254,15 @@ export default function Match() {
     // Hide once the player has used all their hints for this match.
     const hintsHidden = hintsUsedThisMatch >= hintsCap;
 
+    // ponytail: two size steps from the measured height; scale continuously if a phone still clips.
+    const contentH = screenH - insets.top - 4; // 4 = styles.safe paddingTop
+    const compact = screenH > 0 && contentH < 720;
+    const tiny = screenH > 0 && contentH < 560;
+    const oppTile = tiny ? 10 : compact ? 14 : 22;
+    const keyHeight = tiny ? 36 : compact ? 40 : 46;
+
     return (
-        <SafeAreaView style={styles.safe}>
+        <SafeAreaView style={styles.safe} onLayout={(e) => setScreenH(e.nativeEvent.layout.height)}>
             {/* Stats modal — tap any player card in the header to open. */}
             <PlayerStatsModal
                 player={statsPlayer?.player ?? null}
@@ -330,6 +344,7 @@ export default function Match() {
                 <OpponentGrid
                     wordLength={matchFound.wordLength}
                     guesses={oppGuesses.map((g) => ({ tiles: g.tiles }))}
+                    tileSize={oppTile}
                 />
                 <View style={styles.hintCorner}>
                     <HintButton
@@ -354,7 +369,10 @@ export default function Match() {
             />
 
             {/* Player's grid */}
-            <Animated.View style={[styles.gridWrap, shakeStyle]}>
+            <Animated.View
+                style={[styles.gridWrap, shakeStyle]}
+                onLayout={(e) => setGridH(e.nativeEvent.layout.height)}
+            >
                 <Grid
                     wordLength={matchFound.wordLength}
                     guesses={myGuesses.map((g) => ({ guess: g.guess, tiles: g.tiles }))}
@@ -363,6 +381,7 @@ export default function Match() {
                     onTilePress={seekCursor}
                     hintsRevealed={hintsRevealed}
                     boardOverride={boardOverride}
+                    maxHeight={gridH}
                 />
                 {scrambled ? (
                     <View style={styles.scrambledOverlay}>
@@ -404,6 +423,7 @@ export default function Match() {
                     onBackspace={backspace}
                     letterStates={letterStates}
                     disabled={submitting || phase !== 'playing'}
+                    keyHeight={keyHeight}
                 />
             </View>
         </SafeAreaView>
@@ -497,7 +517,11 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         letterSpacing: 1.5,
     },
     gridWrap: {
+        // Takes the space between the opponent board and the keyboard, so
+        // the keyboard always stays on screen.
+        flex: 1,
         alignItems: 'center',
+        justifyContent: 'center',
         marginBottom: spacing.xs,
     },
     scrambledOverlay: {
@@ -519,8 +543,7 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         marginBottom: spacing.xs,
     },
     kbWrap: {
-        // ~half-inch breathing room below the last keyboard row, since the
-        // banner + tab bar are visible on this screen now.
+        // Breathing room between the last keyboard row and the tab bar.
         paddingBottom: spacing.lg,
     },
 }));

@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BannerAdView } from '../../src/components/ui/BannerAdView';
 import { useGameStore } from '../../src/store/gameStore';
@@ -94,6 +95,7 @@ export default function AppTabsLayout() {
     // tab screen, which is what makes makeThemedStyles pick up new colours.
     useThemeStore((s) => s.bump);
     const token = useAuthStore((s) => s.token);
+    const insets = useSafeAreaInsets();
 
     // Guard: don't render the Tabs tree without an authenticated session.
     // Without this, React sees a hook-count mismatch when the navigator
@@ -102,7 +104,10 @@ export default function AppTabsLayout() {
     if (!token) return null;
 
     return (
-        <View style={styles.root}>
+        // The tab bar's fixed height ignores the bottom inset, so the root
+        // keeps the tab bar and the banner above the Android navigation bar
+        // (Android draws edge to edge) and the iPhone home indicator.
+        <View style={[styles.root, { paddingBottom: insets.bottom }]}>
             <MatchAutoRouter />
             <ChallengeListener />
             <View style={styles.tabsWrap}>

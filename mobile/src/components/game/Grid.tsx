@@ -36,26 +36,30 @@ interface Props {
         wrong?: string;
         bg?: string;
     } | null;
+    /** Height the grid may use; tiles shrink so every row fits it. */
+    maxHeight?: number;
 }
 
 const DEFAULT_MAX_ROWS = 6;
 
 /**
- * Compute tile size that fits `wordLength` tiles within the screen width.
- * For 4-5 letters we use the comfortable 56px size; for longer words we
- * shrink so the row doesn't overflow.
+ * Compute the tile size that fits `wordLength` tiles in the screen width and
+ * `maxRows` rows in `maxHeight` (when known), so short screens shrink the
+ * grid instead of pushing the keyboard off screen.
  */
-function tileSizeFor(wordLength: number, screenWidth: number): number {
+function tileSizeFor(wordLength: number, screenWidth: number, maxRows: number, maxHeight?: number): number {
     const OUTER_PADDING = 32;
     const GAP = spacing.xs;
     const available = screenWidth - OUTER_PADDING;
     const sizeFromWidth = Math.floor(
         (available - GAP * (wordLength - 1)) / wordLength
     );
-    // Clamp: never bigger than 48 (was 56 — bumped down to free vertical
-    // space for the keyboard above the tab bar + banner) and never smaller
-    // than 30.
-    return Math.max(30, Math.min(48, sizeFromWidth));
+    const sizeFromHeight = maxHeight
+        ? Math.floor((maxHeight - GAP * (maxRows - 1)) / maxRows)
+        : Infinity;
+    // Clamp: never bigger than 48 and never smaller than 28 (Tile hides
+    // letters below 28).
+    return Math.max(28, Math.min(48, sizeFromWidth, sizeFromHeight));
 }
 
 export const Grid: React.FC<Props> = ({
@@ -67,9 +71,10 @@ export const Grid: React.FC<Props> = ({
     maxRows = DEFAULT_MAX_ROWS,
     hintsRevealed,
     boardOverride,
+    maxHeight,
 }) => {
     const { width } = useWindowDimensions();
-    const tileSize = tileSizeFor(wordLength, width);
+    const tileSize = tileSizeFor(wordLength, width, maxRows, maxHeight);
 
     const rows: RowData[] = [];
     for (let r = 0; r < maxRows; r++) {

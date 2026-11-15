@@ -9,12 +9,15 @@ interface Props {
     /** Tile colors only — opponent letters are never revealed mid-match. */
     guesses: { tiles: TileColor[] }[];
     maxRows?: number;
+    /** Mini-tile size; the match screen lowers it on short screens. */
+    tileSize?: number;
 }
 
 export const OpponentGrid: React.FC<Props> = ({
     wordLength,
     guesses,
     maxRows = 6,
+    tileSize,
 }) => {
     const rows: (TileColor | null)[][] = [];
     for (let r = 0; r < maxRows; r++) {
@@ -35,7 +38,7 @@ export const OpponentGrid: React.FC<Props> = ({
                             letter={null}
                             state={state}
                             hideLetter
-                            size="sm"
+                            size={tileSize ?? 'sm'}
                         />
                     ))}
                 </View>
