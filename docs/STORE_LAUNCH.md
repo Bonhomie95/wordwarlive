@@ -215,7 +215,12 @@ text I added; they can be deleted from App Store Connect if you prefer.
 Both stores already have all 17 (Play: created through the Play Developer API on 2026-11-10; the CSV in `~/Downloads/wordwar-play-listing/` is no longer needed).
 
 ## Reference: fingerprints and IDs
-- Play app-signing SHA-1: `E2:51:54:5E:F3:85:4F:D8:77:03:D2:1A:C1:CD:B2:E6:CD:02:13:4E`
+- Play app-signing SHA-1 (the key Play actually signs APKs with, read from the
+  Play-generated APK on 2026-11-15): `7D:89:17:A4:7B:8E:4A:B9:95:81:97:7C:94:C5:FF:03:38:99:FD:0F`
+  (SHA-256 `1B:2D:11:A7:…:90:F8`). Its Android OAuth client "WordWar Android
+  (Play signing, current key)" was missing, which is why Google sign-in failed
+  on the Play Store app. The older client with `E2:51:54:5E:…:13:4E` is kept;
+  the APK also carries a post-quantum v3.2 signer for Android 17+.
 - EAS upload-key SHA-1: `E6:14:7A:AC:EF:C7:31:23:FE:A0:99:B3:05:65:CB:13:CF:28:E9:98`
 - AdMob app + unit IDs: `mobile/eas.json` → build.production.env
 - Android bundles in Downloads: `wordwar-1.0.0-3.aab` (live to testers),
