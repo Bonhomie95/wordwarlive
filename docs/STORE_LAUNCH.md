@@ -49,6 +49,15 @@ Identifiers:
 
 ### Remaining — in the order to do them
 
+- ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
+  ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
+  title "WordWar: 1v1 Word Game". Existing users get them as normal store
+  updates (Play: within ~1 h; App Store: within 24 h).
+- ✅ 2026-11-15 AdMob: iOS app **Verified** (app-ads.txt found via the 1.0.1
+  Marketing URL) → "Getting ready" (AdMob review). Android verified 2026-11-14.
+- ✅ 2026-11-15 Android Google sign-in: added the missing OAuth client for Play's
+  real signing key (see Reference). Google applies it within minutes to hours.
+
 - ✅ 2026-11-11: **iOS 1.0.0 released** (build 12, all 17 in-app purchases
   approved) — "Ready for Distribution". Apple says the store page can take up
   to 24 h to appear. Purchases stay unavailable to players until the Paid Apps
