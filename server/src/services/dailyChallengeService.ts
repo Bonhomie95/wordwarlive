@@ -321,7 +321,25 @@ export async function todaysLeaderboard(
     me: { rank: number; guessCount: number; durationMs: number } | null;
     total: number;
 }> {
-    const date = todayUtc();
+    const all = (await dailyStandings(todayUtc())).map(({ real: _real, ...e }) => e);
+
+    const idx = userId ? all.findIndex((e) => e.userId === userId) : -1;
+    const mine = idx >= 0 ? all[idx]! : null;
+    return {
+        entries: all.slice(0, limit),
+        me: mine ? { rank: idx + 1, guessCount: mine.guessCount, durationMs: mine.durationMs } : null,
+        total: all.length,
+    };
+}
+
+/**
+ * Everyone who solved `date`'s challenge (real + synthetic solvers up to
+ * `nowMs`), ranked by guess count then time. `real` is server-only.
+ */
+export async function dailyStandings(
+    date: string,
+    nowMs = Date.now()
+): Promise<{ userId: string; username: string; guessCount: number; durationMs: number; real: boolean }[]> {
     // ponytail: merges every real solver in memory; move ranking into the DB
     // once daily solvers reach the tens of thousands.
     const rows = await col<AttemptDoc>('daily_challenge_attempts')
@@ -333,21 +351,20 @@ export async function todaysLeaderboard(
             { $project: { _id: 0, user_id: 1, guess_count: 1, duration_ms: 1, username: '$u.username' } },
         ])
         .toArray();
-    const all = [
+    return [
         ...rows.map((r) => ({
             userId: r.user_id,
             username: r.username,
             guessCount: r.guess_count,
             durationMs: r.duration_ms,
+            real: true,
         })),
-        ...(await persistedDailySolvers(date)).map(({ userId, username, guessCount, durationMs }) => ({ userId, username, guessCount, durationMs })),
+        ...(await persistedDailySolvers(date, nowMs)).map(({ userId, username, guessCount, durationMs }) => ({
+            userId,
+            username,
+            guessCount,
+            durationMs,
+            real: false,
+        })),
     ].sort((a, b) => a.guessCount - b.guessCount || a.durationMs - b.durationMs || a.userId.localeCompare(b.userId));
-
-    const idx = userId ? all.findIndex((e) => e.userId === userId) : -1;
-    const mine = idx >= 0 ? all[idx]! : null;
-    return {
-        entries: all.slice(0, limit),
-        me: mine ? { rank: idx + 1, guessCount: mine.guessCount, durationMs: mine.durationMs } : null,
-        total: all.length,
-    };
 }

@@ -1,0 +1,23 @@
+import { describe, expect, it } from 'vitest';
+import { boardLabel, currentEndsAt, lastClosed, prizeFor, prizeTable } from '../src/services/leaderboardRewardsService.js';
+
+describe('leaderboard prizes', () => {
+    it('pays tiers 1, 2, 3, 4–10, 11–20 … 91–100 and nothing after', () => {
+        expect([1, 2, 3, 4, 10, 11, 20, 21, 95, 100, 101].map((r) => prizeFor('daily', r))).toEqual([200, 150, 100, 60, 60, 40, 40, 30, 5, 5, 0]);
+        const table = prizeTable('weekly');
+        expect(table[0]).toEqual({ from: 1, to: 1, coins: 750 });
+        expect(table[3]).toEqual({ from: 4, to: 10, coins: 200 });
+        expect(table.at(-1)).toEqual({ from: 91, to: 100, coins: 20 });
+    });
+
+    it('finds the last closed buckets and when the current ones close', () => {
+        const now = new Date('2026-11-19T14:00:00Z'); // a Thursday
+        expect(lastClosed('daily', now)).toEqual({ bucket: '2026-11-18', endsAt: new Date('2026-11-19T00:00:00Z') });
+        expect(lastClosed('weekly', now)).toEqual({ bucket: '2026-W46', endsAt: new Date('2026-11-16T00:00:00Z') });
+        expect(lastClosed('monthly', now)).toEqual({ bucket: '2026-10', endsAt: new Date('2026-11-01T00:00:00Z') });
+        expect(currentEndsAt('weekly', now).toISOString()).toBe('2026-11-23T00:00:00.000Z');
+        expect(currentEndsAt('monthly', now).toISOString()).toBe('2026-12-01T00:00:00.000Z');
+        expect(boardLabel('weekly', new Date('2026-11-23T00:00:00Z'))).toBe('the weekly leaderboard (Nov 16–Nov 22)');
+        expect(boardLabel('monthly', new Date('2026-12-01T00:00:00Z'))).toBe('the November 2026 leaderboard');
+    });
+});

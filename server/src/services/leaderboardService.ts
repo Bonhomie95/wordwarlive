@@ -284,3 +284,25 @@ export async function getLeaderboard(args: {
     }
     return { period: args.period, bucket, entries: merged, you };
 }
+
+/**
+ * A closed board as players saw it: real players merged with the synthetic
+ * ones (frozen at `nowMs`, the bucket's last moment), ranked like the live
+ * board. `real` is server-only — never send it to clients.
+ */
+export async function finalStandings(
+    period: Exclude<LeaderboardPeriod, 'all_time'>,
+    bucket: string,
+    nowMs: number
+): Promise<{ userId: string; rank: number; real: boolean }[]> {
+    const humans = await col('leaderboard_entries')
+        .aggregate<RankedRow>([...rankedStages(period, bucket, 'overall'), PROJECT_ROW])
+        .toArray();
+    const fillers = await persistedSyntheticLeaderboard(period, 'overall', nowMs);
+    return [
+        ...humans.map((r) => ({ userId: r.user_id, wins: r.wins, rankPoints: r.rank_points, real: true })),
+        ...fillers.map((f) => ({ userId: f.userId, wins: f.wins, rankPoints: f.rankPoints, real: false })),
+    ]
+        .sort(compareStandings)
+        .map((e, i) => ({ userId: e.userId, rank: i + 1, real: e.real }));
+}

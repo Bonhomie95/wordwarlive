@@ -111,7 +111,8 @@ export type CoinSource =
     | 'cosmetic_spend'
     | 'boost_spend'
     | 'username_spend'
-    | 'bundle';
+    | 'bundle'
+    | 'leaderboard_reward';
 
 // Match coins. Small on purpose (a hint is 50): a win pays a hint every
 // five games, a loser still edges toward one. Nothing for quitting or for a

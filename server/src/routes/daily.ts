@@ -4,6 +4,7 @@
 //   POST /api/daily/guess  — submit a guess
 //   GET  /api/daily/board  — today's leaderboard
 
+import { currentEndsAt, prizeTable } from '../services/leaderboardRewardsService.js';
 import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
 import {
@@ -53,5 +54,9 @@ dailyRouter.post('/daily/guess', requireAuth, async (req, res) => {
 });
 
 dailyRouter.get('/daily/board', requireAuth, async (req, res) => {
-    res.json(await todaysLeaderboard(50, req.session!.userId));
+    res.json({
+        ...(await todaysLeaderboard(50, req.session!.userId)),
+        prizes: prizeTable('daily_challenge'),
+        endsAt: currentEndsAt('daily_challenge').toISOString(),
+    });
 });

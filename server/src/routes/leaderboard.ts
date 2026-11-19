@@ -1,10 +1,21 @@
 // GET /api/leaderboard?period=daily|weekly|monthly|all_time&limit=50[&around=1]
 //
 // Returns top-N entries plus the requesting user's own rank within the
-// same bucket (if they've played in that period).
+// same bucket (if they've played in that period), and the prizes the top
+// 100 win when the bucket closes (none for all_time).
+//
+// GET  /api/rewards/pending   leaderboard prizes the player hasn't seen yet
+// POST /api/rewards/seen      { ids: string[] } — dismissed in the app
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
+import {
+    currentEndsAt,
+    markRewardsSeen,
+    pendingRewards,
+    prizeTable,
+} from '../services/leaderboardRewardsService.js';
 import {
     getLeaderboard,
     type LeaderboardPeriod,
@@ -44,5 +55,23 @@ leaderboardRouter.get('/leaderboard', requireAuth, async (req, res) => {
         requesterId: req.session!.userId,
         around: req.query.around === '1' || req.query.around === 'true',
     });
-    res.json(data);
+    const board = periodParam === 'all_time' ? null : periodParam;
+    res.json({
+        ...data,
+        prizes: board ? prizeTable(board) : [],
+        endsAt: board ? currentEndsAt(board).toISOString() : null,
+    });
+});
+
+leaderboardRouter.get('/rewards/pending', requireAuth, async (req, res) => {
+    res.json({ rewards: await pendingRewards(req.session!.userId) });
+});
+
+const seenSchema = z.object({ ids: z.array(z.string().max(64)).max(50) });
+
+leaderboardRouter.post('/rewards/seen', requireAuth, async (req, res) => {
+    const parsed = seenSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
+    await markRewardsSeen(req.session!.userId, parsed.data.ids);
+    res.json({ ok: true });
 });

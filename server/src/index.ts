@@ -31,6 +31,7 @@ import { battlePassRouter } from './routes/battlepass.js';
 import { adsRouter } from './routes/ads.js';
 import { coinsRouter } from './routes/coins.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
+import { startLeaderboardPayouts } from './services/leaderboardRewardsService.js';
 import { dailyRouter } from './routes/daily.js';
 import { settingsRouter } from './routes/settings.js';
 import { seasonsRouter } from './routes/seasons.js';
@@ -202,6 +203,7 @@ async function main() {
         'WordWar server listening'
     );
     await matchRegistry.recover(io);
+    startLeaderboardPayouts();
 
     // Render's free plan sleeps after 15 idle minutes; a request to our own
     // public URL counts as traffic. ponytail: delete once on a paid instance.
