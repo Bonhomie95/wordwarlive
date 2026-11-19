@@ -2,9 +2,9 @@
 // everything else gives the player a sense of momentum (rank, streak, what
 // they're playing for). Purely a visual revamp — all logic is unchanged.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 // AsyncStorage (not SecureStore): iOS keeps Keychain items after the app is
 // deleted, so a reinstall would never show the practice word again.
@@ -20,7 +20,7 @@ import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGameStore } from '../../src/store/gameStore';
 import { adsAvailable, preloadRewarded, showRewarded } from '../../src/ads';
-import { adsApi } from '../../src/api/resources';
+import { adsApi, rewardsApi } from '../../src/api/resources';
 import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
@@ -91,9 +91,42 @@ export default function Home() {
     const lastDailyAdAt = user && 'ads' in user ? user.ads.lastDailyAdAt : null;
     useEffect(() => {
         if (!userId || dailyLocallyClaimed || !adsAvailable()) return;
-        if (lastDailyAdAt && sameLocalDay(new Date(lastDailyAdAt), new Date())) return;
+        if (lastDailyAdAt && sameUtcDay(new Date(lastDailyAdAt), new Date())) return;
         preloadRewarded('daily_bonus', userId);
     }, [userId, lastDailyAdAt, dailyLocallyClaimed]);
+
+    // Leaderboard prizes paid since the last visit: say where the player
+    // finished and what it paid, so they know why the coins arrived.
+    const rewardsShowing = useRef(false);
+    useFocusEffect(
+        useCallback(() => {
+            if (!token || rewardsShowing.current) return;
+            rewardsApi
+                .pending()
+                .then(({ rewards }) => {
+                    if (!rewards.length || rewardsShowing.current) return;
+                    rewardsShowing.current = true;
+                    const total = rewards.reduce((n, r) => n + r.coins, 0);
+                    const lines = rewards.map((r) => `#${r.rank} on ${r.label}: +${r.coins} coins`).join('\n');
+                    appAlert(
+                        rewards.length === 1 ? 'Leaderboard reward 🏆' : 'Leaderboard rewards 🏆',
+                        `${lines}\n\n${total} coins are in your wallet. Finish higher for bigger prizes!`,
+                        [
+                            {
+                                text: 'Collect',
+                                onPress: () => {
+                                    rewardsShowing.current = false;
+                                    rewardsApi.markSeen(rewards.map((r) => r.id)).catch(() => {});
+                                    refreshMe().catch(() => {});
+                                },
+                            },
+                        ],
+                        { cancelable: false }
+                    );
+                })
+                .catch(() => {});
+        }, [token, refreshMe])
+    );
 
     if (!user || !token) {
         return null; // _layout will redirect to (auth)
@@ -113,7 +146,7 @@ export default function Home() {
         'ads' in user && user.ads.lastDailyAdAt
             ? new Date(user.ads.lastDailyAdAt)
             : null;
-    const dailyAlreadyClaimed = !!lastDaily && sameLocalDay(lastDaily, new Date());
+    const dailyAlreadyClaimed = !!lastDaily && sameUtcDay(lastDaily, new Date());
     // Rewarded ads are opt-in, so the daily bonus stays after Remove Ads.
     void adsRemoved;
     const showDailyBonus = adsAvailable() && !dailyAlreadyClaimed && !dailyLocallyClaimed;
@@ -315,12 +348,10 @@ function ModeCard({
     );
 }
 
-function sameLocalDay(a: Date, b: Date): boolean {
-    return (
-        a.getFullYear() === b.getFullYear() &&
-        a.getMonth() === b.getMonth() &&
-        a.getDate() === b.getDate()
-    );
+/** The server grants the daily bonus once per UTC day, so the button follows
+ *  the same day boundary (a local-day check showed CLAIM the server refused). */
+function sameUtcDay(a: Date, b: Date): boolean {
+    return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 }
 
 const styles = makeThemedStyles(() =>

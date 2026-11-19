@@ -112,6 +112,9 @@ interface GameState {
     clearError: () => void;
     clearHintToast: () => void;
     shouldShowInterstitial: () => boolean;
+    /** The game about to start ends on (or past) the interstitial threshold,
+     *  so the ad should start loading now. */
+    interstitialDueAfterThisGame: () => boolean;
     markInterstitialShown: () => void;
     reset: () => void;
 
@@ -163,7 +166,7 @@ const initial = {
 };
 
 const INTERSTITIAL_EVERY_N_MIN = 3;
-const INTERSTITIAL_EVERY_N_MAX = 4;
+const INTERSTITIAL_EVERY_N_MAX = 5;
 const INTERSTITIAL_COOLDOWN_MS = 5 * 60 * 1000;
 const INTERSTITIAL_MIN_MATCH_SEC = 60;
 
@@ -634,15 +637,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             nextInterstitialThreshold,
             lastInterstitialAt,
             lastMatchDurationSec,
-            matchOver,
         } = get();
-        if (matchOver?.result === 'loss') return false;
         if (lastMatchDurationSec > 0 && lastMatchDurationSec < INTERSTITIAL_MIN_MATCH_SEC) {
             return false;
         }
         if (matchesSinceLastInterstitial < nextInterstitialThreshold) return false;
         if (Date.now() - lastInterstitialAt < INTERSTITIAL_COOLDOWN_MS) return false;
         return true;
+    },
+
+    interstitialDueAfterThisGame: () => {
+        const { matchesSinceLastInterstitial, nextInterstitialThreshold } = get();
+        return matchesSinceLastInterstitial + 1 >= nextInterstitialThreshold;
     },
 
     markInterstitialShown: () => {

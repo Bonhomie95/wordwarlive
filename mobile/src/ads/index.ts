@@ -458,57 +458,80 @@ export async function showRewarded(
 
 // ─── Interstitial ads ───────────────────────────────────────────────────────
 //
-// Frequency-capped at the call site (gameStore decides when to fire). This
-// helper just shows one cleanly with a load timeout so it doesn't hang the
-// UI waiting for a slow network.
+// The video is fetched in the background before the break is due
+// (preloadInterstitial at match start) and shown instantly at the end of the
+// game. If none is ready by then, the break is skipped and tried again after
+// the next game — never a blank "ad break" wait. gameStore decides when.
 
-const INTERSTITIAL_LOAD_TIMEOUT_MS = 5000;
+/** AdMob ads expire after an hour; refetch one that sat around too long. */
+const INTERSTITIAL_MAX_AGE_MS = 50 * 60_000;
+let inter: { ad: InterstitialAdInstance; loadedAt: number | null } | null = null;
+let interRetry: ReturnType<typeof setTimeout> | null = null;
 
-export async function showInterstitial(): Promise<void> {
+/** Start loading an interstitial unless one is loading or ready. */
+export function preloadInterstitial(): void {
     const m = loadModule();
     if (!m) return;
-    await initAds();
-    if (!adRequestsAllowed()) return;
-    const unitId = interstitialUnitId();
-    if (!unitId) return;
+    if (inter && !(inter.loadedAt && Date.now() - inter.loadedAt > INTERSTITIAL_MAX_AGE_MS)) return;
+    initAds()
+        .then(() => {
+            if (inter && !(inter.loadedAt && Date.now() - inter.loadedAt > INTERSTITIAL_MAX_AGE_MS)) return;
+            const unitId = interstitialUnitId();
+            if (!unitId || !adRequestsAllowed()) return;
+            const ad = m.InterstitialAd.createForAdRequest(unitId, adRequestOptions());
+            const cur: { ad: InterstitialAdInstance; loadedAt: number | null } = { ad, loadedAt: null };
+            inter = cur;
+            ad.addAdEventListener(m.AdEventType.LOADED, () => {
+                cur.loadedAt = Date.now();
+                log('interstitial loaded');
+            });
+            ad.addAdEventListener(m.AdEventType.ERROR, (err) => {
+                log(`interstitial error: ${(err as { message?: string } | undefined)?.message ?? 'ad error'}`);
+                if (inter !== cur) return; // already handed to showInterstitial
+                inter = null;
+                // No fill / network: try again in a minute.
+                if (!interRetry) {
+                    interRetry = setTimeout(() => {
+                        interRetry = null;
+                        preloadInterstitial();
+                    }, 60_000);
+                }
+            });
+            try {
+                ad.load();
+            } catch {
+                if (inter === cur) inter = null;
+            }
+        })
+        .catch(() => {});
+}
 
-    return new Promise<void>((resolve) => {
-        const ad = m.InterstitialAd.createForAdRequest(unitId, adRequestOptions());
-        let resolved = false;
-        let showWatchdog: ReturnType<typeof setTimeout> | null = null;
-        const done = () => {
-            if (resolved) return;
-            resolved = true;
-            if (showWatchdog) clearTimeout(showWatchdog);
-            offLoaded?.();
-            offError?.();
-            offClosed?.();
-            resolve();
+/** Show the preloaded interstitial. Resolves true once it closes, or false
+ *  right away when none is ready (a fresh one starts loading). */
+export async function showInterstitial(): Promise<boolean> {
+    const m = loadModule();
+    const cur = inter;
+    if (!m || !cur?.loadedAt || Date.now() - cur.loadedAt > INTERSTITIAL_MAX_AGE_MS || presenting || !adRequestsAllowed()) {
+        preloadInterstitial();
+        return false;
+    }
+    inter = null;
+    presenting = true;
+    return new Promise<boolean>((resolve) => {
+        let settled = false;
+        const done = (shown: boolean) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(watchdog);
+            offClosed();
+            offError();
+            presenting = false;
+            resolve(shown);
         };
-        const timer = setTimeout(done, INTERSTITIAL_LOAD_TIMEOUT_MS);
-
-        const offLoaded = ad.addAdEventListener(m.AdEventType.LOADED, () => {
-            clearTimeout(timer);
-            // Same last-resort settle as showRewarded: if CLOSED/ERROR never
-            // fire after show(), don't leave the caller's overlay up forever.
-            showWatchdog = setTimeout(done, SHOW_WATCHDOG_MS);
-            if (!adRequestsAllowed()) { done(); return; }
-            ad.show().catch(done);
-        });
-        const offError = ad.addAdEventListener(m.AdEventType.ERROR, () => {
-            clearTimeout(timer);
-            done();
-        });
-        const offClosed = ad.addAdEventListener(m.AdEventType.CLOSED, () => {
-            clearTimeout(timer);
-            done();
-        });
-
-        try {
-            ad.load();
-        } catch {
-            clearTimeout(timer);
-            done();
-        }
+        // Same last-resort settle as rewarded ads if CLOSED never fires.
+        const watchdog = setTimeout(() => done(true), SHOW_WATCHDOG_MS);
+        const offClosed = cur.ad.addAdEventListener(m.AdEventType.CLOSED, () => done(true));
+        const offError = cur.ad.addAdEventListener(m.AdEventType.ERROR, () => done(false));
+        cur.ad.show().catch(() => done(false));
     });
 }

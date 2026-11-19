@@ -41,6 +41,7 @@ import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors'
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
 import { appAlert } from '../../src/components/ui/AppAlert';
+import { preloadInterstitial } from '../../src/ads';
 
 const HINT_COIN_COST = 50;
 
@@ -145,6 +146,16 @@ export default function Match() {
     const insets = useSafeAreaInsets();
     const [screenH, setScreenH] = useState(0);
     const [gridH, setGridH] = useState(0);
+
+    // If this game ends on the interstitial threshold, fetch the video now so
+    // it is ready the moment the game ends.
+    const adsRemoved = user && 'ads' in user ? user.ads.removed : false;
+    useEffect(() => {
+        if (matchFound && !adsRemoved && useGameStore.getState().interstitialDueAfterThisGame()) {
+            preloadInterstitial();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [matchFound?.matchId]);
 
     // VS splash — shown for a fixed 2.5s when the match screen first
     // mounts with a match. We DON'T gate it on `phase === 'matched'`

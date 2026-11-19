@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { leaderboardApi } from '../../src/api/resources';
+import { PrizeStrip } from '../../src/components/ui/PrizeStrip';
 import { useAuthStore } from '../../src/store/authStore';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { Avatar } from '../../src/components/ui/Avatar';
@@ -266,12 +267,23 @@ export default function LeaderboardScreen() {
                                     Back to top
                                 </Text>
                             </Pressable>
-                        ) : top3.length > 0 ? (
-                            <Podium
-                                top3={top3.map((e) => ({ userId: e.userId, username: e.username, score: `${e.wins} W` }))}
-                                meId={me?.id ?? null}
-                            />
-                        ) : null
+                        ) : (
+                            <>
+                                {mode === 'overall' ? (
+                                    <PrizeStrip
+                                        prizes={data?.prizes ?? []}
+                                        endsAt={data?.endsAt}
+                                        yourRank={data?.you?.rankInLeaderboard}
+                                    />
+                                ) : null}
+                                {top3.length > 0 ? (
+                                    <Podium
+                                        top3={top3.map((e) => ({ userId: e.userId, username: e.username, score: `${e.wins} W` }))}
+                                        meId={me?.id ?? null}
+                                    />
+                                ) : null}
+                            </>
+                        )
                     }
                     renderItem={({ item }) => (
                         <Row entry={item} highlightId={me?.id ?? null} />

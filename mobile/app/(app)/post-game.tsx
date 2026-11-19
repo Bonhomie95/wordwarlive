@@ -17,7 +17,6 @@ import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/hap
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
-import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { Screen } from '../../src/components/ui/Screen';
 import { HeroTitle, MonoLabel, Card } from '../../src/components/ui/primitives';
 import { Tile } from '../../src/components/game/Tile';
@@ -50,7 +49,6 @@ export default function PostGame() {
     const markInterstitialShown = useGameStore((s) => s.markInterstitialShown);
     const refreshMe = useAuthStore((s) => s.refreshMe);
     const user = useAuthStore((s) => s.user);
-    const [interstitialLoading, setInterstitialLoading] = useState(false);
     // One-shot guard per match. Without it the refresh/interstitial effect
     // re-runs every time `user` changes (refreshMe below updates it!) —
     // which re-triggered side effects in a loop, even after navigating
@@ -143,20 +141,18 @@ export default function PostGame() {
         if (interstitialRef.current === matchOver.matchId) return;
         interstitialRef.current = matchOver.matchId;
 
-        // Frequency-capped post-match interstitial. Skipped for ads-removed
-        // users; gameStore handles cap + cooldown + skip-after-loss.
+        // Interstitial every 3–5 finished games (gameStore: count + cooldown).
+        // The video was preloaded during the match; if it isn't ready the
+        // break is skipped and retried after the next game.
         const adsRemoved = user && 'ads' in user ? user.ads.removed : false;
         if (!adsRemoved && shouldShowInterstitial()) {
             // Small delay so the user sees their result first.
             setTimeout(() => {
-                markInterstitialShown();
-                setInterstitialLoading(true);
-                // Overlay blocks input while the ad loads/plays; the ads
-                // module guarantees the promise resolves (load timeout), so
-                // the overlay can never get stuck.
                 showInterstitial()
-                    .catch(() => {})
-                    .finally(() => setInterstitialLoading(false));
+                    .then((shown) => {
+                        if (shown) markInterstitialShown();
+                    })
+                    .catch(() => {});
             }, 800);
         }
     }, [matchOver, reveal, shouldShowInterstitial, markInterstitialShown, user]);
@@ -225,7 +221,6 @@ export default function PostGame() {
             {reveal === 'showing' ? (
                 <RankReveal from={prevTier} to={tier} points={matchOver.newRankPoints} onDone={dismissReveal} />
             ) : null}
-            <AdLoadingOverlay visible={interstitialLoading} label="Quick ad break…" />
             {/* Icon actions live at the top so they're visible on every
                 screen size — the scrollable summary below can be tall. */}
             <View style={styles.topRow}>

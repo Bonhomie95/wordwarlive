@@ -28,6 +28,8 @@ import { ApiError } from '../../src/api/client';
 import { useAuthStore } from '../../src/store/authStore';
 import { Grid } from '../../src/components/game/Grid';
 import { HintButton } from '../../src/components/game/HintButton';
+import { PrizeStrip } from '../../src/components/ui/PrizeStrip';
+import type { LeaderboardPrize } from '../../src/types/index';
 import { Keyboard, deriveLetterStates } from '../../src/components/game/Keyboard';
 import { buildDailyShareMessage, shareText } from '../../src/share/shareResult';
 import { makeThemedStyles, colors, useThemeStore } from '../../src/theme/colors';
@@ -70,6 +72,7 @@ export default function DailyChallengeScreen() {
     const [leaderboard, setLeaderboard] = useState<
         { userId: string; username: string; guessCount: number; durationMs: number }[]
     >([]);
+    const [prizes, setPrizes] = useState<{ list: LeaderboardPrize[]; endsAt?: string }>({ list: [] });
 
     const load = useCallback(async () => {
         try {
@@ -96,17 +99,17 @@ export default function DailyChallengeScreen() {
     );
 
     useEffect(() => {
-        if (attempt?.solved) {
-            // Fetch the board on solve and on every visit.
-            dailyApi
-                .leaderboard()
-                .then((r) => {
-                    setLeaderboard(r.entries);
-                    setMyRank(r.me);
-                    setSolverTotal(r.total);
-                })
-                .catch(() => {});
-        }
+        // Fetch the board on every visit and on solve (the prizes show
+        // before solving too).
+        dailyApi
+            .leaderboard()
+            .then((r) => {
+                setLeaderboard(r.entries);
+                setMyRank(r.me);
+                setSolverTotal(r.total);
+                setPrizes({ list: r.prizes ?? [], endsAt: r.endsAt });
+            })
+            .catch(() => {});
     }, [attempt?.solved, boardTick]);
 
     function appendLetter(letter: string) {
@@ -267,6 +270,10 @@ export default function DailyChallengeScreen() {
                     </View>
                 </View>
 
+                {!attempt?.solved ? (
+                    <PrizeStrip prizes={prizes.list} endsAt={prizes.endsAt} compact who="solvers" />
+                ) : null}
+
                 <Grid
                     wordLength={meta.wordLength}
                     guesses={guesses.map((g) => ({
@@ -374,6 +381,7 @@ export default function DailyChallengeScreen() {
                                 >
                                     Today&apos;s top solvers · {solverTotal}
                                 </Text>
+                                <PrizeStrip prizes={prizes.list} endsAt={prizes.endsAt} yourRank={myRank?.rank} />
                                 <Podium
                                     top3={leaderboard.slice(0, 3).map((e) => ({
                                         userId: e.userId,

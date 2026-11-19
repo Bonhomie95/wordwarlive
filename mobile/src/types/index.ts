@@ -156,6 +156,26 @@ export interface LeaderboardResponse {
     bucket: string;
     entries: LeaderboardEntry[];
     you: LeaderboardEntry | null;
+    /** Coins the top 100 win when the board closes (empty for all-time). */
+    prizes?: LeaderboardPrize[];
+    endsAt?: string | null;
+}
+
+export interface LeaderboardPrize {
+    from: number;
+    to: number;
+    coins: number;
+}
+
+/** A leaderboard prize the player hasn't seen yet. */
+export interface LeaderboardReward {
+    id: string;
+    board: 'daily' | 'weekly' | 'monthly' | 'daily_challenge';
+    rank: number;
+    coins: number;
+    /** e.g. "the daily leaderboard for Nov 18". */
+    label: string;
+    createdAt: string;
 }
 
 export interface StreakResponse {

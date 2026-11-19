@@ -4,7 +4,9 @@ import type {
     CoinPacksResponse,
     Cosmetic,
     LeaderboardPeriod,
+    LeaderboardPrize,
     LeaderboardResponse,
+    LeaderboardReward,
     MeResponse,
     PublicUser,
     RecentMatch,
@@ -148,6 +150,13 @@ export const leaderboardApi = {
         ),
 };
 
+export const rewardsApi = {
+    /** Leaderboard prizes the player hasn't been shown yet. */
+    pending: () => apiRequest<{ rewards: LeaderboardReward[] }>('/api/rewards/pending'),
+    markSeen: (ids: string[]) =>
+        apiRequest<{ ok: boolean }>('/api/rewards/seen', { method: 'POST', body: { ids } }),
+};
+
 export interface UserSettings {
     sound: boolean;
     haptics: boolean;
@@ -222,6 +231,8 @@ export const dailyApi = {
             }[];
             me: { rank: number; guessCount: number; durationMs: number } | null;
             total: number;
+            prizes?: LeaderboardPrize[];
+            endsAt?: string;
         }>('/api/daily/board'),
 };
 
