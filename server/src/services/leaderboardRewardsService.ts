@@ -1,11 +1,14 @@
 // Leaderboard prizes. When a daily, weekly or monthly leaderboard or a Daily
 // Challenge closes, the top 100 of the board as players saw it (synthetic
-// players hold their places but are never paid) win coins by tier.
+// players hold their places but are never paid) win coins by tier. Real
+// players who finished below 100 get a coins-0 "so close" notice instead,
+// so they know how far they were from a prize.
 //
-// Every prize is one leaderboard_rewards doc, unique per (board, bucket,
-// user), inserted before the coins are granted, so a re-run never pays
-// twice. leaderboard_payouts marks a closed bucket as handled. Players get a
-// push and, in the app, a popup listing unseen prizes (GET /api/rewards/pending).
+// Every result is one leaderboard_rewards doc, unique per (board, bucket,
+// user), inserted before any coins are granted, so a re-run never pays or
+// notifies twice. leaderboard_payouts marks a closed bucket as handled. Each
+// player gets one push per payout run and, in the app, a popup listing unseen
+// results (GET /api/rewards/pending).
 
 import { col, newId, registerIndexes } from '../db/mongo.js';
 import { grantCoins } from './coinsService.js';
@@ -97,8 +100,16 @@ interface RewardDoc {
     created_at: Date;
 }
 
-/** Pay one closed bucket. Safe to call again: claims the run, skips paid users. */
-async function payBucket(board: RewardBoard, bucket: string, endsAt: Date): Promise<number> {
+interface Notice {
+    userId: string;
+    rank: number;
+    coins: number;
+    label: string;
+}
+
+/** Pay one closed bucket. Safe to call again: claims the run, skips players
+ *  already handled. Returns the results created by this call. */
+async function payBucket(board: RewardBoard, bucket: string, endsAt: Date): Promise<Notice[]> {
     const runs = col<{ id: string; done: boolean; started_at: Date }>('leaderboard_payouts');
     const id = `${board}:${bucket}`;
     try {
@@ -110,7 +121,7 @@ async function payBucket(board: RewardBoard, bucket: string, endsAt: Date): Prom
             { id, done: false, started_at: { $lt: new Date(Date.now() - 15 * 60_000) } },
             { $set: { started_at: new Date() } }
         );
-        if (!stale) return 0;
+        if (!stale) return [];
     }
 
     const nowMs = endsAt.getTime() - 1;
@@ -120,10 +131,11 @@ async function payBucket(board: RewardBoard, bucket: string, endsAt: Date): Prom
             : await finalStandings(board, bucket, nowMs);
     const label = boardLabel(board, endsAt);
     const rewards = col<RewardDoc>('leaderboard_rewards');
-    let paid = 0;
-    for (const s of standings.slice(0, 100)) {
+    const notices: Notice[] = [];
+    // ponytail: one insert per real player; batch with insertMany(ordered:false) if boards reach thousands.
+    for (const s of standings) {
+        if (!s.real) continue;
         const coins = prizeFor(board, s.rank);
-        if (!s.real || !coins) continue;
         try {
             await rewards.insertOne({
                 id: newId(), board, bucket, user_id: s.userId, rank: s.rank, coins, label, seen: false, created_at: new Date(),
@@ -133,30 +145,55 @@ async function payBucket(board: RewardBoard, bucket: string, endsAt: Date): Prom
             throw err;
         }
         // ponytail: a crash between the insert and the grant drops that one prize; add a granted flag if it ever matters.
-        await grantCoins({ userId: s.userId, amount: coins, source: 'leaderboard_reward', metadata: { board, bucket, rank: s.rank } });
-        paid++;
-        void sendPushToUser(s.userId, {
-            title: `🏆 You placed #${s.rank}!`,
-            body: `You finished #${s.rank} on ${label}. +${coins} coins are in your wallet.`,
+        if (coins) {
+            await grantCoins({ userId: s.userId, amount: coins, source: 'leaderboard_reward', metadata: { board, bucket, rank: s.rank } });
+        }
+        notices.push({ userId: s.userId, rank: s.rank, coins, label });
+    }
+    const paid = notices.filter((n) => n.coins).length;
+    await runs.updateOne({ id }, { $set: { done: true, paid, missed: notices.length - paid, finished_at: new Date() } });
+    logger.info({ board, bucket, paid, missed: notices.length - paid }, 'leaderboard rewards paid');
+    return notices;
+}
+
+/** One line per result: "+60 coins for #5 on …" / "#134 on … (34 places from a prize)". */
+export function noticeLine(n: { rank: number; coins: number; label: string }): string {
+    return n.coins
+        ? `+${n.coins} coins for #${n.rank} on ${n.label}`
+        : `#${n.rank} on ${n.label}, ${n.rank - 100} ${n.rank - 100 === 1 ? 'place' : 'places'} from a prize`;
+}
+
+/** One push per player for everything a payout run produced for them. */
+function pushNotices(notices: Notice[]): void {
+    const byUser = new Map<string, Notice[]>();
+    for (const n of notices) byUser.set(n.userId, [...(byUser.get(n.userId) ?? []), n]);
+    for (const [userId, list] of byUser) {
+        const won = list.filter((n) => n.coins);
+        const title = won.length
+            ? `🏆 You won ${won.reduce((t, n) => t + n.coins, 0)} coins!`
+            : 'So close to a prize!';
+        const tail = won.length ? '' : ' The top 100 win coins, so play today to climb in.';
+        void sendPushToUser(userId, {
+            title,
+            body: `${list.map(noticeLine).join('. ')}.${tail}`,
             data: { type: 'leaderboard_reward' },
         });
     }
-    await runs.updateOne({ id }, { $set: { done: true, paid, finished_at: new Date() } });
-    logger.info({ board, bucket, paid }, 'leaderboard rewards paid');
-    return paid;
 }
 
 /** Pay every board whose last bucket closed and hasn't been paid yet. */
 export async function runLeaderboardPayouts(now = new Date()): Promise<void> {
+    const notices: Notice[] = [];
     for (const board of BOARDS) {
         const { bucket, endsAt } = lastClosed(board, now);
         if (endsAt.getTime() < PAYOUTS_FROM) continue;
         try {
-            await payBucket(board, bucket, endsAt);
+            notices.push(...(await payBucket(board, bucket, endsAt)));
         } catch (err) {
             logger.error({ err, board, bucket }, 'leaderboard payout failed');
         }
     }
+    pushNotices(notices);
 }
 
 /** Check shortly after boot and every 10 minutes (each closed bucket pays once). */

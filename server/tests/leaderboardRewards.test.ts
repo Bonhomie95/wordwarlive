@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardLabel, currentEndsAt, lastClosed, prizeFor, prizeTable } from '../src/services/leaderboardRewardsService.js';
+import { boardLabel, currentEndsAt, lastClosed, noticeLine, prizeFor, prizeTable } from '../src/services/leaderboardRewardsService.js';
 
 describe('leaderboard prizes', () => {
     it('pays tiers 1, 2, 3, 4–10, 11–20 … 91–100 and nothing after', () => {
@@ -19,5 +19,12 @@ describe('leaderboard prizes', () => {
         expect(currentEndsAt('monthly', now).toISOString()).toBe('2026-12-01T00:00:00.000Z');
         expect(boardLabel('weekly', new Date('2026-11-23T00:00:00Z'))).toBe('the weekly leaderboard (Nov 16–Nov 22)');
         expect(boardLabel('monthly', new Date('2026-12-01T00:00:00Z'))).toBe('the November 2026 leaderboard');
+    });
+
+    it('says what a result paid, or how far it was from the prizes', () => {
+        const label = 'the daily leaderboard for Nov 18';
+        expect(noticeLine({ rank: 5, coins: 60, label })).toBe('+60 coins for #5 on the daily leaderboard for Nov 18');
+        expect(noticeLine({ rank: 134, coins: 0, label })).toBe('#134 on the daily leaderboard for Nov 18, 34 places from a prize');
+        expect(noticeLine({ rank: 101, coins: 0, label })).toBe('#101 on the daily leaderboard for Nov 18, 1 place from a prize');
     });
 });
