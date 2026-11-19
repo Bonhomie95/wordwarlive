@@ -26,6 +26,9 @@ import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors'
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { glow } from '../../src/theme/effects';
 import { appAlert } from '../../src/components/ui/AppAlert';
+import { RewardCelebration } from '../../src/components/ui/RewardCelebration';
+import { launchFinished } from '../../src/components/ui/LaunchScreen';
+import type { LeaderboardReward } from '../../src/types/index';
 
 const TIER_THRESHOLDS: { tier: RankTier; min: number }[] = [
     { tier: 'stone', min: 0 },
@@ -95,38 +98,29 @@ export default function Home() {
         preloadRewarded('daily_bonus', userId);
     }, [userId, lastDailyAdAt, dailyLocallyClaimed]);
 
-    // Leaderboard prizes paid since the last visit: say where the player
-    // finished and what it paid, so they know why the coins arrived.
-    const rewardsShowing = useRef(false);
+    // Leaderboard results since the last visit (prizes and near misses),
+    // celebrated once the launch intro has finished.
+    const [results, setResults] = useState<LeaderboardReward[] | null>(null);
+    const resultsShowing = useRef(false);
     useFocusEffect(
         useCallback(() => {
-            if (!token || rewardsShowing.current) return;
-            rewardsApi
-                .pending()
+            if (!token || resultsShowing.current) return;
+            launchFinished
+                .then(() => rewardsApi.pending())
                 .then(({ rewards }) => {
-                    if (!rewards.length || rewardsShowing.current) return;
-                    rewardsShowing.current = true;
-                    const total = rewards.reduce((n, r) => n + r.coins, 0);
-                    const lines = rewards.map((r) => `#${r.rank} on ${r.label}: +${r.coins} coins`).join('\n');
-                    appAlert(
-                        rewards.length === 1 ? 'Leaderboard reward 🏆' : 'Leaderboard rewards 🏆',
-                        `${lines}\n\n${total} coins are in your wallet. Finish higher for bigger prizes!`,
-                        [
-                            {
-                                text: 'Collect',
-                                onPress: () => {
-                                    rewardsShowing.current = false;
-                                    rewardsApi.markSeen(rewards.map((r) => r.id)).catch(() => {});
-                                    refreshMe().catch(() => {});
-                                },
-                            },
-                        ],
-                        { cancelable: false }
-                    );
+                    if (!rewards.length || resultsShowing.current) return;
+                    resultsShowing.current = true;
+                    setResults(rewards);
                 })
                 .catch(() => {});
-        }, [token, refreshMe])
+        }, [token])
     );
+    function onResultsSeen() {
+        if (results) rewardsApi.markSeen(results.map((r) => r.id)).catch(() => {});
+        setResults(null);
+        resultsShowing.current = false;
+        refreshMe().catch(() => {});
+    }
 
     if (!user || !token) {
         return null; // _layout will redirect to (auth)
@@ -191,6 +185,7 @@ export default function Home() {
     return (
         <Screen edges={['top']}>
             <OnboardingModal visible={showOnboarding} onDone={dismissOnboarding} />
+            {results ? <RewardCelebration rewards={results} onDone={onResultsSeen} /> : null}
             <AdLoadingOverlay visible={adBusy} label="Loading your reward…" />
             <TopBar />
             <ScrollView

@@ -18,12 +18,21 @@ const listings = fs
   const creds = require(path.join(root, 'mobile/play-service-account.json'));
   const c = new JWT({ email: creds.client_email, key: creds.private_key, scopes: ['https://www.googleapis.com/auth/androidpublisher'] });
   const edit = (await c.request({ url: `${base}/edits`, method: 'POST', data: {} })).data;
-  try {
-    for (const l of listings) {
-      await c.request({ url: `${base}/edits/${edit.id}/listings/${l.language}`, method: 'PUT', data: l }).catch((e) => {
-        throw new Error(`${l.language}: ${e.response?.data?.error?.message || e.message}`);
-      });
+  // Google's API returns the odd transient 503 across 80 calls; retry those.
+  const put = async (l, attempt = 1) => {
+    try {
+      await c.request({ url: `${base}/edits/${edit.id}/listings/${l.language}`, method: 'PUT', data: l });
+    } catch (e) {
+      const status = e.response?.status;
+      if ((status >= 500 || status === 429) && attempt < 5) {
+        await new Promise((r) => setTimeout(r, attempt * 3000));
+        return put(l, attempt + 1);
+      }
+      throw new Error(`${l.language}: ${e.response?.data?.error?.message || e.message}`);
     }
+  };
+  try {
+    for (const l of listings) await put(l);
     await c.request({ url: `${base}/edits/${edit.id}:commit`, method: 'POST' });
     console.log('committed');
   } catch (e) {

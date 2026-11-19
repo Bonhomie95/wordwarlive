@@ -37,7 +37,8 @@ export const PrizeStrip: React.FC<{
         return () => clearInterval(t);
     }, []);
     if (!prizes.length) return null;
-    const ends = endsAt ? `Ends in ${timeLeft(endsAt, now)}` : null;
+    // Every board closes at the same instant worldwide: 00:00 UTC (server time).
+    const ends = endsAt ? `Ends in ${timeLeft(endsAt, now)} · 00:00 UTC` : null;
 
     if (compact) {
         return (

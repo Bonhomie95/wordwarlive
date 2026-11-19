@@ -4,9 +4,9 @@
 
 import { ReducedMotionConfig, ReduceMotion } from 'react-native-reanimated';
 import { useReducedMotion } from '../src/hooks/useReducedMotion';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -26,8 +26,14 @@ import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { initObservability } from '../src/observability';
 import { restoreHapticsPref } from '../src/lib/haptics';
 import { registerForPush, onNotificationResponse } from '../src/lib/notifications';
-import { makeThemedStyles, colors, useThemeStore, type ThemeId } from '../src/theme/colors';
+import { colors, useThemeStore, type ThemeId } from '../src/theme/colors';
 import { AlertHost } from '../src/components/ui/AppAlert';
+import { LaunchScreen } from '../src/components/ui/LaunchScreen';
+
+// The launch intro hides the native splash once it's on screen (seamless
+// hand-over); the timeout is a safety net if that render never happens.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+setTimeout(() => SplashScreen.hideAsync().catch(() => {}), 4000);
 
 const THEME_STORAGE_KEY = 'wordwar.theme';
 
@@ -126,13 +132,9 @@ export default function RootLayout() {
 
     useAuthGate();
 
-    if (!hydrated || !fontsLoaded) {
-        return (
-            <View style={styles.loadingScreen}>
-                <ActivityIndicator color={colors.primary} size="large" />
-            </View>
-        );
-    }
+    const ready = hydrated && fontsLoaded;
+    const [launchDone, setLaunchDone] = useState(false);
+    const onLaunchDone = useCallback(() => setLaunchDone(true), []);
 
     return (
         <ErrorBoundary>
@@ -140,28 +142,25 @@ export default function RootLayout() {
                 <SafeAreaProvider>
                     <ReducedMotionConfig mode={reducedMotion ? ReduceMotion.Always : ReduceMotion.System} />
                     <StatusBar style="light" />
-                    <Stack
-                        screenOptions={{
-                            headerShown: false,
-                            contentStyle: { backgroundColor: colors.bg },
-                            animation: reducedMotion ? 'none' : 'fade',
-                        }}
-                    >
-                        <Stack.Screen name="(auth)" />
-                        <Stack.Screen name="(app)" />
-                    </Stack>
-                    <AlertHost />
+                    {ready ? (
+                        <Stack
+                            screenOptions={{
+                                headerShown: false,
+                                contentStyle: { backgroundColor: colors.bg },
+                                animation: reducedMotion ? 'none' : 'fade',
+                            }}
+                        >
+                            <Stack.Screen name="(auth)" />
+                            <Stack.Screen name="(app)" />
+                        </Stack>
+                    ) : null}
+                    {ready ? <AlertHost /> : null}
+                    {/* Branded intro over the app while it loads underneath. */}
+                    {!launchDone ? (
+                        <LaunchScreen ready={ready} fontsReady={fontsLoaded} onDone={onLaunchDone} />
+                    ) : null}
                 </SafeAreaProvider>
             </GestureHandlerRootView>
         </ErrorBoundary>
     );
 }
-
-const styles = makeThemedStyles(() => StyleSheet.create({
-    loadingScreen: {
-        flex: 1,
-        backgroundColor: colors.bg,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-}));
