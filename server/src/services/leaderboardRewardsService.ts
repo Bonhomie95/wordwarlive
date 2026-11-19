@@ -26,12 +26,17 @@ registerIndexes('leaderboard_payouts', [{ key: { id: 1 }, unique: true }]);
 export type RewardBoard = 'daily' | 'weekly' | 'monthly' | 'daily_challenge';
 const BOARDS: RewardBoard[] = ['daily', 'weekly', 'monthly', 'daily_challenge'];
 
-/** [last rank of the tier, coins]. Ranks 1, 2, 3, 4–10, 11–20 … 91–100. */
+/**
+ * [last rank of the tier, coins]. Ranks 1, 2, 3, 4–10, 11–20 … 91–100.
+ * Sized against the economy (100 coins = $0.99, cosmetics 250–1,100): a
+ * daily win is two hints, a monthly title one top cosmetic, so prizes reward
+ * the climb without replacing coin packs.
+ */
 const TIERS: Record<RewardBoard, readonly [number, number][]> = {
-    daily: [[1, 200], [2, 150], [3, 100], [10, 60], [20, 40], [30, 30], [40, 25], [50, 20], [60, 15], [70, 12], [80, 10], [90, 8], [100, 5]],
-    weekly: [[1, 750], [2, 500], [3, 350], [10, 200], [20, 120], [30, 90], [40, 70], [50, 55], [60, 45], [70, 35], [80, 30], [90, 25], [100, 20]],
-    monthly: [[1, 2500], [2, 1750], [3, 1250], [10, 700], [20, 400], [30, 300], [40, 240], [50, 200], [60, 160], [70, 130], [80, 110], [90, 90], [100, 75]],
-    daily_challenge: [[1, 150], [2, 100], [3, 75], [10, 50], [20, 30], [30, 25], [40, 20], [50, 15], [60, 12], [70, 10], [80, 8], [90, 6], [100, 5]],
+    daily: [[1, 100], [2, 75], [3, 50], [10, 30], [20, 20], [30, 15], [40, 12], [50, 10], [60, 8], [70, 6], [80, 5], [90, 4], [100, 3]],
+    weekly: [[1, 400], [2, 300], [3, 200], [10, 120], [20, 80], [30, 60], [40, 45], [50, 35], [60, 30], [70, 25], [80, 20], [90, 15], [100, 10]],
+    monthly: [[1, 1200], [2, 900], [3, 600], [10, 350], [20, 200], [30, 150], [40, 120], [50, 100], [60, 80], [70, 60], [80, 50], [90, 40], [100, 30]],
+    daily_challenge: [[1, 75], [2, 50], [3, 40], [10, 25], [20, 15], [30, 12], [40, 10], [50, 8], [60, 6], [70, 5], [80, 4], [90, 3], [100, 2]],
 };
 
 /** Only boards that close after the feature shipped are paid. */

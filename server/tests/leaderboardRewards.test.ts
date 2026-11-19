@@ -3,11 +3,11 @@ import { boardLabel, currentEndsAt, lastClosed, noticeLine, prizeFor, prizeTable
 
 describe('leaderboard prizes', () => {
     it('pays tiers 1, 2, 3, 4–10, 11–20 … 91–100 and nothing after', () => {
-        expect([1, 2, 3, 4, 10, 11, 20, 21, 95, 100, 101].map((r) => prizeFor('daily', r))).toEqual([200, 150, 100, 60, 60, 40, 40, 30, 5, 5, 0]);
+        expect([1, 2, 3, 4, 10, 11, 20, 21, 95, 100, 101].map((r) => prizeFor('daily', r))).toEqual([100, 75, 50, 30, 30, 20, 20, 15, 3, 3, 0]);
         const table = prizeTable('weekly');
-        expect(table[0]).toEqual({ from: 1, to: 1, coins: 750 });
-        expect(table[3]).toEqual({ from: 4, to: 10, coins: 200 });
-        expect(table.at(-1)).toEqual({ from: 91, to: 100, coins: 20 });
+        expect(table[0]).toEqual({ from: 1, to: 1, coins: 400 });
+        expect(table[3]).toEqual({ from: 4, to: 10, coins: 120 });
+        expect(table.at(-1)).toEqual({ from: 91, to: 100, coins: 10 });
     });
 
     it('finds the last closed buckets and when the current ones close', () => {
