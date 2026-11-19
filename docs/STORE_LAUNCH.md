@@ -49,6 +49,23 @@ Identifiers:
 
 ### Remaining — in the order to do them
 
+- ✅ 2026-11-19 **Rewarded ads pay again.** Every AdMob reward callback had
+  failed ("SSV signature INVALID"): Google signs the decoded query, the
+  server checked the raw one. Daily Bonus, XP boost and free coins were
+  never credited, so CLAIM kept coming back. Fixed on the server.
+- ✅ 2026-11-19 **Leaderboard prizes** (server, live): when the daily, weekly
+  or monthly board or the Daily Challenge closes (00:00 UTC; weekly Monday,
+  monthly the 1st) the top 100 as shown win coins by tier (daily 1st 100,
+  weekly 1st 400, monthly 1st 1,200, Daily Challenge 1st 75, down to 3/10/
+  30/2 for 91–100); real players below 100 are told how close they were.
+  One push per player per payout; the app shows a trophy celebration.
+  Tables: `server/src/services/leaderboardRewardsService.ts`.
+- ✅ 2026-11-19 **Store pages in every language**: App Store 50 languages on
+  version 1.0.4, Google Play 80 (committed, in Google review). Source:
+  `store-assets/localized/`.
+- ⬜ 2026-11-19 **1.0.4 for both stores**: keyboard fits short phones,
+  interstitials preloaded every 3–5 games, Daily Bonus on the UTC day,
+  launch intro, prize strips + celebrations. iOS auto-releases on approval.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
