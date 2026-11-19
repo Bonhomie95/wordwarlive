@@ -26,8 +26,12 @@ import { typography, spacing, radius } from '../../theme/typography';
 
 type Look = { icon: keyof typeof Ionicons.glyphMap; color: string; title: string; coins: number };
 
+/** Within this many places of the prizes a miss reads "so close" (server: CLOSE_MISS). */
+const CLOSE_MISS = 50;
+const gapFor = (r: LeaderboardReward) => r.rank - 100;
+
 function lookFor(r: LeaderboardReward): Look {
-    if (!r.coins) return { icon: 'flag', color: colors.textMuted, title: 'SO CLOSE!', coins: 0 };
+    if (!r.coins) return { icon: 'flag', color: colors.textMuted, title: gapFor(r) <= CLOSE_MISS ? 'SO CLOSE!' : 'KEEP CLIMBING!', coins: 0 };
     if (r.rank === 1) return { icon: 'trophy', color: '#FFD54A', title: '1ST PLACE!', coins: 22 };
     if (r.rank === 2) return { icon: 'trophy', color: '#D7DEE6', title: '2ND PLACE!', coins: 16 };
     if (r.rank === 3) return { icon: 'trophy', color: '#E0915A', title: '3RD PLACE!', coins: 12 };
@@ -36,9 +40,10 @@ function lookFor(r: LeaderboardReward): Look {
 }
 
 function line(r: LeaderboardReward): string {
-    return r.coins
-        ? `+${r.coins} coins · #${r.rank} on ${r.label}`
-        : `#${r.rank} on ${r.label} · ${r.rank - 100} ${r.rank - 100 === 1 ? 'place' : 'places'} from a prize`;
+    const rank = r.rank.toLocaleString();
+    if (r.coins) return `+${r.coins} coins · #${rank} on ${r.label}`;
+    const gap = gapFor(r);
+    return gap <= CLOSE_MISS ? `#${rank} on ${r.label} · ${gap} ${gap === 1 ? 'place' : 'places'} from a prize` : `#${rank} on ${r.label}`;
 }
 
 /** One coin flying out of the trophy and falling away. */
@@ -108,7 +113,7 @@ export const RewardCelebration: React.FC<{ rewards: LeaderboardReward[]; onDone:
                         {look.title}
                     </Text>
                     <Text style={styles.sub} allowFontScaling={false}>
-                        #{best.rank} on {best.label}
+                        #{best.rank.toLocaleString()} on {best.label}
                     </Text>
 
                     {total ? (
@@ -121,7 +126,9 @@ export const RewardCelebration: React.FC<{ rewards: LeaderboardReward[]; onDone:
                         </View>
                     ) : (
                         <Text style={styles.miss} allowFontScaling={false}>
-                            {best.rank - 100} {best.rank - 100 === 1 ? 'place' : 'places'} from a prize. The top 100 win coins, so play today to climb in!
+                            {gapFor(best) <= CLOSE_MISS
+                                ? `${gapFor(best)} ${gapFor(best) === 1 ? 'place' : 'places'} from a prize. The top 100 win coins, so play today to climb in!`
+                                : 'The top 100 win coins. Play today to climb in!'}
                         </Text>
                     )}
 
