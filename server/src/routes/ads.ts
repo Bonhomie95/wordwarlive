@@ -55,7 +55,7 @@ adsRouter.get('/ads/ssv', async (req, res) => {
         return res.status(500).send('verify error');
     }
     if (!valid) {
-        logger.warn({ transactionId }, 'SSV signature INVALID');
+        logger.warn({ transactionId, rawQuery: rawQuery.slice(0, 600) }, 'SSV signature INVALID');
         return res.status(403).send('bad signature');
     }
     if (!transactionId || !customData) {

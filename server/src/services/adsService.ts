@@ -98,6 +98,32 @@ function base64UrlToBuffer(b64url: string): Buffer {
     return Buffer.from(padded, 'base64');
 }
 
+/**
+ * True when `signature` signs this callback's query with `pem`. Google signs
+ * the URL-DECODED query (its Tink verifier reads URI.getQuery()), so escapes
+ * such as the %7C in our "userId|kind" custom_data must be decoded first —
+ * verifying the raw bytes rejected every real callback. The raw form is still
+ * tried in case a callback arrives unescaped.
+ */
+export function verifySignedQuery(rawQuery: string, signature: string, pem: string): boolean {
+    const raw = buildSignedMessage(rawQuery);
+    let decoded = raw;
+    try {
+        decoded = decodeURIComponent(raw);
+    } catch {
+        // Malformed escape: only the raw form can match.
+    }
+    const sig = base64UrlToBuffer(signature);
+    return [...new Set([decoded, raw])].some((message) => {
+        try {
+            return crypto.verify('sha256', Buffer.from(message, 'utf8'), { key: pem, dsaEncoding: 'der' }, sig);
+        } catch (err) {
+            logger.warn({ err }, 'SSV verify threw');
+            return false;
+        }
+    });
+}
+
 export async function verifySsvSignature(args: {
     rawQuery: string;
     signature: string;
@@ -109,19 +135,7 @@ export async function verifySsvSignature(args: {
         logger.warn({ keyId: args.keyId }, 'Unknown AdMob key id');
         return false;
     }
-    const message = buildSignedMessage(args.rawQuery);
-    const sigBuf = base64UrlToBuffer(args.signature);
-    try {
-        return crypto.verify(
-            'sha256',
-            Buffer.from(message, 'utf8'),
-            { key: key.pem, dsaEncoding: 'der' },
-            sigBuf
-        );
-    } catch (err) {
-        logger.warn({ err }, 'SSV verify threw');
-        return false;
-    }
+    return verifySignedQuery(args.rawQuery, args.signature, key.pem);
 }
 
 // ─── Reward granting ────────────────────────────────────────────────────────
