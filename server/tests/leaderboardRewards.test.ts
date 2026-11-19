@@ -26,5 +26,6 @@ describe('leaderboard prizes', () => {
         expect(noticeLine({ rank: 5, coins: 60, label })).toBe('+60 coins for #5 on the daily leaderboard for Nov 18');
         expect(noticeLine({ rank: 134, coins: 0, label })).toBe('#134 on the daily leaderboard for Nov 18, 34 places from a prize');
         expect(noticeLine({ rank: 101, coins: 0, label })).toBe('#101 on the daily leaderboard for Nov 18, 1 place from a prize');
+        expect(noticeLine({ rank: 1500, coins: 0, label })).toBe('#1,500 on the daily leaderboard for Nov 18');
     });
 });

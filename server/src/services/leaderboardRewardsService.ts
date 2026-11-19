@@ -161,11 +161,15 @@ async function payBucket(board: RewardBoard, bucket: string, endsAt: Date): Prom
     return notices;
 }
 
-/** One line per result: "+60 coins for #5 on …" / "#134 on … (34 places from a prize)". */
+/** Within this many places of the prizes a miss reads "so close". */
+export const CLOSE_MISS = 50;
+
+/** One line per result: "+60 coins for #5 on …", "#134 on …, 34 places from a prize", "#1,500 on …". */
 export function noticeLine(n: { rank: number; coins: number; label: string }): string {
-    return n.coins
-        ? `+${n.coins} coins for #${n.rank} on ${n.label}`
-        : `#${n.rank} on ${n.label}, ${n.rank - 100} ${n.rank - 100 === 1 ? 'place' : 'places'} from a prize`;
+    const rank = n.rank.toLocaleString('en-US');
+    if (n.coins) return `+${n.coins} coins for #${rank} on ${n.label}`;
+    const gap = n.rank - 100;
+    return gap <= CLOSE_MISS ? `#${rank} on ${n.label}, ${gap} ${gap === 1 ? 'place' : 'places'} from a prize` : `#${rank} on ${n.label}`;
 }
 
 /** One push per player for everything a payout run produced for them. */
@@ -174,9 +178,12 @@ function pushNotices(notices: Notice[]): void {
     for (const n of notices) byUser.set(n.userId, [...(byUser.get(n.userId) ?? []), n]);
     for (const [userId, list] of byUser) {
         const won = list.filter((n) => n.coins);
+        const close = list.some((n) => !n.coins && n.rank - 100 <= CLOSE_MISS);
         const title = won.length
             ? `🏆 You won ${won.reduce((t, n) => t + n.coins, 0)} coins!`
-            : 'So close to a prize!';
+            : close
+              ? 'So close to a prize!'
+              : 'Leaderboard results are in';
         const tail = won.length ? '' : ' The top 100 win coins, so play today to climb in.';
         void sendPushToUser(userId, {
             title,
