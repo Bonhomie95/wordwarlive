@@ -227,12 +227,16 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
     });
 
     sock.on('guess_result', (g: GuessBroadcast) => {
+        // Place each guess at its row. Coming back to the app replays the
+        // whole history, and appending repeated old guesses into empty rows.
+        const placed = <T,>(list: T[], item: T): T[] => {
+            const next = list.slice();
+            next[Math.min(g.guessIndex, list.length)] = item;
+            return next;
+        };
         if (g.side === 'me') {
             set((s) => ({
-                myGuesses: [
-                    ...s.myGuesses,
-                    { guess: g.guess ?? '', tiles: g.tiles, solved: g.solved },
-                ],
+                myGuesses: placed(s.myGuesses, { guess: g.guess ?? '', tiles: g.tiles, solved: g.solved }),
                 inputCells: s.matchFound
                     ? new Array(s.matchFound.wordLength).fill(null)
                     : [],
@@ -241,10 +245,7 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
             }));
         } else {
             set((s) => ({
-                oppGuesses: [
-                    ...s.oppGuesses,
-                    { guess: null, tiles: g.tiles, solved: g.solved },
-                ],
+                oppGuesses: placed(s.oppGuesses, { guess: null, tiles: g.tiles, solved: g.solved }),
             }));
         }
     });

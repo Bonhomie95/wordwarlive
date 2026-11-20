@@ -28,6 +28,9 @@ export default function Welcome() {
     const appleAvailable = useAppleAvailable();
     // Which provider's sign-in is running, so only that button shows busy.
     const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
+    // Apple's sheet can end without a credential (cancel, or Apple's own
+    // "Sign Up Not Completed"); point the player at the other ways in.
+    const [appleUnfinished, setAppleUnfinished] = useState(false);
 
     async function onGuest() {
         try {
@@ -60,6 +63,7 @@ export default function Welcome() {
         try {
             const cred = await appleSignIn();
             if (cred) await signInApple(cred);
+            else setAppleUnfinished(true);
         } catch (err) {
             appAlert('Apple sign-in failed', err instanceof Error ? err.message : 'Try again.');
         } finally {
@@ -100,6 +104,11 @@ export default function Welcome() {
                             style={[styles.appleButton, oauthBusy === 'apple' && { opacity: 0.5 }]}
                             onPress={onApple}
                         />
+                    ) : null}
+                    {appleUnfinished ? (
+                        <Text style={styles.smallLink} allowFontScaling={false}>
+                            Apple sign-in didn&apos;t finish. Continue with Google or Email, or play as a guest.
+                        </Text>
                     ) : null}
                     {google.available ? (
                         <Button

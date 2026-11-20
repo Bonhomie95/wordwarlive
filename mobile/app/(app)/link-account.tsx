@@ -39,6 +39,9 @@ export default function LinkAccount() {
     const appleAvailable = useAppleAvailable();
     // Which provider's linking is running, so only that button shows busy.
     const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
+    // Apple's sheet can end without a credential (cancel, or Apple's own
+    // "Sign Up Not Completed"); suggest the other options.
+    const [appleUnfinished, setAppleUnfinished] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
@@ -116,7 +119,7 @@ export default function LinkAccount() {
             if (cred) {
                 await linkApple(cred);
                 done();
-            }
+            } else setAppleUnfinished(true);
         } catch (err) {
             appAlert(
                 'Linking failed',
@@ -178,6 +181,11 @@ export default function LinkAccount() {
                             style={[styles.appleButton, oauthBusy === 'apple' && { opacity: 0.5 }]}
                             onPress={onLinkApple}
                         />
+                    ) : null}
+                    {appleUnfinished ? (
+                        <Text style={[styles.dividerText, { textAlign: 'center', textTransform: 'none', letterSpacing: 0 }]} allowFontScaling={false}>
+                            Apple didn&apos;t finish. Link with Google or Email instead.
+                        </Text>
                     ) : null}
 
                     <View style={styles.divider}>
