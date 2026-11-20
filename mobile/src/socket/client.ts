@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import { AppState, type AppStateStatus } from 'react-native';
-import { apiUrl } from '../api/client';
+import { apiUrl, getStoredToken } from '../api/client';
 import type {
     ClientToServerEvents,
     ServerToClientEvents,
@@ -48,7 +48,10 @@ export function ensureSocket(token: string): AppSocket {
     if (socket) return socket;
 
     socket = io(apiUrl, {
-        auth: { token },
+        // Read per (re)connect, so a session refreshed after launch is used.
+        auth: (cb) => {
+            void getStoredToken().then((t) => cb({ token: t ?? token }), () => cb({ token }));
+        },
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: Infinity,

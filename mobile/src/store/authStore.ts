@@ -21,10 +21,10 @@ import {
   linkApple,
   type AppleLoginArgs,
 } from "../api/auth";
-import { usersApi } from "../api/resources";
+import { authAccountApi, usersApi } from "../api/resources";
 import type { MeResponse, PublicUser } from "../types/index";
 import { disconnectSocket, setSocketAuthErrorHandler } from "../socket/client";
-import { unregisterPush } from "../lib/notifications";
+import { registerForPush, unregisterPush } from "../lib/notifications";
 
 const DEVICE_KEY = "wordwar.deviceId";
 /** Last-known profile, cached so cold starts render instantly (and offline)
@@ -158,6 +158,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const me = await usersApi.me();
         cacheUser(me);
         set({ user: me });
+        // A session runs out 30 days after it was issued: take a fresh one on
+        // every launch so a player who keeps playing never gets signed out.
+        // Only the stored copy changes (HTTP and socket reconnects read it):
+        // swapping the in-memory token would re-run token-keyed effects such
+        // as matchmaking's queue join.
+        authAccountApi.refresh().then(async ({ token: fresh }) => {
+          if (get().token !== token) return; // signed out or switched meanwhile
+          await setStoredToken(fresh);
+          // Push delivery stops when the registering session expires.
+          registerForPush({ prompt: false }).catch(() => {});
+        }).catch(() => {});
       } catch (err) {
         // A banned account: keep the token and show the suspended screen
         // rather than silently logging out to the welcome screen.

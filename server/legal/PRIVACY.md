@@ -1,6 +1,6 @@
 # WordWar — Privacy Policy
 
-_Last updated: 2026-09-27_
+_Last updated: 2026-11-20_
 
 WordWar ("the app", "we") is a real-time word game published by Bonhomie Inc.
 This policy explains what we collect, why, and how to exercise your rights.
@@ -23,8 +23,9 @@ Contact: **adeyemibabatundejoseph@gmail.com**.
   We never receive your card number or payment details — those stay with Apple
   or Google.
 - **Push notifications.** If you allow notifications, a push token for your
-  device so friends can challenge you while the app is closed. You can revoke
-  this in your device settings at any time.
+  device so friends can challenge you and we can tell you your leaderboard
+  results while the app is closed. It is removed when you sign out, and you
+  can turn notifications off in your device settings at any time.
 - **Advertising.** The free version shows ads served by Google AdMob. AdMob may
   collect your device's advertising identifier, IP address, and coarse
   location to serve and measure ads. On iOS we ask for App Tracking

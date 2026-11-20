@@ -406,4 +406,6 @@ export const authAccountApi = {
             method: 'POST',
             body: {},
         }),
+    /** Trade this session's token for a fresh one (same session, new expiry). */
+    refresh: () => apiRequest<{ token: string }>('/api/auth/refresh', { method: 'POST', body: {} }),
 };

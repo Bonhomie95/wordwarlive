@@ -439,3 +439,20 @@ authRouter.post('/logout-all', requireAuth, async (req, res) => {
     });
     res.json({ token, user: shapeUserForClient(user) });
 });
+
+// ─── Session refresh ──────────────────────────────────────────────────────
+//
+// A token lives JWT_EXPIRES_IN from issue. The app trades it for a fresh one
+// on every launch, so a player who keeps playing is never signed out; an
+// unused session still runs out, and token_version still revokes it.
+authRouter.post('/refresh', requireAuth, async (req, res) => {
+    const user = await findUserById(req.session!.userId);
+    if (!user) return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+    const token = signSession({
+        userId: user.id,
+        username: user.username,
+        tokenVersion: user.token_version,
+        provider: user.auth_provider,
+    });
+    res.json({ token });
+});
