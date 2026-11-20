@@ -22,13 +22,17 @@ pushRouter.post('/push/register', requireAuth, async (req, res) => {
         userId: req.session!.userId,
         token: parsed.data.token,
         platform: parsed.data.platform,
+        expiresAt: req.session!.exp ? new Date(req.session!.exp * 1000) : undefined,
     });
     res.json({ ok: true });
 });
 
 const unregisterSchema = z.object({ token: z.string().min(1).max(256) });
 
-pushRouter.post('/push/unregister', requireAuth, async (req, res) => {
+// No session needed: sign-out often happens BECAUSE the session expired or was
+// revoked, and the device must stop getting pushes either way. The token is
+// the device's own secret, so holding it is enough to switch it off.
+pushRouter.post('/push/unregister', async (req, res) => {
     const parsed = unregisterSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
     await removePushToken(parsed.data.token);

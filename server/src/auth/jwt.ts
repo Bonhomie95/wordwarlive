@@ -10,6 +10,8 @@ export interface SessionToken {
      *  support "log out everywhere" / forced revocation. Older tokens without
      *  the claim default to 0. */
     tokenVersion: number;
+    /** Expiry (seconds since epoch), set by verifySession. */
+    exp?: number;
 }
 
 export function signSession(payload: SessionToken): string {
@@ -40,5 +42,6 @@ export function verifySession(token: string): SessionToken {
         username: decoded.username,
         provider: decoded.provider,
         tokenVersion: typeof decoded.tv === 'number' ? decoded.tv : 0,
+        exp: decoded.exp,
     };
 }

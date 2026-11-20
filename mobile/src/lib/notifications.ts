@@ -12,9 +12,13 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushApi } from '../api/resources';
 
 let currentToken: string | null = null;
+/** The device's token, remembered so sign-out can remove it even when this
+ *  launch never registered (offline, or still in flight). */
+const TOKEN_KEY = 'wordwar.pushToken';
 
 // Foreground presentation: show the banner even while the app is open.
 Notifications.setNotificationHandler({
@@ -67,6 +71,7 @@ export async function registerForPush(opts: { prompt: boolean } = { prompt: true
             projectId ? { projectId } : undefined
         );
         currentToken = tokenResp.data;
+        AsyncStorage.setItem(TOKEN_KEY, currentToken).catch(() => {});
         await pushApi.register(
             currentToken,
             Platform.OS === 'ios' ? 'ios' : 'android'
@@ -76,16 +81,13 @@ export async function registerForPush(opts: { prompt: boolean } = { prompt: true
     }
 }
 
-/** Remove this device's token on sign-out. */
+/** Remove this device's token on sign-out, so a signed-out phone gets no
+ *  pushes. The server accepts this without a session (it may have expired). */
 export async function unregisterPush(): Promise<void> {
-    if (!currentToken) return;
-    try {
-        await pushApi.unregister(currentToken);
-    } catch {
-        // best-effort
-    } finally {
-        currentToken = null;
-    }
+    const token = currentToken ?? (await AsyncStorage.getItem(TOKEN_KEY).catch(() => null));
+    currentToken = null;
+    if (!token) return;
+    await pushApi.unregister(token).catch(() => {});
 }
 
 /** Wire tap-handling: when the user taps a friend-challenge push, hand the

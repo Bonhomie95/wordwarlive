@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { col, newId, registerIndexes } from '../db/mongo.js';
 import { TIER_BANDS } from '../game/ranks.js';
 import { revokeAppleRefreshToken } from '../auth/apple.js';
+import { removeUserPushTokens } from './pushService.js';
 
 export interface UserRow {
     id: string;
@@ -300,6 +301,8 @@ export async function bumpTokenVersion(userId: string): Promise<number> {
         { returnDocument: 'after', projection: { _id: 0, token_version: 1 } }
     );
     await redis.publish('wordwar:session-revoked', userId).catch((err) => logger.error({ err, userId }, 'Session revocation broadcast failed'));
+    // Every device is signed out now; the caller re-registers with its new token.
+    await removeUserPushTokens(userId).catch((err) => logger.error({ err, userId }, 'Push token cleanup failed'));
     return u?.token_version ?? 0;
 }
 
