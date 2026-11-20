@@ -29,7 +29,10 @@ export function useAppleAvailable(): boolean {
     return available;
 }
 
-/** Runs the native sheet. Resolves null when the user cancels. */
+/** Runs the native sheet. Resolves null when it ends without a credential:
+ *  a cancel, no Apple Account on the device, or Apple failing on its side
+ *  ("Sign Up Not Completed"). The player can't fix those, so callers offer
+ *  the other sign-in options instead of showing Apple's raw error. */
 export async function appleSignIn(): Promise<AppleCredential | null> {
     if (Platform.OS !== 'ios') return null;
     try {
@@ -45,8 +48,7 @@ export async function appleSignIn(): Promise<AppleCredential | null> {
             authorizationCode: credential.authorizationCode,
         };
     } catch (err) {
-        const e = err as { code?: string };
-        if (e.code === 'ERR_REQUEST_CANCELED') return null;
-        throw err;
+        if (__DEV__) console.warn('[apple] sheet ended without a credential', (err as { code?: string }).code);
+        return null;
     }
 }
