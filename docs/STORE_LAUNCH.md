@@ -77,11 +77,13 @@ Identifiers:
 - ⏳ 2026-11-20 **1.0.4 submitted to both stores**: keyboard fits short
   phones, interstitials preloaded every 3–5 games, Daily Bonus on the UTC
   day, launch intro, prize strips + celebrations, sign-out always
-  unsubscribes. Built locally (EAS free builds are used up until Dec 1).
-  - iOS build 18: Waiting for Review (submission 6255dcbd…), releases
-    automatically on approval. The 49 new languages first needed the Apple
-    TV privacy-policy text (copied from English).
-  - Android versionCode 12: on the production track at full rollout, in
+  unsubscribes, sessions refresh on launch. Built locally (EAS free builds
+  are used up until Dec 1).
+  - iOS build 19 (replaced 18 in the queue to add the session refresh):
+    Waiting for Review, releases automatically on approval. The 49 new
+    languages first needed the Apple TV privacy-policy text (copied from
+    English).
+  - Android versionCode 13 (replaced 12): production track, full rollout, in
     Google's review. Managed publishing is on, so after approval press
     **Publish** in Play Console → Publishing overview.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
