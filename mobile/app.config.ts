@@ -88,6 +88,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     );
     // Keep every pod buildable on current Xcode (see plugins/withPodDeploymentTarget.js).
     plugins.push('./plugins/withPodDeploymentTarget.js');
+    plugins.push('./plugins/withGradleMemory.js');
 
     return {
         ...config,
