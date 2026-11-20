@@ -74,18 +74,29 @@ Identifiers:
   mid-December). The app now trades its token for a fresh one on every
   launch (`POST /api/auth/refresh`, ships in 1.0.4); unused sessions still
   expire after 30 days.
+- ✅ 2026-11-20 **Coming back to a match no longer fills empty rows with old
+  guesses.** Returning to the app replays the match and the app appended the
+  replay, repeating earlier (wrong) guesses into the empty rows (and could
+  leave no row to play). Reproduced and fixed in the simulator; ships in 1.0.4.
+- ⬜ 2026-11-20 **Sign in with Apple: new players can't sign up (Apple-side).**
+  No Apple sign-in request has reached the server since Nov 12, while Google,
+  email and guest work. App ID, entitlement and App Store profile are correct
+  (checked). This matches Apple's 2026 "Sign Up Not Completed" problem for
+  newer App IDs, which Apple fixes per app after a Feedback Assistant report
+  with a sysdiagnose. **Yours to file** (text in the 2026-11-20 chat). 1.0.4
+  now tells players to use Google, email or guest when Apple's sheet fails.
 - ⏳ 2026-11-20 **1.0.4 submitted to both stores**: keyboard fits short
   phones, interstitials preloaded every 3–5 games, Daily Bonus on the UTC
   day, launch intro, prize strips + celebrations, sign-out always
-  unsubscribes, sessions refresh on launch. Built locally (EAS free builds
-  are used up until Dec 1).
-  - iOS build 19 (replaced 18 in the queue to add the session refresh):
-    Waiting for Review, releases automatically on approval. The 49 new
-    languages first needed the Apple TV privacy-policy text (copied from
-    English).
-  - Android versionCode 13 (replaced 12): production track, full rollout, in
-    Google's review. Managed publishing is on, so after approval press
-    **Publish** in Play Console → Publishing overview.
+  unsubscribes, sessions refresh on launch, match resume fix, Apple
+  fallback hint. Built locally (EAS free builds are used up until Dec 1).
+  - iOS build 21 (replaced 18 and 19 in the queue; 20 failed to sign
+    because another project's iOS build ran at the same time): Waiting for
+    Review, releases automatically on approval. The 49 new languages first needed
+    the Apple TV privacy-policy text (copied from English).
+  - Android versionCode 14 (replaced 12 and 13): production track, full
+    rollout, in Google's review. Managed publishing is on, so after approval
+    press **Publish** in Play Console → Publishing overview.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
