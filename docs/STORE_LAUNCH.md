@@ -61,8 +61,9 @@ Identifiers:
   One push per player per payout; the app shows a trophy celebration.
   Tables: `server/src/services/leaderboardRewardsService.ts`.
 - ✅ 2026-11-19 **Store pages in every language**: App Store 50 languages on
-  version 1.0.4, Google Play 80 (committed, in Google review). Source:
-  `store-assets/localized/`.
+  version 1.0.4, Google Play 80 (published 2026-11-19 together with Android
+  1.0.3 (8), which had been approved but held by managed publishing).
+  Source: `store-assets/localized/`.
 - ⬜ 2026-11-19 **1.0.4 for both stores**: keyboard fits short phones,
   interstitials preloaded every 3–5 games, Daily Bonus on the UTC day,
   launch intro, prize strips + celebrations. iOS auto-releases on approval.
