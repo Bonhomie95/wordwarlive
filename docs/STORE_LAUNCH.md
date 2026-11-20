@@ -64,9 +64,21 @@ Identifiers:
   version 1.0.4, Google Play 80 (published 2026-11-19 together with Android
   1.0.3 (8), which had been approved but held by managed publishing).
   Source: `store-assets/localized/`.
-- ⬜ 2026-11-19 **1.0.4 for both stores**: keyboard fits short phones,
-  interstitials preloaded every 3–5 games, Daily Bonus on the UTC day,
-  launch intro, prize strips + celebrations. iOS auto-releases on approval.
+- ✅ 2026-11-20 **Signed-out phones get no pushes** (server, all app
+  versions): sign-out removes the device even when the session had already
+  expired (that used to fail and leave it subscribed), expired sessions are
+  skipped, and "log out everywhere" removes every device. Results and
+  celebrations only reach signed-in players.
+- ⏳ 2026-11-20 **1.0.4 submitted to both stores**: keyboard fits short
+  phones, interstitials preloaded every 3–5 games, Daily Bonus on the UTC
+  day, launch intro, prize strips + celebrations, sign-out always
+  unsubscribes. Built locally (EAS free builds are used up until Dec 1).
+  - iOS build 18: Waiting for Review (submission 6255dcbd…), releases
+    automatically on approval. The 49 new languages first needed the Apple
+    TV privacy-policy text (copied from English).
+  - Android versionCode 12: on the production track at full rollout, in
+    Google's review. Managed publishing is on, so after approval press
+    **Publish** in Play Console → Publishing overview.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
