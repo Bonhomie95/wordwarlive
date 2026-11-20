@@ -112,11 +112,6 @@ async function main() {
     app.get('/healthz', (_req, res) => {
         res.json({ ok: true, env: env.NODE_ENV });
     });
-    // TEMP 2026-11-20: which address rate limiting keys on, as seen for the
-    // caller itself. Remove once TRUST_PROXY is confirmed.
-    app.get('/healthz/ip', (req, res) => {
-        res.json({ ip: req.ip, xffEntries: String(req.headers['x-forwarded-for'] ?? '').split(',').filter(Boolean).length });
-    });
 
     // Readiness — can we actually serve traffic? Checks MongoDB + Redis.
     // Orchestrators should gate traffic on this, not /healthz.

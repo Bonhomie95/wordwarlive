@@ -20,6 +20,8 @@ const schema = z.object({
     // direct exposure (use the socket address). Set to 1 behind a single
     // load balancer / reverse proxy. Trusting more hops than you actually
     // have lets clients spoof X-Forwarded-For and bypass rate limits.
+    // Render is 3 (measured 2026-11-20: X-Forwarded-For arrives as client,
+    // edge, internal LB; with 1 every player shared the LB's 10.x address).
     TRUST_PROXY: z.coerce.number().int().nonnegative().default(0),
 
     // Stable identity for THIS server instance. Used to namespace the

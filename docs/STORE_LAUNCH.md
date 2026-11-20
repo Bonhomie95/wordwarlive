@@ -69,6 +69,11 @@ Identifiers:
   expired (that used to fail and leave it subscribed), expired sessions are
   skipped, and "log out everywhere" removes every device. Results and
   celebrations only reach signed-in players.
+- ✅ 2026-11-20 **Players stay signed in.** Sessions used to end 30 days
+  after sign-in with no refresh (everyone would have been signed out from
+  mid-December). The app now trades its token for a fresh one on every
+  launch (`POST /api/auth/refresh`, ships in 1.0.4); unused sessions still
+  expire after 30 days.
 - ⏳ 2026-11-20 **1.0.4 submitted to both stores**: keyboard fits short
   phones, interstitials preloaded every 3–5 games, Daily Bonus on the UTC
   day, launch intro, prize strips + celebrations, sign-out always
@@ -118,7 +123,7 @@ Identifiers:
   (iOS, neutral wording: "Either choice is fine") published.
 - ✅ 2026-11-14 App Store promotional text: "Race a live opponent to the hidden
   word. Fast 1v1 matches, daily challenges and season rewards. Free to play!"
-- ⬜ 2026-11-14 08:13 UTC: iOS 1.0.2 (build 14) in App Review. Google consent
+- ✅ (released 2026-11-15) 2026-11-14 08:13 UTC: iOS 1.0.2 (build 14) in App Review. Google consent
   now runs before Apple's tracking prompt so the ATT explainer can show (more
   players allow tracking → better-paying ads). Press Release when approved:
   https://appstoreconnect.apple.com/apps/6832551406/distribution/ios/version/inflight
@@ -131,7 +136,7 @@ Identifiers:
   ad partners). Players in the EEA, UK and Switzerland see it on first launch
   (it can take up to an hour to start showing); Settings → "Privacy options"
   reopens it.
-- ⬜ 2026-11-14: Android 1.0.1 (Block & leave fix) building → Play production;
+- ✅ (published 2026-11-15) 2026-11-14: Android 1.0.1 (Block & leave fix) building → Play production;
   Play title renamed to "WordWar: 1v1 Word Game". Both go to Google review and
   then wait for Publish (managed publishing).
 - ✅ 2026-11-12 11:55 UTC: **iOS 1.0.1** (build 13) in App Review — the same
@@ -142,11 +147,11 @@ Identifiers:
   stays "WordWar". Release is manual: press "Release this version" when Apple
   approves it. Google Play keeps the title "WordWar" until Google finishes its
   first review; then I'll rename it to match.
-- ⬜ 2026-11-14: **Google approved Android 1.0.0 (6)** and the description fix.
+- ✅ (published 2026-11-14) 2026-11-14: **Google approved Android 1.0.0 (6)** and the description fix.
   Both wait under Publishing overview → "Changes ready to publish" until you
   press **Publish**:
   https://play.google.com/console/developers/4852878029712266831/app/4974758962474734649/publishing
-- ⬜ 2026-11-14: **Apple approved iOS 1.0.1** (new name, Marketing URL) —
+- ✅ (released 2026-11-14) 2026-11-14: **Apple approved iOS 1.0.1** (new name, Marketing URL) —
   "Pending Developer Release". Press **Release this version**:
   https://appstoreconnect.apple.com/apps/6832551406/distribution/ios/version/inflight
 - ✅ 2026-11-14: AdMob iOS app linked to the App Store listing (found by
@@ -188,9 +193,10 @@ minutes (`server/src/index.ts`, only when `RENDER_EXTERNAL_URL` is set) so App
 Review never hits a 50 s cold start; `.github/workflows/keep-awake.yml` is a
 backup (GitHub had not run its schedule yet). Before real users arrive,
 upgrade the web service to Starter (~$7/mo), move Redis off the shared
-`fault` instance, delete both pings, and confirm `TRUST_PROXY=1` gives each
-player their own rate-limit bucket (Render sits behind Cloudflare; the hop
-count isn't documented).
+`fault` instance and delete both pings. ✅ 2026-11-20: `TRUST_PROXY` is now
+3. With 1, every player was keyed on Render's internal load-balancer address
+(10.x), so all players shared the per-IP rate limits; measured with a
+temporary echo endpoint (client, edge, internal LB), spoof-proof at 3.
 
 #### 3. ⬜ Tax form → Paid Apps agreement
 App Store Connect → Business → Tax forms: W-8BEN (foreign owner of a
@@ -218,7 +224,7 @@ version" (App Store Connect) or Publishing overview → Publish (Play):
   Render → wordwar-server → Environment, TRUST_PROXY=1). Smoke-tested: guest
   sign-in works, receipt-less and fake purchases are refused.
 
-#### 7. ⬜ Right after release: link the stores in AdMob
+#### 7. ✅ Right after release: link the stores in AdMob (done 2026-11-14/15)
 AdMob shows both WordWar apps as "Requires review — Limited ad serving: Add
 store to lift limit". AdMob → Apps → Add store can only find the app once its
 store page is public (searching `dev.bonhomieinc.wordwar` finds nothing yet).
