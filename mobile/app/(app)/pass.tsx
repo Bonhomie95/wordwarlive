@@ -33,15 +33,17 @@ import type { BattlePassResponse, BattlePassRewardView } from '../../src/types/i
 import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { appAlert } from '../../src/components/ui/AppAlert';
+import { rewardToast } from '../../src/components/ui/RewardToast';
+import { currentMe, waitForCredit } from '../../src/lib/rewardCredit';
 
 export default function Pass() {
     const [data, setData] = useState<BattlePassResponse | null>(null);
     const [busy, setBusy] = useState(false);
     const [adBusy, setAdBusy] = useState(false);
+    const [crediting, setCrediting] = useState(false);
     const [claimingKey, setClaimingKey] = useState<string | null>(null);
     const [, setPricesLoaded] = useState(0);
     const user = useAuthStore((s) => s.user);
-    const refreshMe = useAuthStore((s) => s.refreshMe);
 
     const load = useCallback(async () => {
         try {
@@ -155,6 +157,9 @@ export default function Pass() {
 
     async function onWatchXpBoost() {
         if (!user) return;
+        const before = currentMe();
+        const beforeAds = before?.ads.xpBoostAdsToday ?? 0;
+        const beforeXp = before?.battlePass.xp ?? 0;
         setAdBusy(true);
         try {
             const r = await showRewarded('bp_xp_boost', user.id);
@@ -172,11 +177,16 @@ export default function Pass() {
                         /* cap-exceeded 409 — no-op */
                     }
                 }
-                setTimeout(() => {
-                    refreshMe().catch(() => {});
-                    load().catch(() => {});
-                }, 1200);
-                appAlert('+50 XP incoming', 'Updating your battle pass…');
+                // AdMob credits us through its server callback, often a few
+                // seconds after the ad closes: wait for it, then fill the bar.
+                setCrediting(true);
+                void waitForCredit((me) => me.ads.xpBoostAdsToday !== beforeAds || me.battlePass.xp > beforeXp)
+                    .then(async (ok) => {
+                        await load().catch(() => {});
+                        if (ok) rewardToast({ title: 'XP boost added', xp: 50, note: 'Your Battle Pass bar just moved up.' });
+                        else appAlert('Still on its way', 'The ad network hasn’t confirmed your +50 XP yet. It usually arrives within a minute.');
+                    })
+                    .finally(() => setCrediting(false));
             } else if (r.error) {
                 appAlert('No ad right now', 'There is no ad to show at the moment. Please try again in a few minutes.');
             }
@@ -261,14 +271,15 @@ export default function Pass() {
                                         XP Boost
                                     </Text>
                                     <Text style={styles.upgradeSub} allowFontScaling={false}>
-                                        Watch a short ad → +50 XP
-                                        {`  ·  ${xpBoostsRemaining} / ${xpBoostLimit} left today`}
+                                        {crediting
+                                            ? 'Confirming your +50 XP…'
+                                            : `Watch a short ad → +50 XP  ·  ${xpBoostsRemaining} / ${xpBoostLimit} left today`}
                                     </Text>
                                 </View>
                                 <Button
                                     label="Watch"
                                     onPress={onWatchXpBoost}
-                                    busy={adBusy}
+                                    busy={adBusy || crediting}
                                     variant="secondary"
                                     style={{ height: 40, paddingHorizontal: spacing.lg }}
                                 />

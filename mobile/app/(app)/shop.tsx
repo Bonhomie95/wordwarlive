@@ -46,6 +46,8 @@ import { makeThemedStyles, colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
 import { appAlert } from '../../src/components/ui/AppAlert';
+import { rewardToast } from '../../src/components/ui/RewardToast';
+import { currentMe, waitForCredit } from '../../src/lib/rewardCredit';
 
 const CATEGORY_ORDER: CosmeticCategory[] = [
     'board_theme',
@@ -296,6 +298,7 @@ export default function Shop() {
 
     async function onWatchCoinAd() {
         if (!user) return;
+        const beforeAds = currentMe()?.ads.coinAdsToday ?? 0;
         setAdBusy(true);
         try {
             const r = await showRewarded('coin_boost', user.id);
@@ -309,8 +312,11 @@ export default function Shop() {
                 } catch {
                     /* prod 404 / cap 409 — SSV grants it */
                 }
-                setTimeout(() => refreshMe().catch(() => {}), 1200);
-                appAlert('+25 coins incoming', 'Updating your balance…');
+                // Credit arrives via AdMob's server callback; show it once it lands.
+                void waitForCredit((me) => me.ads.coinAdsToday !== beforeAds).then((ok) => {
+                    if (ok) rewardToast({ title: 'Coins added', coins: 25 });
+                    else appAlert('Still on its way', 'The ad network hasn’t confirmed your +25 coins yet. They usually arrive within a minute.');
+                });
             } else if (r.error) {
                 appAlert('No ad right now', 'There is no ad to show at the moment. Please try again in a few minutes.');
             }

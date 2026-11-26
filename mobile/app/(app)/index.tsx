@@ -29,6 +29,8 @@ import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors'
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { glow } from '../../src/theme/effects';
 import { appAlert } from '../../src/components/ui/AppAlert';
+import { rewardToast } from '../../src/components/ui/RewardToast';
+import { waitForCredit } from '../../src/lib/rewardCredit';
 import { RewardCelebration } from '../../src/components/ui/RewardCelebration';
 import { launchFinished } from '../../src/components/ui/LaunchScreen';
 import type { LeaderboardReward, MeResponse } from '../../src/types/index';
@@ -130,6 +132,7 @@ export default function Home() {
 
     async function onDailyBonus() {
         if (!user) return;
+        const beforeClaim = 'ads' in user ? user.ads.lastDailyAdAt : null;
         setDailyLocallyClaimed(true);
         setAdBusy(true);
         try {
@@ -145,8 +148,11 @@ export default function Home() {
                 } catch {
                     // 404 (prod) / 409 (already) — no-op; SSV handles it.
                 }
-                setTimeout(() => refreshMe().catch(() => {}), 1200);
-                appAlert('Reward incoming', '+30 coins, +75 BP XP, and a power-up. Updating…');
+                // Credited by AdMob's server callback: wait for it, then celebrate.
+                void waitForCredit((me) => me.ads.lastDailyAdAt !== beforeClaim).then((ok) => {
+                    if (ok) rewardToast({ title: 'Daily Bonus', coins: 30, xp: 75, note: '+1 power-up for your next match' });
+                    else appAlert('Still on its way', 'The ad network hasn’t confirmed your Daily Bonus yet. It usually arrives within a minute.');
+                });
             } else if (r.error) {
                 appAlert('No ad right now', 'There is no ad to show at the moment. Please try again in a few minutes.');
                 setDailyLocallyClaimed(false);

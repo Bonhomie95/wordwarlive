@@ -29,6 +29,7 @@ import { restoreSoundPref } from '../src/lib/sound';
 import { registerForPush, onNotificationResponse } from '../src/lib/notifications';
 import { colors, useThemeStore, type ThemeId } from '../src/theme/colors';
 import { AlertHost } from '../src/components/ui/AppAlert';
+import { RewardToastHost } from '../src/components/ui/RewardToast';
 import { LaunchScreen } from '../src/components/ui/LaunchScreen';
 
 // The launch intro hides the native splash once it's on screen (seamless
@@ -157,6 +158,7 @@ export default function RootLayout() {
                         </Stack>
                     ) : null}
                     {ready ? <AlertHost /> : null}
+                    {ready ? <RewardToastHost /> : null}
                     {/* Branded intro over the app while it loads underneath. */}
                     {!launchDone ? (
                         <LaunchScreen ready={ready} fontsReady={fontsLoaded} onDone={onLaunchDone} />
