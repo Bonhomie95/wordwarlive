@@ -22,3 +22,6 @@ app.json
 !mobile/app.json
 /brag-output
 /brag-output-2026-09-24-135350
+# agent tester results (decrypted locally)
+/runs/
+/results/
