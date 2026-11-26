@@ -162,3 +162,22 @@ legalRouter.get('/legal/privacy', (_req, res) => res.type('html').send(PRIVACY_H
 legalRouter.get('/legal/terms', (_req, res) => res.type('html').send(TERMS_HTML));
 legalRouter.get('/legal/delete-account', (_req, res) => res.type('html').send(DELETE_HTML));
 legalRouter.get('/legal/support', (_req, res) => res.type('html').send(SUPPORT_HTML));
+
+// ─── One install link for shares ────────────────────────────────────────────
+// Share messages carry a single link; phones go straight to their store and
+// anything else gets a page with both.
+const APP_STORE_URL = 'https://apps.apple.com/app/id6832551406';
+const PLAY_URL = 'https://play.google.com/store/apps/details?id=dev.bonhomieinc.wordwar';
+const GET_HTML = page(
+    'Get WordWar',
+    `<h1>WordWar: 1v1 Word Game</h1>
+<p>Race a live opponent to the hidden word. Free on iPhone and Android.</p>
+<div class="box"><p><a href="${APP_STORE_URL}">Download on the App Store</a></p><p><a href="${PLAY_URL}">Get it on Google Play</a></p></div>`
+);
+
+legalRouter.get('/get', (req, res) => {
+    const ua = String(req.headers['user-agent'] ?? '');
+    if (/iPhone|iPad|iPod/i.test(ua)) return res.redirect(302, APP_STORE_URL);
+    if (/Android/i.test(ua)) return res.redirect(302, PLAY_URL);
+    res.type('html').send(GET_HTML);
+});
