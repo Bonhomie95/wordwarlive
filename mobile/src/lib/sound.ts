@@ -26,7 +26,6 @@ export async function restoreSoundPref(): Promise<void> {
     }
     try {
         await setAudioModeAsync({ playsInSilentMode: false, interruptionMode: 'mixWithOthers' });
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         matchFound = createAudioPlayer(require('../../assets/sounds/match-found.wav'));
     } catch {
         matchFound = null; // no native module (Expo Go): stay silent

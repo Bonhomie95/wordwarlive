@@ -59,4 +59,6 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
 - ✅ Push errors were swallowed; now logged.
 - 🙋 Sign in with Apple for new players: Apple-side (Feedback report).
 - ⬜ 1.0.5 "What's New" in all store languages before submitting.
+- ⬜ GitHub CI green on main before building/publishing (`npx expo lint --max-warnings 0` locally first).
+- ⬜ Pull main first: other agents are pushing server fixes and a tester workflow.
 - ⬜ Message the CueMaster session when the 1.0.5 iOS release build starts and when it ends (two local iOS release builds at once break signing).
