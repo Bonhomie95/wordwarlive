@@ -30,6 +30,8 @@ import { victoryKind } from '../../src/lib/cosmetics';
 import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { showInterstitial } from '../../src/ads';
+import { PassProgress } from '../../src/components/ui/PassProgress';
+import { maybeAskForReview } from '../../src/lib/reviewPrompt';
 import { buildMatchShareMessage, shareText } from '../../src/share/shareResult';
 import type { MatchOver } from '../../src/types/index';
 import {
@@ -154,6 +156,10 @@ export default function PostGame() {
                     })
                     .catch(() => {});
             }, 800);
+        } else if (matchOver.result === 'win') {
+            // A win with no ad break: a good moment for the store's rating
+            // sheet (the schedule in reviewPrompt decides whether it shows).
+            setTimeout(() => void maybeAskForReview(), 1800);
         }
     }, [matchOver, reveal, shouldShowInterstitial, markInterstitialShown, user]);
 
@@ -183,7 +189,7 @@ export default function PostGame() {
             matchDurationSec: matchOver.matchDurationSec,
             highContrast: useThemeStore.getState().colorBlind,
         });
-        shareText(message);
+        shareText(message, 'match');
     }
 
     function onPlayAgain() {
@@ -290,7 +296,7 @@ export default function PostGame() {
                         </View>
                         <View style={styles.eloStat}>
                             <Ionicons name="flash" size={13} color={colors.info} />
-                            <CountUp to={matchOver.battlePassXpAwarded} prefix="+" suffix=" XP" delayMs={850} style={styles.eloStatText} />
+                            <CountUp to={matchOver.battlePassXpAwarded} prefix="+" suffix=" Pass XP" delayMs={850} style={styles.eloStatText} />
                         </View>
                         <View style={styles.eloStat}>
                             <Ionicons name="time-outline" size={13} color={colors.textDim} />
@@ -300,6 +306,8 @@ export default function PostGame() {
                         </View>
                     </View>
                 </Card>
+
+                <PassProgress key={matchOver.matchId} xpAwarded={matchOver.battlePassXpAwarded} matchId={matchOver.matchId} />
 
                 {/* The word */}
                 <View style={styles.wordCard}>

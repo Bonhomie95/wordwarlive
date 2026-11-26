@@ -24,6 +24,7 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { leaderboardApi } from '../../src/api/resources';
 import { PrizeStrip } from '../../src/components/ui/PrizeStrip';
+import { STORE_LINK, shareText } from '../../src/share/shareResult';
 import { useAuthStore } from '../../src/store/authStore';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { Avatar } from '../../src/components/ui/Avatar';
@@ -275,6 +276,24 @@ export default function LeaderboardScreen() {
                                         endsAt={data?.endsAt}
                                         yourRank={data?.you?.rankInLeaderboard}
                                     />
+                                ) : null}
+                                {mode === 'overall' && (period === 'daily' || period === 'weekly') && data?.you?.rankInLeaderboard ? (
+                                    <Pressable
+                                        onPress={() =>
+                                            shareText(
+                                                `WordWar 🏆 I'm #${data.you!.rankInLeaderboard!.toLocaleString()} on the ${period} leaderboard right now. Can you beat me? ${STORE_LINK}`,
+                                                `leaderboard_${period}`
+                                            )
+                                        }
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Share your ${period} rank`}
+                                        style={({ pressed }) => [styles.backToTop, pressed ? { opacity: 0.85 } : null]}
+                                    >
+                                        <Ionicons name="share-social" size={16} color={colors.primary} />
+                                        <Text style={styles.backToTopText} allowFontScaling={false}>
+                                            Share my {period} rank
+                                        </Text>
+                                    </Pressable>
                                 ) : null}
                                 {top3.length > 0 ? (
                                     <Podium

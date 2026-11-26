@@ -5,11 +5,12 @@
 
 import { Share } from 'react-native';
 import type { Tile } from '../types/index';
+import { apiUrl } from '../api/client';
+import { track } from '../observability';
 
-/** App/store link appended to every share. Set this to the App Store /
- *  Play Store URL (or a smart onelink) once the app is published. Empty →
- *  the link line is omitted. */
-export const STORE_LINK = '';
+/** Install link appended to every share: the server sends iPhones to the
+ *  App Store, Android to Google Play, anything else to a page with both. */
+export const STORE_LINK = `${apiUrl}/get`;
 
 const TILE_EMOJI: Record<Tile, string> = {
     correct: '🟩',
@@ -105,9 +106,24 @@ export function buildDailyShareMessage(args: DailyShareArgs): string {
     return lines.join('\n');
 }
 
+export interface LeaderboardShareArgs {
+    /** e.g. "the daily leaderboard for Nov 25" (server label). */
+    board: string;
+    rank: number;
+    coins?: number;
+}
+
+/** Share text for a leaderboard finish ("I finished #4 on …"). */
+export function buildLeaderboardShareMessage(args: LeaderboardShareArgs): string {
+    const prize = args.coins ? ` and won ${args.coins} coins` : '';
+    return [`WordWar 🏆 I finished #${args.rank.toLocaleString()} on ${args.board}${prize}!`, `Can you beat me? ${STORE_LINK}`].join('\n');
+}
+
 /** Open the native share sheet. Resolves once dismissed; errors swallowed
- *  (a cancelled share is not an error worth surfacing). */
-export async function shareText(message: string): Promise<void> {
+ *  (a cancelled share is not an error worth surfacing). `source` is recorded
+ *  as a share_tap event. */
+export async function shareText(message: string, source?: string): Promise<void> {
+    if (source) track('share_tap', { offer: source });
     try {
         await Share.share({ message });
     } catch {

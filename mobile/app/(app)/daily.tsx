@@ -356,7 +356,8 @@ export default function DailyChallengeScreen() {
                                         durationMs: attempt.durationMs,
                                         highContrast:
                                             useThemeStore.getState().colorBlind,
-                                    })
+                                    }),
+                                    'daily_challenge'
                                 );
                             }}
                         >

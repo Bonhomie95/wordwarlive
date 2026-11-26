@@ -20,6 +20,7 @@ import { Button } from './Button';
 import { CountUp } from './CountUp';
 import { PopIn } from './PopIn';
 import { notify, NotificationType } from '../../lib/haptics';
+import { buildLeaderboardShareMessage, shareText } from '../../share/shareResult';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, spacing, radius } from '../../theme/typography';
@@ -143,6 +144,15 @@ export const RewardCelebration: React.FC<{ rewards: LeaderboardReward[]; onDone:
                     ) : null}
 
                     <Button label={total ? 'Collect' : "Let's go"} icon={total ? 'checkmark' : 'flash'} onPress={onDone} style={styles.btn} />
+                    {best.coins > 0 ? (
+                        <Button
+                            label="Share"
+                            icon="share-social"
+                            variant="secondary"
+                            onPress={() => shareText(buildLeaderboardShareMessage({ board: best.label, rank: best.rank, coins: best.coins }), `results_${best.board}`)}
+                            style={styles.shareBtn}
+                        />
+                    ) : null}
                 </View>
             </View>
         </Modal>
@@ -234,5 +244,6 @@ const styles = makeThemedStyles(() =>
             textAlign: 'center',
         },
         btn: { alignSelf: 'stretch', marginTop: spacing.sm },
+        shareBtn: { alignSelf: 'stretch' },
     })
 );
