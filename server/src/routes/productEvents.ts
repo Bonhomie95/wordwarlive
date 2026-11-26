@@ -19,6 +19,12 @@ const schema = z.object({
         'tutorial_started',
         'tutorial_completed',
         'tutorial_skipped',
+        // 1.0.5: what players open, share and answer (`offer` carries the detail).
+        'rank_ladder_view',
+        'stats_view',
+        'share_tap',
+        'review_prompt',
+        'notify_prompt',
     ]),
     offer: z.string().max(100).default(''),
 });

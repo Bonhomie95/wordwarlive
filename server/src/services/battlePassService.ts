@@ -48,8 +48,32 @@ const SEASON_PROJECTION = {
 // (pg also returned Date objects here — callers JSON-serialize either way).
 type SeasonDoc = Omit<SeasonRow, 'starts_at' | 'ends_at'> & { starts_at: Date; ends_at: Date };
 
-export async function getCurrentSeason(): Promise<SeasonRow | null> {
-    const now = new Date();
+const SEASON_DAYS = 90;
+
+/** Keep a season running: when the current one has ended, open the next
+ *  with the same tiers and rewards, so match and ad XP never land nowhere.
+ *  Idempotent (upserts on the unique season_number), safe on every boot. */
+export async function ensureActiveSeason(now = new Date()): Promise<number | null> {
+    if (await getCurrentSeason(now)) return null;
+    const seasons = col<SeasonDoc>('battle_pass_seasons');
+    const last = await seasons.findOne({}, { sort: { season_number: -1 }, projection: SEASON_PROJECTION });
+    if (!last) return null;
+    const n = last.season_number + 1;
+    await seasons.updateOne(
+        { season_number: n },
+        { $setOnInsert: { season_number: n, name: `Season ${n}`, starts_at: now, ends_at: new Date(now.getTime() + SEASON_DAYS * 86_400_000), xp_per_tier: last.xp_per_tier, max_tier: last.max_tier } },
+        { upsert: true }
+    );
+    const rewards = await col<RewardDoc>('battle_pass_rewards').find({ season_number: last.season_number }, { projection: { _id: 0 } }).toArray();
+    if (rewards.length > 0) {
+        await col('battle_pass_rewards').bulkWrite(rewards.map((r) => ({
+            updateOne: { filter: { season_number: n, tier: r.tier, track: r.track }, update: { $setOnInsert: { ...r, season_number: n } }, upsert: true },
+        })), { ordered: false });
+    }
+    return n;
+}
+
+export async function getCurrentSeason(now = new Date()): Promise<SeasonRow | null> {
     return col<SeasonDoc>('battle_pass_seasons').findOne(
         { starts_at: { $lte: now }, ends_at: { $gte: now } },
         { sort: { season_number: -1 }, projection: SEASON_PROJECTION }

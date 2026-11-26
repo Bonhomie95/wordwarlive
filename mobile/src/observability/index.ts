@@ -35,6 +35,14 @@ export function captureError(
     }
 }
 
+/** Events the server stores (must match server/src/routes/productEvents.ts).
+ *  `offer` carries the detail: the offer id, a share source, a prompt answer. */
+const SERVER_EVENTS = [
+    'shop_view', 'offer_view', 'purchase_attempt', 'purchase_completed',
+    'tutorial_started', 'tutorial_completed', 'tutorial_skipped',
+    'rank_ladder_view', 'stats_view', 'share_tap', 'review_prompt', 'notify_prompt',
+];
+
 /** Record a product analytics event. Always safe to call. */
 export function track(
     event: string,
@@ -45,7 +53,7 @@ export function track(
              
             console.log('[track]', event, props ?? '');
         }
-        if (['shop_view','offer_view','purchase_attempt','purchase_completed','tutorial_started','tutorial_completed','tutorial_skipped'].includes(event)) {
+        if (SERVER_EVENTS.includes(event)) {
             void apiRequest('/api/events', { method: 'POST', body: {event, offer: typeof props?.offer === 'string' ? props.offer : ''}, retries: 0, timeoutMs: 4000 }).catch(() => {});
         }
     } catch {

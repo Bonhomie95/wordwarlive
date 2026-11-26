@@ -103,7 +103,10 @@ export async function sendPushToUser(
         logger.warn({ err, userId }, 'push: failed to load tokens');
         return;
     }
-    if (tokens.length === 0) return;
+    if (tokens.length === 0) {
+        logger.info({ userId }, 'push: no signed-in devices');
+        return;
+    }
 
     const messages = tokens.map((to) => ({
         to,
@@ -128,15 +131,20 @@ export async function sendPushToUser(
             return;
         }
         const body = (await res.json()) as {
-            data?: { status: string; details?: { error?: string } }[];
+            data?: { status: string; message?: string; details?: { error?: string } }[];
         };
-        // Prune tokens Expo says are dead.
+        // Prune tokens Expo says are dead; log every other failure (e.g.
+        // InvalidCredentials when a platform's push keys are missing), which
+        // used to vanish silently.
         const dead: string[] = [];
+        const failed: { error?: string; message?: string }[] = [];
         body.data?.forEach((r, i) => {
-            if (r.status === 'error' && r.details?.error === 'DeviceNotRegistered') {
-                dead.push(tokens[i]!);
-            }
+            if (r.status !== 'error') return;
+            if (r.details?.error === 'DeviceNotRegistered') dead.push(tokens[i]!);
+            else failed.push({ error: r.details?.error, message: r.message?.slice(0, 200) });
         });
+        logger.info({ userId, devices: tokens.length, ok: (body.data?.length ?? 0) - dead.length - failed.length }, 'push: sent');
+        if (failed.length > 0) logger.warn({ userId, failed }, 'push: delivery errors');
         if (dead.length > 0) {
             await pushTokens().deleteMany({ token: { $in: dead } });
             logger.info({ count: dead.length }, 'push: pruned dead tokens');
