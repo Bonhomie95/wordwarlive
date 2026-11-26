@@ -56,6 +56,7 @@ export async function rescheduleReminders(me: MeResponse): Promise<void> {
             lastPlayDate: me.streak.lastPlayDate,
             lastDailyAdAt: me.ads.lastDailyAdAt,
         });
+        if (__DEV__) console.log('[reminders]', plan.map((r) => `${r.id}@${new Date(r.at).toString().slice(0, 21)}`).join(' | '));
         for (const r of plan) {
             await Notifications.scheduleNotificationAsync({
                 identifier: ID_PREFIX + r.id,

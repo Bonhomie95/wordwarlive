@@ -10,9 +10,12 @@ import Animated, {
     useAnimatedStyle,
     useSharedValue,
     withRepeat,
+    withSequence,
     withTiming,
     cancelAnimation,
+    type SharedValue,
 } from 'react-native-reanimated';
+import { useReducedMotion } from '../../src/hooks/useReducedMotion';
 import { Screen } from '../../src/components/ui/Screen';
 import { HeroTitle, MonoLabel, Card } from '../../src/components/ui/primitives';
 import { useGameStore } from '../../src/store/gameStore';
@@ -40,6 +43,100 @@ const PRO_TIPS = [
     'Tap a tile to move your cursor and edit mid-word without deleting everything.',
     'Green = right spot. Yellow = right letter, wrong spot. Grey = not in the word.',
 ];
+
+// Rolling avatars: a ring of players orbits the radar while a sweep scans,
+// the centre flicks through faces like a slot machine, and on a match the
+// orbit collapses into the centre with a burst.
+const ORBIT = [
+    { color: '#3DDC97', initials: 'AJ' },
+    { color: '#F4B940', initials: 'MK' },
+    { color: '#7CC8FF', initials: 'LU' },
+    { color: '#FF4FCB', initials: 'ZO' },
+    { color: '#A78BFA', initials: 'KE' },
+    { color: '#F97316', initials: 'RI' },
+    { color: '#22D3EE', initials: 'TA' },
+];
+const ORBIT_R = 98;
+
+function OrbitAvatar({ i, rot, reach }: { i: number; rot: SharedValue<number>; reach: SharedValue<number> }) {
+    const a = ORBIT[i]!;
+    const base = (i / ORBIT.length) * Math.PI * 2;
+    const style = useAnimatedStyle(() => {
+        const ang = base + (rot.value * Math.PI) / 180;
+        return {
+            opacity: reach.value,
+            transform: [
+                { translateX: Math.cos(ang) * ORBIT_R * reach.value },
+                { translateY: Math.sin(ang) * ORBIT_R * reach.value },
+                { scale: 0.5 + 0.5 * reach.value },
+            ],
+        };
+    });
+    return (
+        <Animated.View style={[styles.orbitAvatar, { backgroundColor: a.color }, style]} pointerEvents="none">
+            <Text style={styles.orbitText} allowFontScaling={false}>
+                {a.initials}
+            </Text>
+        </Animated.View>
+    );
+}
+
+function RollingRadar({ found }: { found: boolean }) {
+    const reduced = useReducedMotion();
+    const rot = useSharedValue(0);
+    const sweep = useSharedValue(0);
+    const reach = useSharedValue(1);
+    const pop = useSharedValue(1);
+    const [face, setFace] = useState(0);
+
+    useEffect(() => {
+        if (reduced) return;
+        rot.value = withRepeat(withTiming(360, { duration: 9000, easing: Easing.linear }), -1, false);
+        sweep.value = withRepeat(withTiming(360, { duration: 2200, easing: Easing.linear }), -1, false);
+        return () => {
+            cancelAnimation(rot);
+            cancelAnimation(sweep);
+        };
+    }, [reduced, rot, sweep]);
+
+    // Slot-machine centre while searching; stops when the opponent is found.
+    useEffect(() => {
+        if (found || reduced) return;
+        const t = setInterval(() => setFace((f) => (f + 1) % ORBIT.length), 140);
+        return () => clearInterval(t);
+    }, [found, reduced]);
+
+    useEffect(() => {
+        reach.value = withTiming(found ? 0 : 1, { duration: 450, easing: Easing.in(Easing.cubic) });
+        if (found) pop.value = withSequence(withTiming(1.35, { duration: 220 }), withTiming(1, { duration: 260 }));
+    }, [found, reach, pop]);
+
+    const sweepStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${sweep.value}deg` }], opacity: reach.value * 0.55 }));
+    const coreStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
+    const f = ORBIT[face]!;
+
+    return (
+        <>
+            <Animated.View style={[styles.sweep, sweepStyle]} pointerEvents="none">
+                <View style={styles.sweepArm} />
+            </Animated.View>
+            {ORBIT.map((_, i) => (
+                <OrbitAvatar key={i} i={i} rot={rot} reach={reach} />
+            ))}
+            <Animated.View style={[styles.core, glow(found ? colors.warning : colors.primary, found ? 30 : 22, 0.75), coreStyle, found ? { borderColor: colors.warning } : null]}>
+                {found ? (
+                    <Ionicons name="flash" size={32} color={colors.warning} />
+                ) : (
+                    <View style={[styles.face, { backgroundColor: f.color }]}>
+                        <Text style={styles.faceText} allowFontScaling={false}>
+                            {f.initials}
+                        </Text>
+                    </View>
+                )}
+            </Animated.View>
+        </>
+    );
+}
 
 /** One expanding radar ring. */
 function Ring({ delay }: { delay: number }) {
@@ -169,13 +266,7 @@ export default function Matchmaking() {
                     <Ring delay={0} />
                     <Ring delay={0.33} />
                     <Ring delay={0.66} />
-                    <View style={[styles.core, glow(colors.primary, 22, 0.7)]}>
-                        <Ionicons
-                            name={finalizing ? 'flash' : 'person'}
-                            size={30}
-                            color={colors.primary}
-                        />
-                    </View>
+                    <RollingRadar found={finalizing} />
                 </View>
 
                 <Animated.View style={blinkStyle}>
@@ -226,8 +317,9 @@ const styles = makeThemedStyles(() =>
             paddingHorizontal: spacing.xl,
         },
         radar: {
-            width: RADAR,
-            height: RADAR,
+            // Room for the avatar orbit around the rings.
+            width: ORBIT_R * 2 + 44,
+            height: ORBIT_R * 2 + 44,
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: spacing.lg,
@@ -251,6 +343,26 @@ const styles = makeThemedStyles(() =>
             justifyContent: 'center',
         },
         headline: { marginTop: spacing.sm },
+        sweep: { position: 'absolute', width: RADAR, height: RADAR, alignItems: 'center' },
+        sweepArm: {
+            width: 2,
+            height: RADAR / 2,
+            borderRadius: 1,
+            backgroundColor: colors.primary,
+        },
+        orbitAvatar: {
+            position: 'absolute',
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 2,
+            borderColor: colors.bg,
+        },
+        orbitText: { color: '#0F1115', fontFamily: typography.familyMonoBold, fontWeight: typography.weights.bold, fontSize: 11 },
+        face: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+        faceText: { color: '#0F1115', fontFamily: typography.familyMonoBold, fontWeight: typography.weights.bold, fontSize: 15 },
         footer: {
             paddingHorizontal: spacing.lg,
             paddingBottom: spacing.lg,

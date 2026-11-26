@@ -5,7 +5,6 @@ import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Sheet } from './Sheet';
-import { RankBadge } from './RankBadge';
 import { ProgressBar } from './ProgressBar';
 import { TIER_BANDS, nextThreshold, tierIndex, winsFor, RP_PER_EVEN_WIN } from '../../lib/ranks';
 import { track } from '../../observability';
@@ -30,7 +29,7 @@ export const RankLadderSheet: React.FC<{ visible: boolean; onClose: () => void; 
         <Sheet visible={visible} title="Rank ladder" onClose={onClose}>
             <View style={styles.summary}>
                 <View style={styles.summaryRow}>
-                    <RankBadge tier={tier} size="lg" />
+                    <View style={[styles.dot, styles.dotLg, { backgroundColor: rankColors[tier] }]} />
                     <View style={{ flex: 1 }}>
                         <Text style={[styles.summaryTier, { color: rankColors[tier] }]} allowFontScaling={false}>
                             {label(tier)}
@@ -56,7 +55,7 @@ export const RankLadderSheet: React.FC<{ visible: boolean; onClose: () => void; 
                     const away = band.min - points;
                     return (
                         <View key={band.tier} style={[styles.row, here && { borderColor: rankColors[band.tier], backgroundColor: colors.surfaceElevated }]}>
-                            <RankBadge tier={band.tier} size="sm" />
+                            <View style={[styles.dot, { backgroundColor: rankColors[band.tier] }]} />
                             <View style={{ flex: 1 }}>
                                 <Text style={[styles.rowTier, here && { color: rankColors[band.tier] }]} allowFontScaling={false}>
                                     {label(band.tier)}
@@ -108,6 +107,8 @@ const styles = makeThemedStyles(() =>
         summaryPoints: { color: colors.textMuted, fontFamily: typography.familyMono, fontSize: typography.sizes.sm },
         summaryNext: { color: colors.text, fontFamily: typography.familyMono, fontSize: typography.sizes.sm },
         ladder: { gap: 6 },
+        dot: { width: 18, height: 18, borderRadius: 9 },
+        dotLg: { width: 34, height: 34, borderRadius: 17 },
         row: {
             flexDirection: 'row',
             alignItems: 'center',
