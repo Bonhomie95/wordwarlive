@@ -22,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import { settingsApi, usersApi, authAccountApi, type UserSettings } from '../../src/api/resources';
 import { setHapticsEnabled } from '../../src/lib/haptics';
+import { setSoundEnabled } from '../../src/lib/sound';
 import { contactSupport, openLegal, PRIVACY_URL, TERMS_URL } from '../../src/lib/links';
 import { adPrivacyOptionsRequired, showAdPrivacyOptions } from '../../src/ads';
 import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
@@ -95,6 +96,7 @@ export default function SettingsScreen() {
                 setColorBlind(s.colorBlindMode);
                 persistColorBlind(s.colorBlindMode);
                 setHapticsEnabled(s.haptics);
+                setSoundEnabled(s.sound);
             })
             .catch(() => {});
     }, [setColorBlind]);
@@ -119,6 +121,7 @@ export default function SettingsScreen() {
             // Apply immediately so the very next tap reflects the choice.
             setHapticsEnabled(value as boolean);
         }
+        if (key === 'sound') setSoundEnabled(value as boolean);
         try {
             const updated = await settingsApi.update({ [key]: value });
             setSettings(updated);
@@ -129,6 +132,7 @@ export default function SettingsScreen() {
                 persistColorBlind(prev.colorBlindMode);
             }
             if (key === 'haptics') setHapticsEnabled(prev.haptics);
+            if (key === 'sound') setSoundEnabled(prev.sound);
         } finally {
             setSaving(false);
         }
@@ -206,8 +210,15 @@ export default function SettingsScreen() {
                 {/* ─── Feedback ─────────────────────────────────────────── */}
                 <SectionHeader label="Feedback" />
                 <ToggleRow
+                    label="Sound"
+                    description="A chime when an opponent is found."
+                    value={settings?.sound ?? true}
+                    onValueChange={(v) => updateSetting('sound', v)}
+                    disabled={saving || !settings}
+                />
+                <ToggleRow
                     label="Haptics"
-                    description="Vibration on guesses and important events."
+                    description="Vibration when an opponent is found, on guesses and important events."
                     value={settings?.haptics ?? true}
                     onValueChange={(v) => updateSetting('haptics', v)}
                     disabled={saving || !settings}

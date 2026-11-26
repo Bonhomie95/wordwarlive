@@ -13,6 +13,8 @@ interface Props extends TextProps {
     suffix?: string;
     /** Show an explicit "+" for positive values. */
     signed?: boolean;
+    /** Custom number formatting (default: locale grouping). */
+    format?: (n: number) => string;
 }
 
 export const CountUp: React.FC<Props> = ({
@@ -23,6 +25,7 @@ export const CountUp: React.FC<Props> = ({
     prefix = '',
     suffix = '',
     signed = false,
+    format = (n: number) => n.toLocaleString(),
     ...textProps
 }) => {
     const reduced = useReducedMotion();
@@ -49,7 +52,7 @@ export const CountUp: React.FC<Props> = ({
     const sign = signed && value > 0 ? '+' : '';
     return (
         <Text {...textProps} allowFontScaling={false}>
-            {prefix}{sign}{value.toLocaleString()}{suffix}
+            {prefix}{sign}{format(value)}{suffix}
         </Text>
     );
 };

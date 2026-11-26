@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { playMatchFound } from '../lib/sound';
+import { notify, NotificationType } from '../lib/haptics';
 import {
     ensureSocket,
     disconnectSocket,
@@ -206,6 +208,12 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
     });
 
     sock.on('match_found', (m: MatchFound) => {
+        // Ring and buzz so a player looking away notices. A resume replays
+        // match_found for the same match, which stays quiet.
+        if (get().matchFound?.matchId !== m.matchId) {
+            playMatchFound();
+            notify(NotificationType.Success);
+        }
         set({
             phase: 'matched',
             matchFound: m,

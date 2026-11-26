@@ -20,6 +20,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { colors, makeThemedStyles } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { glow } from '../../src/theme/effects';
+import { useKeepAwakeWhileFocused } from '../../src/hooks/useKeepAwakeWhileFocused';
 
 /** How long each pro tip stays on screen. 5s measured as too quick to
  *  finish a 15-word tip while the bot fills the queue. */
@@ -63,6 +64,7 @@ function Ring({ delay }: { delay: number }) {
 }
 
 export default function Matchmaking() {
+    useKeepAwakeWhileFocused('wordwar-matchmaking');
     const router = useRouter();
     const params = useLocalSearchParams<{ mode?: string }>();
     const mode: 'classic' | 'mystery' =

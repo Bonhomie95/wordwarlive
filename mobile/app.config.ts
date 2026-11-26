@@ -18,7 +18,7 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 const ADMOB_TEST_IOS_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
 const ADMOB_TEST_ANDROID_APP_ID = 'ca-app-pub-3940256099942544~3347511713';
 const APP_ID = 'dev.bonhomieinc.wordwar';
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 
 const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production' || process.env.WORDWAR_RELEASE === '1';
 
@@ -89,6 +89,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Keep every pod buildable on current Xcode (see plugins/withPodDeploymentTarget.js).
     plugins.push('./plugins/withPodDeploymentTarget.js');
     plugins.push('./plugins/withGradleMemory.js');
+    plugins.push('./plugins/withAdScreenAwake.js');
 
     return {
         ...config,

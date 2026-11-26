@@ -10,6 +10,9 @@ import { Ionicons } from '@expo/vector-icons';
 // deleted, so a reinstall would never show the practice word again.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RankBadge } from '../../src/components/ui/RankBadge';
+import { RankLadderSheet } from '../../src/components/ui/RankLadderSheet';
+import { StatsSheet, type StatsFocus } from '../../src/components/ui/StatsSheet';
+import { nextThreshold } from '../../src/lib/ranks';
 import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
 import { Screen } from '../../src/components/ui/Screen';
 import { TopBar } from '../../src/components/ui/TopBar';
@@ -19,7 +22,7 @@ import { ProgressBar } from '../../src/components/ui/ProgressBar';
 import { Button } from '../../src/components/ui/Button';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGameStore } from '../../src/store/gameStore';
-import { adsAvailable, preloadRewarded, showRewarded } from '../../src/ads';
+import { adsAvailable, preloadInterstitial, preloadRewarded, showRewarded } from '../../src/ads';
 import { adsApi, rewardsApi } from '../../src/api/resources';
 import { AdLoadingOverlay } from '../../src/components/ui/AdLoadingOverlay';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
@@ -28,37 +31,8 @@ import { glow } from '../../src/theme/effects';
 import { appAlert } from '../../src/components/ui/AppAlert';
 import { RewardCelebration } from '../../src/components/ui/RewardCelebration';
 import { launchFinished } from '../../src/components/ui/LaunchScreen';
-import type { LeaderboardReward } from '../../src/types/index';
+import type { LeaderboardReward, MeResponse } from '../../src/types/index';
 
-const TIER_THRESHOLDS: { tier: RankTier; min: number }[] = [
-    { tier: 'stone', min: 0 },
-    { tier: 'bronze', min: 1100 },
-    { tier: 'silver', min: 1300 },
-    { tier: 'gold', min: 1500 },
-    { tier: 'platinum', min: 1700 },
-    { tier: 'diamond', min: 1900 },
-    { tier: 'master', min: 2100 },
-    { tier: 'legend', min: 2400 },
-];
-
-function nextThreshold(points: number): {
-    nextTier: RankTier | null;
-    needed: number;
-    progress: number;
-} {
-    for (let i = 0; i < TIER_THRESHOLDS.length - 1; i++) {
-        const cur = TIER_THRESHOLDS[i]!;
-        const next = TIER_THRESHOLDS[i + 1]!;
-        if (points >= cur.min && points < next.min) {
-            return {
-                nextTier: next.tier,
-                needed: next.min - points,
-                progress: (points - cur.min) / (next.min - cur.min),
-            };
-        }
-    }
-    return { nextTier: null, needed: 0, progress: 1 };
-}
 
 export default function Home() {
     const router = useRouter();
@@ -98,9 +72,18 @@ export default function Home() {
         preloadRewarded('daily_bonus', userId);
     }, [userId, lastDailyAdAt, dailyLocallyClaimed]);
 
+    // Keep one interstitial loaded in the background, so it's ready the moment
+    // a game that's due one ends (no waiting, no skipped ad).
+    const noAds = !!user && 'ads' in user && user.ads.removed;
+    useEffect(() => {
+        if (userId && !noAds && adsAvailable()) preloadInterstitial();
+    }, [userId, noAds]);
+
     // Leaderboard results since the last visit (prizes and near misses),
     // celebrated once the launch intro has finished.
     const [results, setResults] = useState<LeaderboardReward[] | null>(null);
+    const [ladderOpen, setLadderOpen] = useState(false);
+    const [statsFocus, setStatsFocus] = useState<StatsFocus | null>(null);
     const resultsShowing = useRef(false);
     useFocusEffect(
         useCallback(() => {
@@ -186,13 +169,18 @@ export default function Home() {
         <Screen edges={['top']}>
             <OnboardingModal visible={showOnboarding} onDone={dismissOnboarding} />
             {results ? <RewardCelebration rewards={results} onDone={onResultsSeen} /> : null}
+            <RankLadderSheet visible={ladderOpen} onClose={() => setLadderOpen(false)} points={points} tier={tier} />
+            {'streak' in user ? (
+                <StatsSheet visible={statsFocus !== null} focus={statsFocus ?? 'record'} onClose={() => setStatsFocus(null)} me={user as MeResponse} />
+            ) : null}
             <AdLoadingOverlay visible={adBusy} label="Loading your reward…" />
             <TopBar />
             <ScrollView
                 contentContainerStyle={styles.scroll}
                 showsVerticalScrollIndicator={false}
             >
-                {/* Rank card */}
+                {/* Rank card: tap for the whole ladder */}
+                <MotionPressable onPress={() => setLadderOpen(true)} accessibilityRole="button" accessibilityLabel="Open the rank ladder">
                 <Card glowing style={styles.rankCard}>
                     <View style={styles.rankRow}>
                         <RankBadge tier={tier} size="lg" />
@@ -212,9 +200,12 @@ export default function Home() {
                                 : 'TOP TIER'}
                         </MonoLabel>
                     </View>
+                    <MonoLabel size={10}>Tap to see every rank</MonoLabel>
                 </Card>
+                </MotionPressable>
 
-                {/* Stat tiles */}
+                {/* Stat tiles: tap for the full stats */}
+                <MotionPressable onPress={() => setStatsFocus('record')} accessibilityRole="button" accessibilityLabel="Open your stats">
                 <View style={styles.statsRow}>
                     <StatTile
                         value={wlRatio}
@@ -224,7 +215,7 @@ export default function Home() {
                     <StatTile
                         value={String(winStreak)}
                         label="Win Streak"
-                        icon={<Ionicons name="flame" size={18} color={colors.warning} />}
+                        icon={<Ionicons name="trophy" size={18} color={colors.warning} />}
                     />
                     <StatTile
                         value={`${winRate}%`}
@@ -232,6 +223,7 @@ export default function Home() {
                         icon={<Ionicons name="ribbon" size={18} color={colors.info} />}
                     />
                 </View>
+                </MotionPressable>
 
                 {/* Primary action */}
                 {hasActiveMatch ? (

@@ -14,6 +14,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Constants from 'expo-constants';
 
 export type RewardedSlot = 'daily_bonus' | 'bp_xp_boost' | 'coin_boost';
@@ -312,6 +313,31 @@ interface SlotAd {
 const slots = new Map<RewardedSlot, SlotAd>();
 const PRELOAD_RETRY_MS = 30_000;
 const preloadRetried = new Set<RewardedSlot>();
+/** Keep the screen on from the tap until a full-screen ad closes, so the
+ *  phone doesn't dim while it loads or before its close button appears. */
+async function keepAwakeWhile<T>(work: Promise<T>): Promise<T> {
+    activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
+    try {
+        return await work;
+    } finally {
+        deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => {});
+    }
+}
+const KEEP_AWAKE_TAG = 'wordwar-ad';
+
+/** Show a rewarded ad (see showRewardedInner). */
+export function showRewarded(slot: RewardedSlot, userId: string): Promise<RewardedShowResult> {
+    return keepAwakeWhile(showRewardedInner(slot, userId));
+}
+
+/** Show the preloaded interstitial; true once it closes, false when none is
+ *  ready. Either way the next one starts loading, so one is always warm. */
+export async function showInterstitial(): Promise<boolean> {
+    const shown = await keepAwakeWhile(showInterstitialInner());
+    if (shown) setTimeout(preloadInterstitial, 1000);
+    return shown;
+}
+
 /** A full-screen ad (rewarded or interstitial) is on screen right now. */
 let presenting = false;
 
@@ -410,7 +436,7 @@ export function preloadRewarded(slot: RewardedSlot, userId: string): void {
  * when it errors, or when the ready-wait times out — so callers can safely
  * keep a blocking overlay up until this settles.
  */
-export async function showRewarded(
+async function showRewardedInner(
     slot: RewardedSlot,
     userId: string
 ): Promise<RewardedShowResult> {
@@ -508,7 +534,7 @@ export function preloadInterstitial(): void {
 
 /** Show the preloaded interstitial. Resolves true once it closes, or false
  *  right away when none is ready (a fresh one starts loading). */
-export async function showInterstitial(): Promise<boolean> {
+async function showInterstitialInner(): Promise<boolean> {
     const m = loadModule();
     const cur = inter;
     if (!m || !cur?.loadedAt || Date.now() - cur.loadedAt > INTERSTITIAL_MAX_AGE_MS || presenting || !adRequestsAllowed()) {

@@ -42,10 +42,12 @@ import { typography, spacing, radius } from '../../src/theme/typography';
 import { contentColumn } from '../../src/theme/layout';
 import { appAlert } from '../../src/components/ui/AppAlert';
 import { preloadInterstitial } from '../../src/ads';
+import { useKeepAwakeWhileFocused } from '../../src/hooks/useKeepAwakeWhileFocused';
 
 const HINT_COIN_COST = 50;
 
 export default function Match() {
+    useKeepAwakeWhileFocused('wordwar-match');
     const router = useRouter();
     const phase = useGameStore((s) => s.phase);
     const matchFound = useGameStore((s) => s.matchFound);

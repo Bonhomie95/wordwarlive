@@ -25,6 +25,7 @@ import { initIap, reconcilePurchases } from '../src/iap';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { initObservability } from '../src/observability';
 import { restoreHapticsPref } from '../src/lib/haptics';
+import { restoreSoundPref } from '../src/lib/sound';
 import { registerForPush, onNotificationResponse } from '../src/lib/notifications';
 import { colors, useThemeStore, type ThemeId } from '../src/theme/colors';
 import { AlertHost } from '../src/components/ui/AppAlert';
@@ -89,6 +90,7 @@ export default function RootLayout() {
         initObservability();
         hydrate();
         restoreHapticsPref();
+        restoreSoundPref();
         // Restore saved theme — persisted across app launches via SecureStore.
         SecureStore.getItemAsync(THEME_STORAGE_KEY)
             .then((stored) => {
