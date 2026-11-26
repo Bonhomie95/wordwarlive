@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import { col, registerIndexes } from '../db/mongo.js';
 import { logger } from '../utils/logger.js';
+import { isBlockedEither } from './blocksService.js';
 
 const CODE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -95,6 +96,8 @@ export async function redeemFriendInviteCode(
     const friend = await col<{ id: string; username: string }>('users')
         .findOne({ id: friendId }, { projection: { _id: 0, username: 1 } });
     if (!friend) return { ok: false, error: 'User not found.' };
+    // A code shared before a block must not undo the block.
+    if (await isBlockedEither(friendId, redeemingUserId)) return { ok: false, error: 'Invalid code.' };
 
     await befriend(friendId, redeemingUserId);
 

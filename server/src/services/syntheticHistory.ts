@@ -254,6 +254,7 @@ export async function updateSynthetic(
                 await days().updateOne({ day: row.day }, { $set: { payload: freezeCompletedActivity(row.payload, cutoff) } });
         }
     }
+    policyMemo = null; // pause/resume must reach matchmaking immediately
     await col('admin_audit_log').insertOne({
         id: newId(),
         admin_id: actorId,
@@ -356,8 +357,21 @@ export async function persistedDailySolvers(day: string, now = Date.now()) {
     return (await ensureSyntheticDay(day)).daily.filter((e) => e.solvedAtMs <= now);
 }
 
+// ponytail: 30 s per-process memo. Matchmaking asks every second for every
+// waiting player, and each answer costs 3 Mongo ops (one counts active users).
+// updateSynthetic clears it; another node would see an admin change ≤30 s late.
+let policyMemo: { at: number; value: ReturnType<typeof computeSyntheticMatchPolicy> } | null = null;
+
 /** Queue fallbacks consult the same operator controls; running matches finish normally. */
-export async function syntheticMatchPolicy() {
+export function syntheticMatchPolicy(): ReturnType<typeof computeSyntheticMatchPolicy> {
+    if (policyMemo && Date.now() - policyMemo.at < 30_000) return policyMemo.value;
+    const value = computeSyntheticMatchPolicy();
+    policyMemo = { at: Date.now(), value };
+    value.catch(() => { if (policyMemo?.value === value) policyMemo = null; });
+    return value;
+}
+
+async function computeSyntheticMatchPolicy() {
     const today = todayStr();
     const [paused, version, real] = await Promise.all([
         isPaused(),

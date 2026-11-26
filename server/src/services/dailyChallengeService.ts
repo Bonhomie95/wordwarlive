@@ -21,6 +21,7 @@ registerIndexes('daily_challenges', [{ key: { challenge_date: 1 }, unique: true 
 registerIndexes('daily_challenge_attempts', [
     { key: { challenge_date: 1, user_id: 1 }, unique: true },
     { key: { challenge_date: 1, solved: 1 } },
+    { key: { user_id: 1 } }, // account deletion
 ]);
 registerIndexes('hint_uses', [{ key: { match_id: 1, user_id: 1 } }]);
 
@@ -219,6 +220,7 @@ export async function submitGuess(
 
     let coinsAwarded = 0;
     if (solved) {
+        standingsMemo = null; // the solver should see themselves on the board right away
         try {
             await grantCoins({ userId, amount: DAILY_SOLVE_COINS, source: 'daily_solve', metadata: { date } });
             coinsAwarded = DAILY_SOLVE_COINS;
@@ -313,6 +315,18 @@ export async function redeemDailyHint(
  * guess count then time. Also returns the
  * caller's own rank so the client can show it when they're outside the top.
  */
+// ponytail: today's standings are the same for every viewer, so one 15 s
+// per-process memo serves them all (a solve on this node clears it).
+let standingsMemo: { day: string; at: number; rows: ReturnType<typeof dailyStandings> } | null = null;
+function liveStandings(): ReturnType<typeof dailyStandings> {
+    const day = todayUtc();
+    if (standingsMemo?.day === day && Date.now() - standingsMemo.at < 15_000) return standingsMemo.rows;
+    const rows = dailyStandings(day);
+    standingsMemo = { day, at: Date.now(), rows };
+    rows.catch(() => { if (standingsMemo?.rows === rows) standingsMemo = null; });
+    return rows;
+}
+
 export async function todaysLeaderboard(
     limit = 50,
     userId?: string
@@ -321,7 +335,7 @@ export async function todaysLeaderboard(
     me: { rank: number; guessCount: number; durationMs: number } | null;
     total: number;
 }> {
-    const all = (await dailyStandings(todayUtc())).map(({ real: _real, ...e }) => e);
+    const all = (await liveStandings()).map(({ real: _real, ...e }) => e);
 
     const idx = userId ? all.findIndex((e) => e.userId === userId) : -1;
     const mine = idx >= 0 ? all[idx]! : null;

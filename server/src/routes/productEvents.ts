@@ -7,6 +7,7 @@ import { redis } from '../db/redis.js';
 registerIndexes('product_events', [
     { key: { id: 1 }, unique: true },
     { key: { created_at: 1, event: 1 } },
+    { key: { user_id: 1 } }, // account deletion
 ]);
 
 export const productEventsRouter = Router();

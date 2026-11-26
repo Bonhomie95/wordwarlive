@@ -86,13 +86,6 @@ async function main() {
     // node id (e.g. a crash without a clean shutdown).
     await resetMatchmakingQueue();
 
-    // Promote any configured bootstrap admins (ADMIN_EMAILS). Idempotent.
-    if (env.adminEmails.length) {
-        const { promoteAdminEmails } = await import('./services/adminService.js');
-        const n = await promoteAdminEmails(env.adminEmails).catch(() => 0);
-        if (n) logger.info({ promoted: n }, 'Promoted bootstrap admin(s)');
-    }
-
     const app = express();
     // Behind a proxy/LB, trust exactly TRUST_PROXY hops so rate limiting keys
     // on the real client IP rather than the proxy's.

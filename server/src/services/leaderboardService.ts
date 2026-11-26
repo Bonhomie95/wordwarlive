@@ -18,6 +18,7 @@ import { logger } from '../utils/logger.js';
 registerIndexes('leaderboard_entries', [
     { key: { period: 1, bucket: 1, mode: 1, user_id: 1 }, unique: true },
     { key: { period: 1, bucket: 1, mode: 1, wins: -1, rank_points: -1, user_id: 1 } },
+    { key: { user_id: 1 } }, // account deletion
 ]);
 registerIndexes('users', [{ key: { id: 1 }, unique: true }]);
 
@@ -146,6 +147,34 @@ interface RankedRow {
     equipped_profile_border: string | null;
 }
 
+// Banned humans are hidden from live boards; bots never get entries (settlement
+// skips them). ponytail: 60 s per-process memo, so a fresh ban leaves the boards
+// up to 60 s later; move `banned` onto the entries if that ever matters.
+let hiddenMemo: { at: number; ids: Promise<string[]> } | null = null;
+function hiddenUserIds(): Promise<string[]> {
+    if (hiddenMemo && Date.now() - hiddenMemo.at < 60_000) return hiddenMemo.ids;
+    const ids = col<{ id: string }>('users')
+        .find({ banned: true }, { projection: { _id: 0, id: 1 } })
+        .toArray()
+        .then((rows) => rows.map((r) => r.id));
+    hiddenMemo = { at: Date.now(), ids };
+    ids.catch(() => { if (hiddenMemo?.ids === ids) hiddenMemo = null; });
+    return ids;
+}
+
+/** Live-board filter, served by the compound (period, bucket, mode, wins, …) index. */
+function boardMatch(period: LeaderboardPeriod, bucket: string, mode: string, hidden: string[], extra: Document = {}): Document {
+    return { period, bucket, mode, ...(hidden.length ? { user_id: { $nin: hidden } } : {}), ...extra };
+}
+
+/** Display fields for rows that are already selected. The bot/banned match is a
+ *  backstop only: filtering happens before the join so sorts can use the index. */
+const JOIN_USER: Document[] = [
+    { $lookup: { from: 'users', localField: 'user_id', foreignField: 'id', as: 'u' } },
+    { $unwind: '$u' },
+    { $match: { 'u.auth_subject': { $not: /^bot-/ }, 'u.banned': false } },
+];
+
 /** Entries for a board joined to their (human, unbanned) users. */
 function rankedStages(period: LeaderboardPeriod, bucket: string, mode: string, extra: Document = {}): Document[] {
     return [
@@ -215,12 +244,14 @@ export async function getLeaderboard(args: {
         logger.warn({ err }, 'leaderboard cache read failed');
     }
 
+    const hidden = !entries || args.requesterId ? await hiddenUserIds() : [];
     if (!entries) {
         const topRows = await entriesCol
             .aggregate<RankedRow>([
-                ...rankedStages(args.period, bucket, mode),
+                { $match: boardMatch(args.period, bucket, mode, hidden) },
                 { $sort: { wins: -1, rank_points: -1, user_id: 1 } },
                 { $limit: limit },
+                ...JOIN_USER,
                 PROJECT_ROW,
             ])
             .toArray();
@@ -235,23 +266,21 @@ export async function getLeaderboard(args: {
     let you: LeaderboardEntry | null = null;
     if (args.requesterId) {
         const [r] = await entriesCol
-            .aggregate<RankedRow>([...rankedStages(args.period, bucket, mode, { user_id: args.requesterId }), PROJECT_ROW])
+            .aggregate<RankedRow>([{ $match: { period: args.period, bucket, mode, user_id: args.requesterId } }, ...JOIN_USER, PROJECT_ROW])
             .toArray();
         if (r) {
             // ROW_NUMBER() equivalent: 1 + humans strictly ahead in (wins desc, rank_points desc, user_id asc).
-            const [ahead] = await entriesCol
-                .aggregate<{ n: number }>([
-                    ...rankedStages(args.period, bucket, mode, {
-                        $or: [
-                            { wins: { $gt: r.wins } },
-                            { wins: r.wins, rank_points: { $gt: r.rank_points } },
-                            { wins: r.wins, rank_points: r.rank_points, user_id: { $lt: r.user_id } },
-                        ],
-                    }),
-                    { $count: 'n' },
-                ])
-                .toArray();
-            you = toEntry(r, 1 + (ahead?.n ?? 0));
+            // Index-only count: no per-row join.
+            const ahead = await entriesCol.countDocuments(
+                boardMatch(args.period, bucket, mode, hidden, {
+                    $or: [
+                        { wins: { $gt: r.wins } },
+                        { wins: r.wins, rank_points: { $gt: r.rank_points } },
+                        { wins: r.wins, rank_points: r.rank_points, user_id: { $lt: r.user_id } },
+                    ],
+                })
+            );
+            you = toEntry(r, 1 + ahead);
         }
     }
 
@@ -260,18 +289,36 @@ export async function getLeaderboard(args: {
         ({ ...entry, avatarId: null, profileBorderId: null, rankInLeaderboard: 0 });
 
     if (args.around && you && args.requesterId) {
-        // ponytail: loads every human row in the bucket to place the requester
-        // among the synthetic players; paginate server-side if humans grow large.
+        // ponytail: reads every human's (wins, points) in the bucket to place the
+        // requester among the synthetic players, but joins users only for the
+        // visible window; rank by counting if humans grow past ~100k.
         const humans = await entriesCol
-            .aggregate<RankedRow>([...rankedStages(args.period, bucket, mode), PROJECT_ROW])
+            .find<{ user_id: string; wins: number; rank_points: number }>(boardMatch(args.period, bucket, mode, hidden), {
+                projection: { _id: 0, user_id: 1, wins: 1, rank_points: 1 },
+            })
             .toArray();
-        const standings = [...humans.map((r) => toEntry(r, 0)), ...fillers.map(asFiller)]
-            .sort(compareStandings)
-            .map((entry, i) => ({ ...entry, rankInLeaderboard: i + 1 }));
+        const standings: Array<{ userId: string; wins: number; rankPoints: number; filler?: LeaderboardEntry }> = [
+            ...humans.map((h) => ({ userId: h.user_id, wins: h.wins, rankPoints: h.rank_points })),
+            ...fillers.map((f) => ({ userId: f.userId, wins: f.wins, rankPoints: f.rankPoints, filler: asFiller(f) })),
+        ].sort(compareStandings);
         const idx = standings.findIndex((e) => e.userId === args.requesterId);
         const from = Math.max(0, idx - Math.floor(limit / 2));
-        const window = standings.slice(from, from + limit);
-        return { period: args.period, bucket, entries: window, you: standings[idx] ?? you };
+        const slice = standings.slice(from, from + limit);
+        const rows = await entriesCol
+            .aggregate<RankedRow>([
+                { $match: { period: args.period, bucket, mode, user_id: { $in: slice.filter((s) => !s.filler).map((s) => s.userId) } } },
+                ...JOIN_USER,
+                PROJECT_ROW,
+            ])
+            .toArray();
+        const byId = new Map(rows.map((r) => [r.user_id, r]));
+        const window: LeaderboardEntry[] = [];
+        slice.forEach((s, i) => {
+            const rank = from + i + 1;
+            if (s.filler) window.push({ ...s.filler, rankInLeaderboard: rank });
+            else { const r = byId.get(s.userId); if (r) window.push(toEntry(r, rank)); }
+        });
+        return { period: args.period, bucket, entries: window, you: window.find((e) => e.userId === args.requesterId) ?? you };
     }
 
     const merged: LeaderboardEntry[] = [

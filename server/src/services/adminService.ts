@@ -59,19 +59,6 @@ export async function isAdmin(userId: string): Promise<boolean> {
     return u?.is_admin ?? false;
 }
 
-/** Promote the configured admin emails at boot (idempotent). */
-export async function promoteAdminEmails(emails: string[]): Promise<number> {
-    if (emails.length === 0) return 0;
-    const res = await col('users').updateMany(
-        {
-            email: { $in: emails.map((e) => new RegExp(`^${escapeRe(e)}$`, 'i')) },
-            $or: [{ is_admin: false }, { is_super_admin: false }],
-        },
-        { $set: { is_admin: true, is_super_admin: true } }
-    );
-    return res.modifiedCount;
-}
-
 export async function setAdmin(userId: string, value: boolean): Promise<void> {
     await col('users').updateOne({ id: userId }, { $set: { is_admin: value, updated_at: new Date() } });
 }

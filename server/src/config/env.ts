@@ -71,11 +71,6 @@ const schema = z.object({
     // openly (fine when only reachable on an internal network).
     METRICS_TOKEN: z.string().optional().default(''),
 
-    // Comma-separated emails auto-promoted to admin at boot (and on their next
-    // email login). This is how the FIRST admin is bootstrapped — set it, sign
-    // in with that email, and you have the admin panel.
-    ADMIN_EMAILS: z.string().optional().default(''),
-
     // ─── In-app purchase verification ───────────────────────────────────────
     // When false (dev default), purchase endpoints grant items without
     // contacting the stores so the shop stays interactive locally. Turn ON
@@ -150,9 +145,6 @@ export const env = {
         parsed.data.CORS_ORIGINS === '*'
             ? '*'
             : parsed.data.CORS_ORIGINS.split(',').map((s) => s.trim()),
-    adminEmails: parsed.data.ADMIN_EMAILS.split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean),
     applePrivateKey: parsed.data.APPLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
     appleRevokeConfigured: !!(
         parsed.data.APPLE_BUNDLE_ID &&

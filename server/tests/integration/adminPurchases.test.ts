@@ -53,6 +53,10 @@ describe.skipIf(!hasDb)('admin authorization and purchase HTTP flows', () => {
         expect((await req(1, `/admin/players/${users[2]!.id}/role`, { admin: true, reason: 'Test role access' })).status).toBe(403);
         expect((await req(1, `/admin/players/${users[0]!.id}/ban`, {})).status).toBe(403);
         expect((await req(0, `/admin/players/${users[0]!.id}`, undefined, 'DELETE')).status).toBe(403);
+        // Express matches /BAN and /ban/ to the /ban route; the guard must too.
+        for (const path of ['BAN', 'ban/', 'Role']) {
+            expect((await req(0, `/admin/players/${users[0]!.id}/${path}`, { banned: true, admin: false, reason: 'Path variant probe' })).status).toBe(403);
+        }
         expect((await req(0, '/admin/players/invalid')).status).toBe(400);
         const self = await (await req(0, '/admin/me')).json();
         expect(self.superAdmin).toBe(true);

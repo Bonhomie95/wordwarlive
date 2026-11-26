@@ -46,7 +46,8 @@ leaderboardRouter.get('/leaderboard', requireAuth, async (req, res) => {
         });
     }
     const limitParam = Number(req.query.limit ?? 50);
-    const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
+    // Whole numbers only: each distinct limit is its own cache key.
+    const limit = Number.isFinite(limitParam) && limitParam >= 1 ? Math.floor(limitParam) : 50;
 
     const data = await getLeaderboard({
         period: periodParam,

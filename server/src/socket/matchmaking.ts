@@ -63,6 +63,7 @@ interface QueueMeta {
 
 class MatchmakingHub {
     private tickTimer: NodeJS.Timeout | null = null;
+    private ticking = false;
     /** Userids we've started a bot match for, so we don't double-spawn. */
     private botSpawning = new Set<string>();
 
@@ -121,21 +122,23 @@ class MatchmakingHub {
     ): Promise<void> {
         const lo = rankPoints - radius;
         const hi = rankPoints + radius;
-        // ZRANGEBYSCORE to find candidates; exclude self and anyone blocked in
-        // either direction so a blocked pair is never matched.
+        // ZRANGEBYSCORE (with scores, one round trip) to find candidates;
+        // exclude self and anyone blocked in either direction so a blocked pair
+        // is never matched. Blocks are only read when someone is in range.
+        const flat = await redis.zrangebyscore(QUEUE_KEY, lo, hi, 'WITHSCORES');
+        const others: Array<[string, number]> = [];
+        for (let i = 0; i < flat.length; i += 2) {
+            if (flat[i] !== userId) others.push([flat[i]!, Number(flat[i + 1])]);
+        }
+        if (others.length === 0) return;
         const blocked = new Set(await getBlockedIdsFor(userId));
-        const ids = (await redis.zrangebyscore(QUEUE_KEY, lo, hi)).filter(
-            (id: string) => id !== userId && !blocked.has(id)
-        );
-        if (ids.length === 0) return;
 
         // Pick the closest by rank.
         let bestId: string | null = null;
         let bestDelta = Number.POSITIVE_INFINITY;
-        for (const id of ids) {
-            const score = await redis.zscore(QUEUE_KEY, id);
-            if (score === null) continue;
-            const d = Math.abs(Number(score) - rankPoints);
+        for (const [id, score] of others) {
+            if (blocked.has(id)) continue;
+            const d = Math.abs(score - rankPoints);
             if (d < bestDelta) {
                 bestDelta = d;
                 bestId = id;
@@ -201,7 +204,12 @@ class MatchmakingHub {
     private ensureTimer(io: AppIOServer): void {
         if (this.tickTimer) return;
         this.tickTimer = setInterval(() => {
-            this.tick(io).catch((err) => logger.error({ err }, 'mm tick failed'));
+            // A slow tick must not overlap the next one and pile up work.
+            if (this.ticking) return;
+            this.ticking = true;
+            this.tick(io)
+                .catch((err) => logger.error({ err }, 'mm tick failed'))
+                .finally(() => { this.ticking = false; });
         }, 1000);
     }
 
@@ -214,8 +222,8 @@ class MatchmakingHub {
             return;
         }
 
-        for (const id of ids) {
-            const metaRaw = await redis.get(META_KEY(id));
+        const metas = await redis.mget(ids.map(META_KEY));
+        for (const metaRaw of metas) {
             if (!metaRaw) continue;
             const meta: QueueMeta = JSON.parse(metaRaw);
             const waited = Date.now() - meta.enqueuedAt;

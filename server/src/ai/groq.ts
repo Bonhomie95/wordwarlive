@@ -19,19 +19,30 @@ function getClient(): Groq {
             'GROQ_API_KEY is not set. Bot opponents and daily-word curation are disabled.'
         );
     }
-    if (!client) client = new Groq({ apiKey: env.GROQ_API_KEY });
+    // Fail fast: every caller has a non-AI fallback, so a slow or throttled
+    // Groq must not stall a bot's turn behind SDK retries (default 2 × 60 s).
+    if (!client) client = new Groq({ apiKey: env.GROQ_API_KEY, timeout: 5_000, maxRetries: 0 });
     return client;
 }
 
+/** While rate-limited (429), skip Groq until this time instead of spending a
+ *  failed call on every bot guess. */
+let throttledUntil = 0;
+
 export function isGroqEnabled(): boolean {
-    return env.GROQ_API_KEY.length > 0 && fatalDisableReason === null;
+    return env.GROQ_API_KEY.length > 0 && fatalDisableReason === null && Date.now() >= throttledUntil;
 }
 
 /** Inspect a Groq error; if it's account-level (not transient), latch Groq
- *  off for this process. Transient errors (429, 5xx, network) don't latch. */
+ *  off for this process. A 429 pauses Groq for 60 s; 5xx/network don't latch. */
 function maybeDisableOnFatal(err: unknown): void {
     if (fatalDisableReason) return;
     const e = err as { status?: number; error?: { error?: { code?: string } } };
+    if (e.status === 429) {
+        throttledUntil = Date.now() + 60_000;
+        logger.warn('Groq rate-limited (429); using the heuristic fallback for 60 s');
+        return;
+    }
     const code = e.error?.error?.code ?? '';
     const fatal =
         e.status === 401 ||

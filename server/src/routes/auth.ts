@@ -2,6 +2,7 @@ import { env } from '../config/env.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+    CI,
     bumpTokenVersion,
     createUser,
     findUserByEmail,
@@ -16,6 +17,7 @@ import {
 import { requireAuth } from '../auth/middleware.js';
 import { containsProfanity } from '../moderation/blocklist.js';
 import { col } from '../db/mongo.js';
+import { redis } from '../db/redis.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
 import { verifyGoogleIdToken } from '../auth/google.js';
@@ -47,17 +49,32 @@ function shapeUserForClient(user: {
 }
 
 async function uniqueUsername(base: string): Promise<string> {
-    // Try base, base1, base2, … until one is free. (For low-volume the
-    // collision rate is small. For high volume we'd switch to a SQL UPSERT.)
+    // First free name among base, base1 … base49, checked in ONE query.
     const clean = base.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 12) || 'player';
-    for (let n = 0; n < 50; n++) {
-        const candidate = n === 0 ? clean : `${clean}${n}`;
-        if (!isValidUsername(candidate)) continue;
-        if (!(await findUserIdByUsername(candidate))) return candidate;
-    }
+    const candidates = [clean, ...Array.from({ length: 49 }, (_, i) => `${clean}${i + 1}`)].filter(isValidUsername);
+    const taken = await col<{ username: string }>('users')
+        .find({ username: { $in: candidates } }, { projection: { _id: 0, username: 1 }, collation: CI })
+        .toArray();
+    const takenLower = new Set(taken.map((u) => u.username.toLowerCase()));
     // Fallback: random suffix
-    return `${clean}${Math.random().toString(36).slice(2, 6)}`;
+    return candidates.find((c) => !takenLower.has(c.toLowerCase())) ?? `${clean}${Math.random().toString(36).slice(2, 6)}`;
 }
+
+// ponytail: per-IP cap on NEW guest/email accounts (returning sign-ins don't
+// count; Google/Apple need a real identity). Generous because carrier NAT
+// shares one IP across many phones; add device attestation if farms appear.
+const NEW_ACCOUNTS_PER_IP_HOUR = 30;
+async function newAccountAllowed(ip: string | undefined): Promise<boolean> {
+    const key = `signups:${ip ?? 'unknown'}:${Math.floor(Date.now() / 3_600_000)}`;
+    try {
+        const n = await redis.incr(key);
+        if (n === 1) await redis.expire(key, 3_700);
+        return n <= NEW_ACCOUNTS_PER_IP_HOUR;
+    } catch {
+        return true; // a Redis hiccup must not block sign-up
+    }
+}
+const TOO_MANY_ACCOUNTS = { error: 'Too many new accounts from this network. Please try again later.' };
 
 // ─── Anonymous ──────────────────────────────────────────────────────────────
 
@@ -78,6 +95,7 @@ authRouter.post('/anonymous', async (req, res) => {
 
     let user = await findUserByProviderSubject('anonymous', deviceId);
     if (!user) {
+        if (!(await newAccountAllowed(req.ip))) return res.status(429).json(TOO_MANY_ACCOUNTS);
         const username = await uniqueUsername(desiredUsername ?? `player_${deviceId.slice(0, 6)}`);
         if (!isValidUsername(username)) {
             return res.status(400).json({ error: 'Could not derive a valid username' });
@@ -125,6 +143,7 @@ authRouter.post('/email/register', async (req, res) => {
     if (await findUserIdByUsername(username)) {
         return res.status(409).json({ error: 'Username taken' });
     }
+    if (!(await newAccountAllowed(req.ip))) return res.status(429).json(TOO_MANY_ACCOUNTS);
 
     const user = await createUser({
         username,

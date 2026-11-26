@@ -30,7 +30,6 @@ import { verifyPassword } from '../auth/password.js';
 import { signSession } from '../auth/jwt.js';
 import { col } from '../db/mongo.js';
 import { authLimiter } from '../middleware/rateLimit.js';
-import { env } from '../config/env.js';
 import * as admin from '../services/adminService.js';
 
 export const adminRouter = Router();
@@ -46,12 +45,6 @@ adminRouter.post('/admin/login', authLimiter, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Invalid body' });
     const { email, password } = parsed.data;
-
-    // Auto-promote configured bootstrap emails at login time too, so the very
-    // first admin login works without a server restart.
-    if (env.adminEmails.includes(email.toLowerCase())) {
-        await admin.promoteAdminEmails([email.toLowerCase()]);
-    }
 
     const user = await findUserByEmail(email);
     if (!user || user.auth_provider !== 'email') {
@@ -110,7 +103,10 @@ adminRouter.use('/admin/players/:id', async (req, res, next) => {
     if (req.method !== 'GET' && target.is_admin && !(await admin.isSuperAdmin(req.session!.userId))) {
         return res.status(403).json({ error: 'Super-admin access required to manage administrators.' });
     }
-    if (req.method !== 'GET' && target.is_super_admin && (req.method === 'DELETE' || req.path === '/ban' || req.path === '/role')) {
+    // Express routes match case-insensitively and ignore a trailing slash, so
+    // compare the normalised path (/BAN and /ban/ reach the /ban handler).
+    const sub = req.path.toLowerCase().replace(/\/+$/, '');
+    if (req.method !== 'GET' && target.is_super_admin && (req.method === 'DELETE' || sub === '/ban' || sub === '/role')) {
         return res.status(403).json({ error: 'Super-admin access is managed by the server operator.' });
     }
     if (req.method !== 'GET' && !z.string().trim().min(3).max(500).safeParse(req.body?.reason).success) return res.status(400).json({ error: 'A reason of 3–500 characters is required.' });

@@ -32,10 +32,8 @@ async function shapeMe(u: NonNullable<Awaited<ReturnType<typeof findUserById>>>)
     ].filter((id): id is string => !!id);
 
     const renderDataById: Record<string, Record<string, unknown>> = {};
-    for (const id of equippedIds) {
-        const cos = await getCosmetic(id);
-        if (cos) renderDataById[id] = cos.render_data;
-    }
+    const found = await Promise.all(equippedIds.map((id) => getCosmetic(id)));
+    for (const cos of found) if (cos) renderDataById[cos.id] = cos.render_data;
 
     return {
         id: u.id,

@@ -172,10 +172,12 @@ export function noticeLine(n: { rank: number; coins: number; label: string }): s
     return gap <= CLOSE_MISS ? `#${rank} on ${n.label}, ${gap} ${gap === 1 ? 'place' : 'places'} from a prize` : `#${rank} on ${n.label}`;
 }
 
-/** One push per player for everything a payout run produced for them. */
-function pushNotices(notices: Notice[]): void {
+/** One push per player for everything a payout run produced for them, 20 at
+ *  a time so midnight doesn't fire a token lookup + Expo call per player at once. */
+async function pushNotices(notices: Notice[]): Promise<void> {
     const byUser = new Map<string, Notice[]>();
     for (const n of notices) byUser.set(n.userId, [...(byUser.get(n.userId) ?? []), n]);
+    const sends: Array<() => Promise<void>> = [];
     for (const [userId, list] of byUser) {
         const won = list.filter((n) => n.coins);
         const close = list.some((n) => !n.coins && n.rank - 100 <= CLOSE_MISS);
@@ -185,11 +187,14 @@ function pushNotices(notices: Notice[]): void {
               ? 'So close to a prize!'
               : 'Leaderboard results are in';
         const tail = won.length ? '' : ' The top 100 win coins, so play today to climb in.';
-        void sendPushToUser(userId, {
+        sends.push(() => sendPushToUser(userId, {
             title,
             body: `${list.map(noticeLine).join('. ')}.${tail}`,
             data: { type: 'leaderboard_reward' },
-        });
+        }));
+    }
+    for (let i = 0; i < sends.length; i += 20) {
+        await Promise.allSettled(sends.slice(i, i + 20).map((send) => send()));
     }
 }
 
@@ -205,7 +210,7 @@ export async function runLeaderboardPayouts(now = new Date()): Promise<void> {
             logger.error({ err, board, bucket }, 'leaderboard payout failed');
         }
     }
-    pushNotices(notices);
+    void pushNotices(notices).catch((err) => logger.warn({ err }, 'leaderboard push notices failed'));
 }
 
 /** Check shortly after boot and every 10 minutes (each closed bucket pays once). */

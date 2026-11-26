@@ -17,7 +17,10 @@ import { col, registerIndexes } from '../db/mongo.js';
 import { logger } from '../utils/logger.js';
 
 registerIndexes('rank_seasons', [{ key: { id: 1 }, unique: true }, { key: { starts_at: 1, ends_at: 1 } }]);
-registerIndexes('rank_season_results', [{ key: { season_id: 1, user_id: 1 }, unique: true }]);
+registerIndexes('rank_season_results', [
+    { key: { season_id: 1, user_id: 1 }, unique: true },
+    { key: { user_id: 1 } }, // account deletion
+]);
 
 export interface RankSeason {
     id: number;

@@ -34,19 +34,18 @@ rejects their token on the next request (their sessions are revoked on ban).
 Admin routes are gated by `requireAuth + requireAdmin`; only users with
 `is_admin = true` pass. Admins sign in with their **email + password** account.
 
-Bootstrap the first admin one of two ways (from `server/`):
+Bootstrap the first admin from `server/` (with `MONGODB_URL` pointing at the
+target database):
 
 ```bash
-# 1. Promote an existing email account by CLI:
 npm run make-admin -- you@wordwar.app
-
-# 2. Or set ADMIN_EMAILS in the server env — those emails are promoted at
-#    boot and on their next login:
-#    ADMIN_EMAILS=you@wordwar.app,ops@wordwar.app
 ```
 
+There is deliberately no env-var auto-promotion: email sign-up doesn't verify
+the address, so anyone could register an unclaimed admin email and inherit it.
+
 The account must have signed up with **email auth** (it needs a password to log
-in here). The bootstrap and CLI grant **super-admin**. Only super-admins can promote or
+in here). The CLI grants **super-admin**. Only super-admins can promote or
 demote ordinary admins; ordinary admins cannot modify admin accounts. Super-admin
 accounts cannot be banned, deleted, or demoted through the panel. Migration 024
 promotes pre-existing admins to super-admin, so review that list when deploying.
