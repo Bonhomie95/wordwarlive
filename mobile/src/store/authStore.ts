@@ -25,6 +25,7 @@ import { authAccountApi, usersApi } from "../api/resources";
 import type { MeResponse, PublicUser } from "../types/index";
 import { disconnectSocket, setSocketAuthErrorHandler } from "../socket/client";
 import { registerForPush, unregisterPush } from "../lib/notifications";
+import { cancelReminders } from "../lib/reminders";
 
 const DEVICE_KEY = "wordwar.deviceId";
 /** Last-known profile, cached so cold starts render instantly (and offline)
@@ -334,6 +335,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     // Best-effort: drop this device's push token before we lose the session.
     await unregisterPush().catch(() => {});
+    await cancelReminders();
     await clearStoredToken();
     cacheUser(null);
     disconnectSocket();

@@ -31,6 +31,8 @@ import { glow } from '../../src/theme/effects';
 import { appAlert } from '../../src/components/ui/AppAlert';
 import { rewardToast } from '../../src/components/ui/RewardToast';
 import { waitForCredit } from '../../src/lib/rewardCredit';
+import { NotifyCard } from '../../src/components/ui/NotifyCard';
+import { rescheduleReminders } from '../../src/lib/reminders';
 import { RewardCelebration } from '../../src/components/ui/RewardCelebration';
 import { launchFinished } from '../../src/components/ui/LaunchScreen';
 import type { LeaderboardReward, MeResponse } from '../../src/types/index';
@@ -73,6 +75,15 @@ export default function Home() {
         if (lastDailyAdAt && sameUtcDay(new Date(lastDailyAdAt), new Date())) return;
         preloadRewarded('daily_bonus', userId);
     }, [userId, lastDailyAdAt, dailyLocallyClaimed]);
+
+    // Rebuild the local reminders (streak, weekly close, Daily Bonus, come
+    // back) from the latest profile every time home comes into view.
+    useFocusEffect(
+        useCallback(() => {
+            const me = useAuthStore.getState().user;
+            if (me && 'streak' in me) void rescheduleReminders(me as MeResponse);
+        }, [])
+    );
 
     // Keep one interstitial loaded in the background, so it's ready the moment
     // a game that's due one ends (no waiting, no skipped ad).
@@ -280,6 +291,8 @@ export default function Home() {
                 </View>
 
                 {/* Daily bonus */}
+                {'streak' in user ? <NotifyCard me={user as MeResponse} /> : null}
+
                 {showDailyBonus ? (
                     <Card accent={colors.warning} style={styles.dailyCard}>
                         <View style={styles.dailyLeft}>

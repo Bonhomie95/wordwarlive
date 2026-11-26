@@ -23,6 +23,8 @@ import { useAuthStore } from '../../src/store/authStore';
 import { settingsApi, usersApi, authAccountApi, type UserSettings } from '../../src/api/resources';
 import { setHapticsEnabled } from '../../src/lib/haptics';
 import { setSoundEnabled } from '../../src/lib/sound';
+import { remindersEnabled, setRemindersEnabled } from '../../src/lib/reminders';
+import type { MeResponse } from '../../src/types/index';
 import { contactSupport, openLegal, PRIVACY_URL, TERMS_URL } from '../../src/lib/links';
 import { adPrivacyOptionsRequired, showAdPrivacyOptions } from '../../src/ads';
 import { OnboardingModal } from '../../src/components/ui/OnboardingModal';
@@ -86,6 +88,15 @@ export default function SettingsScreen() {
     const [adsPrivacyRow, setAdsPrivacyRow] = useState(adPrivacyOptionsRequired());
 
     const setColorBlind = useThemeStore((s) => s.setColorBlind);
+    const [reminders, setReminders] = useState(true);
+    useEffect(() => {
+        remindersEnabled().then(setReminders).catch(() => {});
+    }, []);
+    function onReminders(v: boolean) {
+        setReminders(v);
+        const me = useAuthStore.getState().user;
+        void setRemindersEnabled(v, me && 'streak' in me ? (me as MeResponse) : null);
+    }
 
     useEffect(() => {
         settingsApi
@@ -222,6 +233,12 @@ export default function SettingsScreen() {
                     value={settings?.haptics ?? true}
                     onValueChange={(v) => updateSetting('haptics', v)}
                     disabled={saving || !settings}
+                />
+                <ToggleRow
+                    label="Reminders"
+                    description="At most one a day: your streak, the weekly leaderboard closing, your Daily Bonus."
+                    value={reminders}
+                    onValueChange={onReminders}
                 />
                 <ToggleRow
                     label="Color-blind mode"
