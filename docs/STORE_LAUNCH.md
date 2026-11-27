@@ -97,6 +97,20 @@ Identifiers:
   - Android versionCode 14 (replaced 12 and 13): production track, full
     rollout, in Google's review. Managed publishing is on, so after approval
     press **Publish** in Play Console → Publishing overview.
+  - ✅ Both live: iOS on approval, Android published 2026-11-26.
+- ⏳ 2026-11-27 **1.0.5 (your 13-point list)**: rank ladder, stats sheets,
+  rolling-avatar matchmaking, rewards that wait for AdMob's confirmation and
+  animate in, keep-awake during matches and ads, chime + vibration on
+  opponent found, sharing with an install link, rating prompt, notification
+  opt-in card, on-device reminders. Details and the analytics baseline:
+  `docs/RELEASE_1.0.5.md`.
+  - iOS build 22: Waiting for Review (submitted 2026-11-27 02:30 UTC),
+    releases automatically on approval. New English subtitle "Multiplayer
+    Word Guess Battle", new keywords, gameplay screenshot first.
+  - Android: push notifications now work through Firebase project
+    `wordwar-f8e38` (FCM key on EAS). Production release 1.0.5 (16) with
+    What's New in 80 languages and the new short description; after Google
+    approves, press **Publish** (managed publishing).
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
