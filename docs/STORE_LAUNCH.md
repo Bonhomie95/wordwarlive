@@ -121,11 +121,26 @@ Identifiers:
   - The owner asked to ship it at once instead of after 1.0.5, so 1.0.6
     replaces 1.0.5 in review on iOS (1.0.5 never reached iPhones). iOS: the 1.0.5
     submission was withdrawn and the same App Store version renamed 1.0.6
-    (subtitle, keywords and screenshots kept); build 24 (b182cb0)
-    submitted. Android: 1.0.5 (16) was already published on 2026-11-27 (the
-    owner's test found the silent chime there); 1.0.6 (19) is the next
-    update in Google's review; press **Publish** after approval.
+    (subtitle, keywords and screenshots kept). Android: 1.0.5 (16) was
+    already published on 2026-11-27 (the owner's test found the silent chime
+    there).
   - What's New covers both releases in all 78 listings.
+  - More owner feedback the same day went into 1.0.6 before review: tap
+    sounds on almost every button and key, a sonar ping while searching, a
+    drum roll into win / loss / draw stings, an every-other-sound fix on
+    iPhone, the keyboard locks after 6 guesses (the server also refuses a
+    7th guess, live since 502d07e; bots stop at 6 too), shorter onboarding,
+    and much higher rank bands (Legend 4000 RP; everyone re-tiered).
+  - **In review now:** iOS 1.0.6 build 29 (releases automatically on
+    approval) and Android 1.0.6 (23) (press **Publish** after approval).
+- ⏳ 2026-11-27 **1.0.7**: tap a leaderboard player for their daily /
+  weekly / monthly / all-time standings; challenge anyone to Classic or a
+  Mystery duel (animated invite, push when offline, re-delivered when their
+  app connects; challenge matches don't add leaderboard wins); a short
+  Wiktionary meaning of the answer on results and Daily. Server live
+  (0612d3f, d2e39f9), checked end to end against production with two guest
+  accounts (19/19). App builds on TestFlight; submit after Apple approves
+  1.0.6.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
