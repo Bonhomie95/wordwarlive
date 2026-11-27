@@ -111,6 +111,18 @@ Identifiers:
     `wordwar-f8e38` (FCM key on EAS). Production release 1.0.5 (16) with
     What's New in 80 languages and the new short description; after Google
     approves, press **Publish** (managed publishing).
+- ⏳ 2026-11-27 **1.0.6 (sound + vibration fix)**: the owner tested 1.0.5 and
+  heard no sound, with weak vibration. Causes: Android muted the chime
+  whenever the phone was on vibrate/silent, iOS follows the silent switch,
+  and Android haptics ran at 12-27% strength. 1.0.6 (8be16e3) adds sounds
+  across the game, stronger vibration, and Volume / Strength bars in
+  Settings. Verified on the Android emulator in vibrate mode (playback and
+  vibration logs).
+  - iOS 1.0.6 (23) uploaded to TestFlight for the owner to try.
+  - Submit only after 1.0.5 is live on each store: a new Play production
+    release would replace the 1.0.5 (16) still in review. What's New for
+    1.0.6 is in `store-assets/localized/*.json`; Android needs a fresh
+    production AAB (local build).
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
