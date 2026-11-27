@@ -39,11 +39,14 @@ export const NotifyCard: React.FC<{ me: MeResponse }> = ({ me }) => {
 
     async function onEnable() {
         setShow(false);
-        await registerForPush({ prompt: true });
-        const perm = await Notifications.getPermissionsAsync().catch(() => null);
-        const granted = perm?.status === 'granted';
+        // Ask directly: reminders are local and need only the permission;
+        // remote push registers on top where the device supports it.
+        const req = await Notifications.requestPermissionsAsync().catch(() => null);
+        const granted = req?.status === 'granted';
         track('notify_prompt', { offer: granted ? 'granted' : 'denied' });
-        if (granted) await rescheduleReminders(me);
+        if (!granted) return;
+        await registerForPush({ prompt: false });
+        await rescheduleReminders(me);
     }
 
     function onLater() {
