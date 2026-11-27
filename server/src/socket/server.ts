@@ -35,6 +35,7 @@ import {
     privateJoinSchema,
     friendChallengeSchema,
     friendChallengeRespondSchema,
+    challengeSendSchema,
 } from './validate.js';
 import { isShuttingDown } from './drain.js';
 
@@ -133,6 +134,11 @@ export function createSocketServer(http: HttpServer): AppIOServer {
     io.on('connection', (socket) => {
         logger.info({ userId: socket.data.session.userId }, 'Socket connected');
         markOnline(socket.data.session.userId, socket.id).catch(() => {});
+        // Invites still waiting for this player (e.g. they opened the app
+        // from the challenge notification). A beat later so the app is ready.
+        setTimeout(() => {
+            if (socket.connected) friendChallengeHub.deliverPending(io, socket);
+        }, 1500);
 
         // Fail closed per incoming command, including when Redis revocation
         // delivery was unavailable. A connected socket is not permanent auth.
@@ -297,11 +303,26 @@ export function createSocketServer(http: HttpServer): AppIOServer {
                     io,
                     socket,
                     data.challengeId,
-                    data.accept
+                    data.accept,
+                    data.word
                 );
                 ack(resp);
             } catch (err) {
                 logger.error({ err }, 'friend_challenge_respond failed');
+                ack({ ok: false, error: 'Internal error' });
+            }
+        });
+
+        socket.on('challenge_send', async (payload, ack) => {
+            try {
+                const data = parse(challengeSendSchema, payload);
+                if (!data) {
+                    ack({ ok: false, error: 'Invalid challenge' });
+                    return;
+                }
+                ack(await friendChallengeHub.challenge(io, socket, data.targetId, { mode: data.mode, word: data.word }));
+            } catch (err) {
+                logger.error({ err }, 'challenge_send failed');
                 ack({ ok: false, error: 'Internal error' });
             }
         });
@@ -367,6 +388,7 @@ export function createSocketServer(http: HttpServer): AppIOServer {
                     p1IsBot: false,
                     p2IsBot: false,
                     explicitWord: word,
+                    unranked: true,
                     mode: 'classic',
                 });
                 // Playing by code also makes you friends, so next time you

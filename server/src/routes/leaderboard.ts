@@ -6,6 +6,7 @@
 //
 // GET  /api/rewards/pending   leaderboard prizes the player hasn't seen yet
 // POST /api/rewards/seen      { ids: string[] } — dismissed in the app
+// GET  /api/leaderboard/player/:userId  one player's place on each board
 
 import { Router } from 'express';
 import { z } from 'zod';
@@ -18,6 +19,7 @@ import {
 } from '../services/leaderboardRewardsService.js';
 import {
     getLeaderboard,
+    playerStandings,
     type LeaderboardPeriod,
 } from '../services/leaderboardService.js';
 
@@ -31,6 +33,18 @@ const VALID_PERIODS: readonly LeaderboardPeriod[] = [
 ] as const;
 const VALID_MODES = ['classic', 'mystery', 'overall'] as const;
 type LeaderboardMode = (typeof VALID_MODES)[number];
+
+// GET /api/leaderboard/player/:userId?mode= — that player's rank, wins and
+// losses on the daily, weekly, monthly and all-time boards (tap a row).
+leaderboardRouter.get('/leaderboard/player/:userId', requireAuth, async (req, res) => {
+    const userId = String(req.params.userId ?? '');
+    if (!/^[A-Za-z0-9:_-]{1,64}$/.test(userId)) return res.status(400).json({ error: 'Invalid player id' });
+    const modeParam = String(req.query.mode ?? 'overall') as LeaderboardMode;
+    if (!VALID_MODES.includes(modeParam)) {
+        return res.status(400).json({ error: `Invalid mode. Use one of: ${VALID_MODES.join(', ')}` });
+    }
+    res.json({ mode: modeParam, records: await playerStandings(userId, modeParam) });
+});
 
 leaderboardRouter.get('/leaderboard', requireAuth, async (req, res) => {
     const periodParam = String(req.query.period ?? 'all_time') as LeaderboardPeriod;

@@ -33,6 +33,7 @@ import { useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { showInterstitial } from '../../src/ads';
 import { PassProgress } from '../../src/components/ui/PassProgress';
+import { WordMeaning } from '../../src/components/ui/WordMeaning';
 import { maybeAskForReview } from '../../src/lib/reviewPrompt';
 import { buildMatchShareMessage, shareText } from '../../src/share/shareResult';
 import type { MatchOver } from '../../src/types/index';
@@ -321,11 +322,7 @@ export default function PostGame() {
                     <Text style={styles.word} allowFontScaling={false}>
                         {matchOver.word}
                     </Text>
-                    {matchOver.wordTheme ? (
-                        <Text style={styles.wordTheme} allowFontScaling={false}>
-                            “{matchOver.wordTheme}”
-                        </Text>
-                    ) : null}
+                    <WordMeaning word={matchOver.word} fallback={matchOver.wordTheme} />
                 </View>
 
                 <RewardsCard matchOver={matchOver} />

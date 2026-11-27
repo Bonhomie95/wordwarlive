@@ -139,6 +139,24 @@ export interface CoinPacksResponse {
 
 export type LeaderboardPeriod = 'daily' | 'weekly' | 'monthly' | 'all_time';
 
+export type ChallengeMode = 'classic' | 'mystery';
+
+export type ChallengeAck =
+    | { ok: true; challengeId: string; online?: boolean; notified?: boolean; expiresAt?: number }
+    | { ok: false; error: string };
+
+/** A player's place on one board (null in PlayerRecords = not on it). */
+export interface PeriodRecord {
+    rank: number;
+    wins: number;
+    losses: number;
+}
+
+export interface PlayerRecords {
+    mode: 'classic' | 'mystery' | 'overall';
+    records: Record<LeaderboardPeriod, PeriodRecord | null>;
+}
+
 export interface LeaderboardEntry {
     userId: string;
     username: string;
@@ -276,15 +294,16 @@ export interface ClientToServerEvents {
     ) => void;
     friend_challenge: (
         payload: { friendId: string },
-        ack: (
-            resp:
-                | { ok: true; challengeId: string }
-                | { ok: false; error: string }
-        ) => void
+        ack: (resp: ChallengeAck) => void
     ) => void;
     friend_challenge_respond: (
-        payload: { challengeId: string; accept: boolean },
+        payload: { challengeId: string; accept: boolean; word?: string },
         ack: (resp: { ok: boolean; error?: string }) => void
+    ) => void;
+    /** Challenge anyone (friend or leaderboard), Classic or Mystery. */
+    challenge_send: (
+        payload: { targetId: string; mode: ChallengeMode; word?: string },
+        ack: (resp: ChallengeAck) => void
     ) => void;
     friend_challenge_cancel: (payload: Record<string, never>) => void;
 }
@@ -309,6 +328,15 @@ export interface ServerToClientEvents {
         challengeId: string;
         fromUserId: string;
         fromUsername: string;
+        mode?: 'classic';
+        expiresAt?: number;
+    }) => void;
+    mystery_challenge_incoming: (payload: {
+        challengeId: string;
+        fromUserId: string;
+        fromUsername: string;
+        wordLength: number;
+        expiresAt: number;
     }) => void;
     friend_challenge_declined: (payload: { byUserId: string }) => void;
     friend_challenge_cancelled: (payload: {

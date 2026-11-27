@@ -11,6 +11,7 @@ import type {
     PublicUser,
     RecentMatch,
     StreakResponse,
+    PlayerRecords,
 } from '../types/index';
 
 export const usersApi = {
@@ -148,6 +149,21 @@ export const leaderboardApi = {
         apiRequest<LeaderboardResponse>(
             `/api/leaderboard?period=${period}&mode=${mode}&limit=${limit}${around ? '&around=1' : ''}`
         ),
+    /** One player's rank, wins and losses on each board (tap a row). */
+    player: (userId: string, mode: 'classic' | 'mystery' | 'overall' = 'overall') =>
+        apiRequest<PlayerRecords>(`/api/leaderboard/player/${encodeURIComponent(userId)}?mode=${mode}`),
+};
+
+export interface WordMeaning {
+    word: string;
+    partOfSpeech: string | null;
+    definition: string;
+    source: string;
+}
+
+export const wordsApi = {
+    /** Short meaning for an answer word (404 when the dictionary has none). */
+    meaning: (word: string) => apiRequest<WordMeaning>(`/api/words/meaning/${encodeURIComponent(word)}`),
 };
 
 export const rewardsApi = {

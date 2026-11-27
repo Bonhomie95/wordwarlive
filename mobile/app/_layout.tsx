@@ -19,7 +19,7 @@ import {
 } from '@expo-google-fonts/space-grotesk';
 import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
 import { useAuthStore } from '../src/store/authStore';
-import { useGameStore } from '../src/store/gameStore';
+import { challengeWasShown, useGameStore } from '../src/store/gameStore';
 import { initAds } from '../src/ads';
 import { initIap, reconcilePurchases } from '../src/iap';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
@@ -29,7 +29,7 @@ import { restoreSoundPref } from '../src/lib/sound';
 import { recordAppOpen } from '../src/lib/reviewPrompt';
 import { registerForPush, onNotificationResponse } from '../src/lib/notifications';
 import { colors, useThemeStore, type ThemeId } from '../src/theme/colors';
-import { AlertHost } from '../src/components/ui/AppAlert';
+import { AlertHost, appAlert } from '../src/components/ui/AppAlert';
 import { RewardToastHost } from '../src/components/ui/RewardToast';
 import { LaunchScreen } from '../src/components/ui/LaunchScreen';
 
@@ -124,13 +124,31 @@ export default function RootLayout() {
         }
     }, [token, connectPersistent]);
 
-    // Tapping a friend-challenge push routes the player to the app so the
-    // in-app prompt (driven by the socket event) can be answered.
+    // Tapping a challenge push routes the player to the app; the server
+    // re-sends a still-open invite when the app connects. If none shows up,
+    // it lapsed while the app was closed: offer to challenge them back.
     useEffect(() => {
         const unsub = onNotificationResponse((data) => {
-            if (data?.type === 'friend_challenge') {
-                router.navigate('/(app)');
-            }
+            if (data?.type !== 'friend_challenge') return;
+            router.navigate('/(app)');
+            const id = String(data.challengeId ?? '');
+            const fromId = String(data.fromUserId ?? '');
+            const from = String(data.fromUsername ?? 'Your challenger');
+            setTimeout(() => {
+                const game = useGameStore.getState();
+                if (!fromId || challengeWasShown(id) || game.phase !== 'idle') return;
+                appAlert('Challenge expired', `${from}'s challenge timed out. Challenge them back?`, [
+                    { text: 'Not now', style: 'cancel' },
+                    {
+                        text: 'Challenge',
+                        onPress: () => {
+                            void game.sendChallenge(fromId, from, 'classic').then((r) => {
+                                if (!r.ok) appAlert('WordWar', r.error, [{ text: 'OK' }]);
+                            });
+                        },
+                    },
+                ]);
+            }, 5000);
         });
         return unsub;
     }, [router]);

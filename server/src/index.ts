@@ -45,6 +45,7 @@ import { adminRouter } from './routes/admin.js';
 import { blocksRouter } from './routes/blocks.js';
 import { legalRouter } from './routes/legal.js';
 import { boostsRouter } from './routes/boosts.js';
+import { wordsRouter } from './routes/words.js';
 import { createSocketServer } from './socket/server.js';
 import { matchRegistry } from './socket/matchHandler.js';
 import { resetMatchmakingQueue } from './socket/matchmaking.js';
@@ -141,6 +142,7 @@ async function main() {
     app.use('/api', adsRouter);
     app.use('/api', coinsRouter);
     app.use('/api', leaderboardRouter);
+    app.use('/api', wordsRouter);
     app.use('/api', dailyRouter);
     app.use('/api', settingsRouter);
     app.use('/api', seasonsRouter);

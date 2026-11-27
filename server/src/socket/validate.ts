@@ -38,6 +38,16 @@ export const friendChallengeSchema = z.object({
 export const friendChallengeRespondSchema = z.object({
     challengeId: z.string().min(1).max(64),
     accept: z.boolean(),
+    /** Mystery invites: the accepter's word for the challenger to race. */
+    word: z.string().max(16).optional(),
+});
+
+/** Challenge anyone (friend or leaderboard), Classic or Mystery. Leaderboard
+ *  filler ids aren't uuids, so the id is just a bounded string. */
+export const challengeSendSchema = z.object({
+    targetId: z.string().min(1).max(64),
+    mode: z.enum(['classic', 'mystery']),
+    word: z.string().max(16).optional(),
 });
 
 /** Parse a payload against a schema, returning the typed value or null. */

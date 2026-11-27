@@ -332,6 +332,42 @@ export async function getLeaderboard(args: {
     return { period: args.period, bucket, entries: merged, you };
 }
 
+export interface PeriodRecord {
+    rank: number;
+    wins: number;
+    losses: number;
+}
+
+/** One player's place on every board for a mode, as the leaderboard shows it
+ *  (real players and fillers ranked together). null = not on that board. */
+export async function playerStandings(
+    userId: string,
+    mode: 'classic' | 'mystery' | 'overall'
+): Promise<Record<LeaderboardPeriod, PeriodRecord | null>> {
+    const periods: LeaderboardPeriod[] = ['daily', 'weekly', 'monthly', 'all_time'];
+    const records = await Promise.all(
+        periods.map(async (period): Promise<PeriodRecord | null> => {
+            const board = await getLeaderboard({ period, mode, limit: 1, requesterId: userId });
+            if (board.you) return { rank: board.you.rankInLeaderboard, wins: board.you.wins, losses: board.you.losses };
+            const fillers = await persistedSyntheticLeaderboard(period, mode);
+            const filler = fillers.find((e) => e.userId === userId);
+            if (!filler) return null;
+            const humansAhead = await col('leaderboard_entries').countDocuments(
+                boardMatch(period, bucketFor(period), mode, await hiddenUserIds(), {
+                    $or: [
+                        { wins: { $gt: filler.wins } },
+                        { wins: filler.wins, rank_points: { $gt: filler.rankPoints } },
+                        { wins: filler.wins, rank_points: filler.rankPoints, user_id: { $lt: filler.userId } },
+                    ],
+                })
+            );
+            const fillersAhead = fillers.filter((e) => compareStandings(e, filler) < 0).length;
+            return { rank: 1 + humansAhead + fillersAhead, wins: filler.wins, losses: filler.losses };
+        })
+    );
+    return Object.fromEntries(periods.map((p, i) => [p, records[i]!])) as Record<LeaderboardPeriod, PeriodRecord | null>;
+}
+
 /**
  * A closed board as players saw it: real players merged with the synthetic
  * ones (frozen at `nowMs`, the bucket's last moment), ranked like the live

@@ -177,7 +177,7 @@ export function noticeLine(n: { rank: number; coins: number; label: string }): s
 async function pushNotices(notices: Notice[]): Promise<void> {
     const byUser = new Map<string, Notice[]>();
     for (const n of notices) byUser.set(n.userId, [...(byUser.get(n.userId) ?? []), n]);
-    const sends: Array<() => Promise<void>> = [];
+    const sends: Array<() => Promise<unknown>> = [];
     for (const [userId, list] of byUser) {
         const won = list.filter((n) => n.coins);
         const close = list.some((n) => !n.coins && n.rank - 100 <= CLOSE_MISS);

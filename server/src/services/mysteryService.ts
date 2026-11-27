@@ -58,19 +58,25 @@ function toApi(r: SubmissionDoc): MysterySubmission {
     };
 }
 
+/** Why a Mystery word (lobby or challenge) is refused, or null if it's fine.
+ *  Expects the word already trimmed and upper-cased. */
+export function mysteryWordError(w: string): string | null {
+    if (!/^[A-Z]+$/.test(w)) return 'Letters only.';
+    if (w.length < 4 || w.length > 10) return 'Word must be 4-10 letters.';
+    if (!isCuratedWord(w)) return 'Not in our word list.';
+    // Shared moderation backstop (leetspeak-folded slur/profanity check) on
+    // top of the curated word bank.
+    if (containsProfanity(w)) return 'Word not allowed.';
+    return null;
+}
+
 export async function submitWord(
     userId: string,
     word: string
 ): Promise<{ ok: true; submission: MysterySubmission } | { ok: false; error: string }> {
     const w = word.trim().toUpperCase();
-    if (!/^[A-Z]+$/.test(w)) return { ok: false, error: 'Letters only.' };
-    if (w.length < 4 || w.length > 10)
-        return { ok: false, error: 'Word must be 4-10 letters.' };
-    if (!isCuratedWord(w))
-        return { ok: false, error: 'Not in our word list.' };
-    // Shared moderation backstop (leetspeak-folded slur/profanity check) on
-    // top of the curated word bank.
-    if (containsProfanity(w)) return { ok: false, error: 'Word not allowed.' };
+    const invalid = mysteryWordError(w);
+    if (invalid) return { ok: false, error: invalid };
 
     // Cap one available submission per user — otherwise they could spam
     // the pool with their own words to match themselves.

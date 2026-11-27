@@ -26,6 +26,7 @@ import { leaderboardApi } from '../../src/api/resources';
 import { PrizeStrip } from '../../src/components/ui/PrizeStrip';
 import { STORE_LINK, shareText } from '../../src/share/shareResult';
 import { useAuthStore } from '../../src/store/authStore';
+import { PlayerCardSheet } from '../../src/components/ui/PlayerCardSheet';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { Avatar } from '../../src/components/ui/Avatar';
 import { Podium } from '../../src/components/ui/Podium';
@@ -60,6 +61,8 @@ export default function LeaderboardScreen() {
     // Rows centred on me, shown instead of the top list after "Show my position"
     // when I rank below what the top list covers.
     const [around, setAround] = useState<LeaderboardResponse | null>(null);
+    // Tapped player: records on every board + challenge buttons.
+    const [picked, setPicked] = useState<LeaderboardEntry | null>(null);
     const [loading, setLoading] = useState(false);
 
     const load = useCallback(
@@ -299,13 +302,14 @@ export default function LeaderboardScreen() {
                                     <Podium
                                         top3={top3.map((e) => ({ userId: e.userId, username: e.username, score: `${e.wins} W` }))}
                                         meId={me?.id ?? null}
+                                        onPick={(id) => setPicked(top3.find((e) => e.userId === id) ?? null)}
                                     />
                                 ) : null}
                             </>
                         )
                     }
                     renderItem={({ item }) => (
-                        <Row entry={item} highlightId={me?.id ?? null} />
+                        <Row entry={item} highlightId={me?.id ?? null} onPress={() => setPicked(item)} />
                     )}
                 />
             )}
@@ -337,6 +341,13 @@ export default function LeaderboardScreen() {
                     </Pressable>
                 </View>
             ) : null}
+            <PlayerCardSheet
+                entry={picked}
+                mode={mode}
+                period={period}
+                isMe={picked?.userId === me?.id}
+                onClose={() => setPicked(null)}
+            />
         </SafeAreaView>
     );
 }
@@ -346,13 +357,20 @@ export default function LeaderboardScreen() {
 function Row({
     entry,
     highlightId,
+    onPress,
 }: {
     entry: LeaderboardEntry;
     highlightId: string | null;
+    onPress: () => void;
 }) {
     const isMe = entry.userId === highlightId;
     return (
-        <View style={[styles.row, isMe ? styles.rowMe : null]}>
+        <Pressable
+            onPress={onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${entry.username}, rank ${entry.rankInLeaderboard}. Open player card`}
+            style={({ pressed }) => [styles.row, isMe ? styles.rowMe : null, pressed ? { opacity: 0.85 } : null]}
+        >
             <Text style={styles.rowRank} allowFontScaling={false}>
                 #{entry.rankInLeaderboard}
             </Text>
@@ -367,7 +385,7 @@ function Row({
                 </Text>
             </View>
             <RankBadge tier={entry.rankTier as RankTier} size="sm" />
-        </View>
+        </Pressable>
     );
 }
 

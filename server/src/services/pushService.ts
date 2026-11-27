@@ -92,20 +92,21 @@ interface PushMessage {
  * logged, never thrown, so a push outage can't break gameplay. Invalid tokens
  * reported by Expo (DeviceNotRegistered) are pruned.
  */
+/** Returns how many devices Expo accepted the message for (0 = nobody got it). */
 export async function sendPushToUser(
     userId: string,
     msg: PushMessage
-): Promise<void> {
+): Promise<number> {
     let tokens: string[];
     try {
         tokens = await tokensForUser(userId);
     } catch (err) {
         logger.warn({ err, userId }, 'push: failed to load tokens');
-        return;
+        return 0;
     }
     if (tokens.length === 0) {
         logger.info({ userId }, 'push: no signed-in devices');
-        return;
+        return 0;
     }
 
     const messages = tokens.map((to) => ({
@@ -128,7 +129,7 @@ export async function sendPushToUser(
         });
         if (!res.ok) {
             logger.warn({ status: res.status, userId }, 'push: Expo returned non-200');
-            return;
+            return 0;
         }
         const body = (await res.json()) as {
             data?: { status: string; message?: string; details?: { error?: string } }[];
@@ -143,13 +144,16 @@ export async function sendPushToUser(
             if (r.details?.error === 'DeviceNotRegistered') dead.push(tokens[i]!);
             else failed.push({ error: r.details?.error, message: r.message?.slice(0, 200) });
         });
-        logger.info({ userId, devices: tokens.length, ok: (body.data?.length ?? 0) - dead.length - failed.length }, 'push: sent');
+        const delivered = (body.data?.length ?? 0) - dead.length - failed.length;
+        logger.info({ userId, devices: tokens.length, ok: delivered }, 'push: sent');
         if (failed.length > 0) logger.warn({ userId, failed }, 'push: delivery errors');
         if (dead.length > 0) {
             await pushTokens().deleteMany({ token: { $in: dead } });
             logger.info({ count: dead.length }, 'push: pruned dead tokens');
         }
+        return delivered;
     } catch (err) {
         logger.warn({ err, userId }, 'push: send failed');
+        return 0;
     }
 }

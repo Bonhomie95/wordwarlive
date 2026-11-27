@@ -64,6 +64,8 @@ interface ActiveMatch {
     p2Revealed?: Record<number, string>;
     /** Match mode: 'classic' (rank-aware word) or 'mystery' (player-submitted). */
     mode: 'classic' | 'mystery';
+    /** See StartArgs.unranked. */
+    unranked?: boolean;
     startedAtMs: number;
     durationMs: number;
     botDifficulty?: BotDifficulty;
@@ -108,6 +110,9 @@ interface StartArgs {
     p1Word?: string;
     p2Word?: string;
     mode?: 'classic' | 'mystery';
+    /** Challenge and private-code matches: rank points still move, but no
+     *  leaderboard wins, so two accounts can't trade forfeits into prizes. */
+    unranked?: boolean;
 }
 
 // Wait for every branch before rolling back a shared transaction: Promise.all
@@ -334,6 +339,7 @@ export class MatchRegistry {
             p1Word,
             p2Word,
             mode: args.mode ?? 'classic',
+            unranked: args.unranked ?? false,
             p1UserId: p1.id,
             p2UserId: p2.id,
             p1SocketId: args.p1SocketId,
@@ -1245,7 +1251,7 @@ export class MatchRegistry {
                 match.p1IsBot
                     ? Promise.resolve()
                     : allRequired([
-                          recordMatchResult({
+                          match.unranked ? Promise.resolve() : recordMatchResult({
                               userId: p1.id,
                               isWin: winner === 'p1',
                               rankPoints: updatedP1.rank_points,
@@ -1256,7 +1262,7 @@ export class MatchRegistry {
                 match.p2IsBot
                     ? Promise.resolve()
                     : allRequired([
-                          recordMatchResult({
+                          match.unranked ? Promise.resolve() : recordMatchResult({
                               userId: p2.id,
                               isWin: winner === 'p2',
                               rankPoints: updatedP2.rank_points,

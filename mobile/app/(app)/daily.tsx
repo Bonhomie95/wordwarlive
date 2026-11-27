@@ -40,6 +40,7 @@ import { PopIn } from '../../src/components/ui/PopIn';
 import { CountUp } from '../../src/components/ui/CountUp';
 import { notify, NotificationType } from '../../src/lib/haptics';
 import { playSound } from '../../src/lib/sound';
+import { WordMeaning } from '../../src/components/ui/WordMeaning';
 
 type Cell = string | null;
 
@@ -333,6 +334,7 @@ export default function DailyChallengeScreen() {
                             {attempt.guessCount === 1 ? '' : 'es'} ·{' '}
                             {Math.round((attempt.durationMs ?? 0) / 1000)}s
                         </Text>
+                        <WordMeaning word={guesses[guesses.length - 1]?.guess ?? ''} />
                         {attempt.coinsAwarded > 0 ? (
                             <CountUp
                                 to={attempt.coinsAwarded}

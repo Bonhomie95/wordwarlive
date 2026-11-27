@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { Pressable } from './Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, spacing, radius } from '../../theme/typography';
@@ -27,10 +28,20 @@ function plinthColor(place: 1 | 2 | 3): string {
     }
 }
 
-export function Podium({ top3, meId }: { top3: PodiumEntry[]; meId: string | null }) {
+export function Podium({ top3, meId, onPick }: { top3: PodiumEntry[]; meId: string | null; onPick?: (userId: string) => void }) {
     const [first, second, third] = [top3[0] ?? null, top3[1] ?? null, top3[2] ?? null];
     const col = (e: PodiumEntry | null, place: 1 | 2 | 3, height: number) =>
-        e ? <PodiumColumn entry={e} place={place} height={height} isMe={e.userId === meId} /> : <View style={{ flex: 1 }} />;
+        e ? (
+            onPick ? (
+                <Pressable style={{ flex: 1 }} onPress={() => onPick(e.userId)} accessibilityRole="button">
+                    <PodiumColumn entry={e} place={place} height={height} isMe={e.userId === meId} />
+                </Pressable>
+            ) : (
+                <PodiumColumn entry={e} place={place} height={height} isMe={e.userId === meId} />
+            )
+        ) : (
+            <View style={{ flex: 1 }} />
+        );
     return (
         <View style={styles.podiumWrap}>
             <View style={styles.podiumRow}>

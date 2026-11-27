@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
+import { IncomingChallengeCard, OutgoingChallengePill } from '../../src/components/ui/ChallengeCards';
 import { tapFeedback } from '../../src/components/ui/Pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,31 +52,8 @@ function MatchAutoRouter() {
 /** Surfaces incoming friend challenges + challenge-result notices as
  *  native alerts, no matter where the player is in the app. */
 function ChallengeListener() {
-    const incoming = useGameStore((s) => s.incomingChallenge);
-    const respond = useGameStore((s) => s.respondToChallenge);
     const notice = useGameStore((s) => s.challengeNotice);
     const clearNotice = useGameStore((s) => s.clearChallengeNotice);
-    const shownRef = useRef<string | null>(null);
-
-    useEffect(() => {
-        if (incoming && shownRef.current !== incoming.challengeId) {
-            shownRef.current = incoming.challengeId;
-            appAlert(
-                'Friend Challenge',
-                `${incoming.fromUsername} wants to play WordWar with you!`,
-                [
-                    {
-                        text: 'Decline',
-                        style: 'cancel',
-                        onPress: () => respond(false),
-                    },
-                    { text: 'Accept', onPress: () => respond(true) },
-                ],
-                { cancelable: false }
-            );
-        }
-        if (!incoming) shownRef.current = null;
-    }, [incoming, respond]);
 
     useEffect(() => {
         if (notice) {
@@ -85,7 +63,13 @@ function ChallengeListener() {
         }
     }, [notice, clearNotice]);
 
-    return null;
+    // Incoming invites get the animated card; our own waits show a pill.
+    return (
+        <>
+            <IncomingChallengeCard />
+            <OutgoingChallengePill />
+        </>
+    );
 }
 
 export default function AppTabsLayout() {

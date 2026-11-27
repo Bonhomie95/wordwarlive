@@ -15,10 +15,17 @@ import type {
     MatchOver,
     QueueStatus,
     Tile,
+    ChallengeAck,
+    ChallengeMode,
 } from '../types/index';
 
 /** Guesses per player per match (the server enforces it too). */
 export const MAX_GUESSES = 6;
+
+/** Invites that reached this app (so a notification tap can tell a lapsed
+ *  invite from one that was shown and answered). */
+const shownChallengeIds = new Set<string>();
+export const challengeWasShown = (id: string) => shownChallengeIds.has(id);
 
 export type GamePhase =
     | 'idle'
@@ -39,16 +46,23 @@ export interface OpponentGuess {
     solved: boolean;
 }
 
-/** A friend's live challenge prompt aimed at us. */
+/** A live challenge aimed at us (from a friend or the leaderboard). */
 export interface IncomingChallenge {
     challengeId: string;
     fromUserId: string;
     fromUsername: string;
+    mode: ChallengeMode;
+    /** Mystery: our reply word must be this long. */
+    wordLength?: number;
+    /** ms epoch; older servers don't send it. */
+    expiresAt?: number;
 }
-/** Our own outgoing challenge that's waiting on a friend to respond. */
+/** Our own outgoing challenge, waiting on the other player. */
 export interface PendingChallenge {
     friendId: string;
     friendName: string;
+    mode: ChallengeMode;
+    expiresAt?: number;
 }
 
 interface GameState {
@@ -127,14 +141,12 @@ interface GameState {
      *  players and MatchAutoRouter opens the match screen. */
     joinPrivateMatch: (code: string) => Promise<{ ok: boolean; error?: string }>;
     /** Challenge a friend to a live match. Resolves with the server ack. */
-    challengeFriend: (
-        friendId: string,
-        friendName: string
-    ) => Promise<
-        { ok: true; challengeId: string } | { ok: false; error: string }
-    >;
-    /** Accept / decline the current incoming challenge. */
-    respondToChallenge: (accept: boolean) => void;
+    challengeFriend: (friendId: string, friendName: string) => Promise<ChallengeAck>;
+    /** Challenge anyone (friend or leaderboard), Classic or Mystery. */
+    sendChallenge: (targetId: string, targetName: string, mode: ChallengeMode, word?: string) => Promise<ChallengeAck>;
+    /** Accept (with our Mystery word if it's a Mystery invite) or decline.
+     *  On a refused accept the prompt stays up so the player can fix it. */
+    respondToChallenge: (accept: boolean, word?: string) => Promise<{ ok: boolean; error?: string }>;
     /** Withdraw our own outgoing challenge. */
     cancelChallenge: () => void;
     /** Dismiss the transient challenge-result message. */
@@ -338,29 +350,45 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
     });
 
     // ─── Friend challenges ───────────────────────────────────────────────
-    sock.on('friend_challenge_incoming', (payload) => {
-        // Can't accept while mid-match - ignore the prompt entirely.
+    const showIncoming = (c: IncomingChallenge) => {
+        shownChallengeIds.add(c.challengeId);
+        // Can't accept while mid-match - ignore the prompt entirely. The same
+        // invite can arrive twice (live, then again on reconnect): ring once.
         const phase = get().phase;
         if (phase === 'playing' || phase === 'matched') return;
+        if (get().incomingChallenge?.challengeId === c.challengeId) return;
         playSound('matchFound');
         attention();
-        set({ incomingChallenge: payload });
-    });
+        set({ incomingChallenge: c });
+    };
+    sock.on('friend_challenge_incoming', (payload) => showIncoming({ ...payload, mode: 'classic' }));
+    sock.on('mystery_challenge_incoming', (payload) => showIncoming({ ...payload, mode: 'mystery' }));
 
     sock.on('friend_challenge_declined', () => {
+        const name = get().pendingChallenge?.friendName;
         set({
             pendingChallenge: null,
-            challengeNotice: 'Your friend declined the challenge.',
+            challengeNotice: `${name ?? 'They'} declined the challenge.`,
         });
     });
 
     sock.on('friend_challenge_cancelled', (payload) => {
-        const reasonText: Record<string, string> = {
-            cancelled: 'The challenge was cancelled.',
-            expired: 'The challenge timed out - no response.',
-            offline: 'Your friend went offline.',
-            busy: 'A player is already in a match.',
-        };
+        const pending = get().pendingChallenge;
+        const name = pending?.friendName ?? 'They';
+        // Worded for whichever side we're on: our invite, or one sent to us.
+        const reasonText: Record<string, string> = pending
+            ? {
+                  cancelled: 'The challenge was cancelled.',
+                  expired: `${name} didn't answer in time.`,
+                  offline: `${name} went offline.`,
+                  busy: 'A player is already in a match.',
+              }
+            : {
+                  cancelled: 'The challenger withdrew.',
+                  expired: 'The challenge expired.',
+                  offline: 'The challenger went offline.',
+                  busy: 'A player is already in a match.',
+              };
         set({
             pendingChallenge: null,
             incomingChallenge: null,
@@ -703,34 +731,25 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
     },
 
-    challengeFriend: (friendId, friendName) => {
+    challengeFriend: (friendId, friendName) => get().sendChallenge(friendId, friendName, 'classic'),
+
+    sendChallenge: (targetId, targetName, mode, word) => {
         const sock = getSocket();
         if (!sock) {
-            return Promise.resolve({
-                ok: false as const,
-                error: 'Not connected. Try again in a moment.',
-            });
+            return Promise.resolve({ ok: false as const, error: 'Not connected. Try again in a moment.' });
         }
-        return new Promise((resolve) => {
+        return new Promise<ChallengeAck>((resolve) => {
             sock.timeout(10_000).emit(
-                'friend_challenge',
-                { friendId },
-                (
-                    err: Error | null,
-                    resp:
-                        | { ok: true; challengeId: string }
-                        | { ok: false; error: string } = {
-                        ok: false,
-                        error: 'Timed out',
-                    }
-                ) => {
+                'challenge_send',
+                { targetId, mode, ...(word ? { word } : {}) },
+                (err: Error | null, resp: ChallengeAck = { ok: false, error: 'Timed out' }) => {
                     if (err) {
                         resolve({ ok: false, error: 'Network timeout.' });
                         return;
                     }
                     if (resp.ok) {
                         set({
-                            pendingChallenge: { friendId, friendName },
+                            pendingChallenge: { friendId: targetId, friendName: targetName, mode, expiresAt: resp.expiresAt },
                             challengeNotice: null,
                         });
                     }
@@ -740,24 +759,34 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
     },
 
-    respondToChallenge: (accept) => {
+    respondToChallenge: (accept, word) => {
         const sock = getSocket();
         const challenge = get().incomingChallenge;
-        // Clear the prompt immediately so it can't be answered twice.
-        set({ incomingChallenge: null });
-        if (!sock || !challenge) return;
-        sock.timeout(10_000).emit(
-            'friend_challenge_respond',
-            { challengeId: challenge.challengeId, accept },
-            (
-                err: Error | null,
-                resp: { ok: boolean; error?: string } = { ok: true }
-            ) => {
-                if (!err && resp && !resp.ok && resp.error) {
-                    set({ challengeNotice: resp.error });
+        if (!sock || !challenge) {
+            set({ incomingChallenge: null });
+            return Promise.resolve({ ok: false, error: 'Not connected.' });
+        }
+        // A decline closes the prompt at once; an accept waits for the server
+        // (a refused Mystery word keeps the prompt so it can be fixed).
+        if (!accept) set({ incomingChallenge: null });
+        return new Promise((resolve) => {
+            sock.timeout(10_000).emit(
+                'friend_challenge_respond',
+                { challengeId: challenge.challengeId, accept, ...(word ? { word } : {}) },
+                (err: Error | null, resp: { ok: boolean; error?: string } = { ok: true }) => {
+                    if (err) {
+                        resolve({ ok: false, error: 'Network timeout.' });
+                        return;
+                    }
+                    if (accept && resp.ok) set({ incomingChallenge: null });
+                    // Gone for good (expired, challenger left): close and say why.
+                    if (accept && !resp.ok && !/word|letter/i.test(resp.error ?? '')) {
+                        set({ incomingChallenge: null, challengeNotice: resp.error ?? 'Could not start the match.' });
+                    }
+                    resolve(resp);
                 }
-            }
-        );
+            );
+        });
     },
 
     cancelChallenge: () => {

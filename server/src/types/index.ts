@@ -141,16 +141,17 @@ export interface ClientToServerEvents {
      *  offline / busy the ack fails. On accept the server starts a match. */
     friend_challenge: (
         payload: { friendId: string },
-        ack: (
-            resp:
-                | { ok: true; challengeId: string }
-                | { ok: false; error: string }
-        ) => void
+        ack: (resp: ChallengeAck) => void
     ) => void;
     /** Respond to an incoming friend challenge (accept starts the match). */
     friend_challenge_respond: (
-        payload: { challengeId: string; accept: boolean },
+        payload: { challengeId: string; accept: boolean; word?: string },
         ack: (resp: { ok: boolean; error?: string }) => void
+    ) => void;
+    /** Challenge anyone (friend or leaderboard), Classic or Mystery. */
+    challenge_send: (
+        payload: { targetId: string; mode: 'classic' | 'mystery'; word?: string },
+        ack: (resp: ChallengeAck) => void
     ) => void;
     /** Cancel your own outstanding outgoing challenge. */
     friend_challenge_cancel: (payload: Record<string, never>) => void;
@@ -187,6 +188,17 @@ export interface ServerToClientEvents {
         challengeId: string;
         fromUserId: string;
         fromUsername: string;
+        mode?: 'classic';
+        expiresAt?: number;
+    }) => void;
+    /** A Mystery invite (its own event so older apps, which can't send a
+     *  word back, never see it). */
+    mystery_challenge_incoming: (payload: {
+        challengeId: string;
+        fromUserId: string;
+        fromUsername: string;
+        wordLength: number;
+        expiresAt: number;
     }) => void;
     /** Your outgoing challenge was declined by the friend. */
     friend_challenge_declined: (payload: { byUserId: string }) => void;
@@ -196,6 +208,10 @@ export interface ServerToClientEvents {
         reason: 'cancelled' | 'expired' | 'offline' | 'busy';
     }) => void;
 }
+
+export type ChallengeAck =
+    | { ok: true; challengeId: string; online?: boolean; notified?: boolean; expiresAt?: number }
+    | { ok: false; error: string };
 
 export interface QueueStatus {
     state: 'searching' | 'expanded_search' | 'finalizing';
