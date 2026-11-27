@@ -1165,10 +1165,13 @@ export class MatchRegistry {
         // (see matchCoins); bots earn nothing and never touch the leaderboards.
         const resultFor = (slot: 'p1' | 'p2'): 'win' | 'loss' | 'tie' =>
             winner === 'tie' ? 'tie' : winner === slot ? 'win' : 'loss';
-        let p1CoinsAwarded = match.p1IsBot
+        // A challenge / private match someone quit pays nobody: otherwise two
+        // accounts can trade instant forfeits for coins and Pass XP.
+        const noRewards = !!match.unranked && opts.forfeitedSlot != null;
+        let p1CoinsAwarded = match.p1IsBot || noRewards
             ? 0
             : matchCoins({ result: resultFor('p1'), forfeited: opts.forfeitedSlot === 1, guessed: match.p1Guesses.length > 0 });
-        let p2CoinsAwarded = match.p2IsBot
+        let p2CoinsAwarded = match.p2IsBot || noRewards
             ? 0
             : matchCoins({ result: resultFor('p2'), forfeited: opts.forfeitedSlot === 2, guessed: match.p2Guesses.length > 0 });
         let p1CoinsTotal = updatedP1.coins;
@@ -1189,7 +1192,7 @@ export class MatchRegistry {
                       awardMatchXp({
                           userId: p1.id,
                           result: winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
-                          forfeited: opts.forfeitedSlot === 1,
+                          forfeited: noRewards || opts.forfeitedSlot === 1,
                           guessed: match.p1Guesses.length > 0,
                       }),
                       noXp,
@@ -1201,7 +1204,7 @@ export class MatchRegistry {
                       awardMatchXp({
                           userId: p2.id,
                           result: winner === 'p2' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
-                          forfeited: opts.forfeitedSlot === 2,
+                          forfeited: noRewards || opts.forfeitedSlot === 2,
                           guessed: match.p2Guesses.length > 0,
                       }),
                       noXp,

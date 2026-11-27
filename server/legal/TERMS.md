@@ -1,6 +1,6 @@
 # WordWar — Terms of Service
 
-_Last updated: 2026-09-24_
+_Last updated: 2026-11-27_
 
 These Terms of Service ("Terms") govern your use of the WordWar mobile game
 ("the App"), operated by Bonhomie Inc. ("we", "us"). By creating an account or
@@ -63,5 +63,11 @@ the stores. Continued use after changes take effect constitutes acceptance.
 
 ## 9. Contact
 Questions about these Terms: **adeyemibabatundejoseph@gmail.com**
+
+## 10. Credits
+Word meanings shown after matches are short excerpts from
+[Wiktionary](https://en.wiktionary.org), used under the
+[Creative Commons Attribution-ShareAlike 3.0 licence](https://creativecommons.org/licenses/by-sa/3.0/).
+The guess dictionary is the public-domain ENABLE word list.
 
 See also our [Privacy Policy](/legal/privacy).
