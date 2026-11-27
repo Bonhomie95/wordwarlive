@@ -9,8 +9,8 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
 2. ✅ Tap W/L ratio, win streak or win rate: a stats sheet (wins, losses,
    games, current and best win streak, daily streak and its rewards, recent
    form).
-3. 🔧 (built, not yet seen in the simulator) Searching for an opponent: rolling avatars orbiting the radar, a sweep,
-   and a burst when the opponent is found.
+3. ✅ Searching for an opponent: rolling avatars orbiting the radar, a sweep,
+   and a burst when the opponent is found (seen in the simulator).
 4. ✅ The ⚡ "1" in the top bar is the *daily play streak* (days in a row you
    finish a match), not XP. XP from a win goes to the Battle Pass (each tier
    unlocks rewards). Fix: streak gets its own flame icon and opens the
@@ -30,7 +30,13 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
    got on 2026-11-26 (published). Push notifications:
    - iPhone: works only if the player allowed notifications, and the app
      only asked on the Friends screen. Fix: ask at a good moment (opt-in card).
-   - Android: 🙋 no push key exists (FCM). Needs a Firebase project + key.
+   - Android: 🙋 no push key exists (FCM). The app side is ready: Android
+     release builds read `GOOGLE_SERVICES_JSON` (path to google-services.json,
+     kept out of git) and refuse to build without it. Waiting on the Firebase
+     terms tick (only the owner may accept them), then: register the Android
+     app, google-services.json, FCM V1 service-account key → EAS.
+   - The opt-in card now also shows on Android 13+, which reports "denied"
+     (not "undetermined") before the first ask.
    - Server now logs every push result (live since 2026-11-26).
 9. ✅ Screen stays on during matchmaking, matches and while ads load/show
    (Android: AdMob's ad screen flagged keep-on by a build plugin).
@@ -42,9 +48,28 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
     2 weeks, then stop. Uses the stores' own rating sheet. Apple and Google
     forbid a custom "Do you like the app?" question first, and neither tells
     the app whether the player rated.
-13. ⬜ Analytics: store numbers (App Store Connect, Play) and listing; new
-    in-app events: rank_ladder_view, stats_view, share_tap, review_prompt,
-    notify_prompt (server live).
+13. ✅ Analytics, baseline taken 2026-11-26 (compare ~2 weeks after 1.0.5 is live):
+    - App Store, Nov 12–25: 2,249 impressions (1,858 unique, 1,854 from
+      search, 86% US), 18 unique product-page views, 7 first-time downloads
+      + 1 redownload, $0 proceeds. The leak is the search card: ~1% of
+      people who see WordWar in search tap it; ~39% of page visitors install.
+      Unique impressions/day: ~170–280 on Nov 15–22, then 75, 52, 57 on
+      Nov 23–25. English name/subtitle/keywords were the same in 1.0.2 and
+      1.0.4, so this looks like new-app visibility fading, not a metadata change.
+    - Google Play, 28 days to Nov 23: 477 impressions, 5 acquisitions, 6
+      listing visitors, 2 install clicks (too few for Play to show search terms).
+    - AdMob: $0.93 this month to Nov 26; last 7 days 773 requests, 459
+      impressions, 67.4% match rate, $1.80 eCPM. Mediation would lift the
+      match rate later; not worth it at this volume.
+    - Changed in 1.0.5 (App Store, English): subtitle "Race a live rival to
+      the word" → "Multiplayer Word Guess Battle"; keywords drop anagram and
+      spelling (and multiplayer/battle/guess, now in the subtitle), add
+      challenge, brain, 5, letter, race, live, rival; screenshots now start
+      with gameplay (match, victory, home, modes). Google Play (with the
+      Android release): short description leads with "Multiplayer word guess
+      battle".
+    - In-app events (server, live): rank_ladder_view, stats_view, share_tap,
+      review_prompt, notify_prompt.
 
 ## Your follow-ups
 - ✅ Reminder notifications (scheduled on the phone, work on Android without
@@ -58,16 +83,18 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
   themselves (server, live).
 - ✅ Push errors were swallowed; now logged.
 - 🙋 Sign in with Apple for new players: Apple-side (Feedback report).
-- ⬜ 1.0.5 "What's New" in all store languages before submitting.
-- ⬜ GitHub CI green on main before building/publishing (`npx expo lint --max-warnings 0` locally first).
-- ⬜ Pull main first: other agents are pushing server fixes and a tester workflow.
-- ⬜ Message the CueMaster session when the 1.0.5 iOS release build starts and when it ends (two local iOS release builds at once break signing).
+- ✅ 1.0.5 "What's New" in all 78 store languages.
+- ✅ GitHub CI green on main before building/publishing.
+- ✅ Pulled main; the Launch check session confirmed nothing pending.
+- ✅ CueMaster session told when the iOS release build started and ended.
 
-## Still to do (next session)
-- Simulator pass: matchmaking orbit, stats/streak sheets, post-game Pass card,
-  notify card + reminder log, Settings switches (rank ladder verified ✅).
-- 13: store analytics (App Store Connect + Play) and listing tweaks.
-- 🙋 Android push: Firebase project + FCM key (waiting for your OK).
-- 1.0.5 What's New in all store languages; CI green; pull main; tell the
-  CueMaster session before/after the iOS release build; build both; submit.
-- Found: shares had no install link (fixed: /get on the server).
+## Release status
+- iOS 1.0.5 (build 22): submitted 2026-11-27 02:30 UTC, releases
+  automatically once approved.
+- Android 1.0.5: held for FCM (push) so the opt-in card's promise is true on
+  Android; a preview APK is tested on the Pixel_9_Pro emulator meanwhile.
+
+## Still to do
+- 🙋 Firebase terms tick, then Android FCM setup, Android production build
+  (check the Gradle log runs the google-services task), Play upload with
+  release notes and the listing push, then Publish after approval.
