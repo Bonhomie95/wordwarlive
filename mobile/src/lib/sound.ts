@@ -67,7 +67,9 @@ export async function restoreSoundPref(): Promise<void> {
     }
     for (const name of Object.keys(FILES) as SoundName[]) {
         try {
-            const p = createAudioPlayer(FILES[name]);
+            // iOS would otherwise switch the audio session off after every
+            // sound and back on for the next, which can clip short ones.
+            const p = createAudioPlayer(FILES[name], { keepAudioSessionActive: true });
             p.volume = volumeStep / VOLUME_STEPS;
             players[name] = p;
         } catch (e) {
