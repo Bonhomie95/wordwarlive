@@ -141,7 +141,7 @@ Identifiers:
   real recording, ads cropped out); expo-doctor clean (expo-asset added,
   SDK 57 patches). Server live (0612d3f, d2e39f9, c5baa0b), checked end to
   end against production (19/19).
-  - **In review now (owner asked to submit at once):** iOS 1.0.7 build 32
+  - **In review now (owner asked to submit at once):** iOS 1.0.7 build 33 (32 + iOS keyboard fix for the Mystery word fields)
     (same App Store version renamed from 1.0.6; releases automatically on
     approval) and Android 1.0.7 (27) replacing 1.0.6 (23) (press
     **Publish** after approval). What's New covers 1.0.6 + 1.0.7 in all 78
