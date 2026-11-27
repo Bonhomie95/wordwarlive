@@ -10,6 +10,7 @@ import { Screen } from '../../src/components/ui/Screen';
 import { Wordmark } from '../../src/components/ui/Wordmark';
 import { LegalConsent } from '../../src/components/ui/LegalConsent';
 import { MonoLabel } from '../../src/components/ui/primitives';
+import { GameplayPreview } from '../../src/components/ui/GameplayPreview';
 import { useAuthStore } from '../../src/store/authStore';
 import { useGoogleSignIn } from '../../src/auth/googleSignIn';
 import { appleSignIn, useAppleAvailable } from '../../src/auth/appleSignIn';
@@ -82,6 +83,9 @@ export default function Welcome() {
                         1v1 competitive word game
                     </MonoLabel>
                 </View>
+
+                {/* A real match on loop, so new players see the game first. */}
+                <GameplayPreview />
 
                 {/* Primary quick-play */}
                 <View style={styles.actions}>
