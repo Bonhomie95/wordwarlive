@@ -50,7 +50,7 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
     }
     function submit() {
         if (input.length !== 5) {
-            setError('Enter five letters. Try TRAIN first.');
+            setError('Type five letters.');
             return;
         }
         setError('');
@@ -86,12 +86,10 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
                         accessibilityRole="header"
                         style={{ color: colors.text, fontSize: 26, fontWeight: '700' }}
                     >
-                        Your first word race
+                        How to play
                     </Text>
                     <Text style={{ color: colors.textDim }}>
-                        Practice without a timer or opponent. No coins, items or rank are used. The
-                        word is something that grows in a garden. Type TRAIN on the keyboard below
-                        and press ENTER.
+                        Beat your rival to the hidden word. Practice: type TRAIN, then ENTER.
                     </Text>
                     {[...guesses.map((g) => g.guess), ...(solved ? [] : [input])].map((word, row) => (
                         <View
@@ -109,19 +107,19 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
                         </View>
                     ))}
                     <Text style={{ color: colors.text }}>
-                        ✓ Correct spot · ● Move this letter · × No extra copy of this letter
+                        ✓ right spot · ● wrong spot · × not in the word
                     </Text>
                     {last !== '' && (
                         <Text accessibilityLiveRegion="polite" style={{ color: colors.text }}>
                             {solved
-                                ? 'Solved! You are ready for a real match.'
-                                : 'Use the feedback and try again. Hint: P L A N T.'}
+                                ? 'Solved! You’re ready.'
+                                : 'Now try PLANT.'}
                         </Text>
                     )}
                     {!solved && (
                         <>
                             <Button
-                                label="Try a free practice Reveal"
+                                label="Try Reveal (free here)"
                                 variant="secondary"
                                 onPress={() => setHint(true)}
                             />
@@ -130,7 +128,7 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
                                     accessibilityLiveRegion="polite"
                                     style={{ color: colors.text }}
                                 >
-                                    Reveal: the first letter is P. In a match, Reveal uses one item.
+                                    First letter: P. In matches, Reveal uses an item.
                                 </Text>
                             )}
                         </>
@@ -141,13 +139,12 @@ export const OnboardingModal: React.FC<{ visible: boolean; onDone: () => void }>
                         </Text>
                     )}
                     <Text style={{ color: colors.textDim }}>
-                        Reveal uncovers a letter. Scramble briefly mixes your opponent’s display.
-                        Lock blocks their power-ups for 8 seconds. Hints are limited to one for 4–7 letters and two for 8–10 letters; check the displayed cost before using one.
+                        Power-ups: Reveal a letter · Scramble your rival’s board · Lock their
+                        power-ups for 8s.
                     </Text>
                     <Text style={{ color: colors.textDim }}>
-                        Classic: solve the shared word before your opponent, in up to six guesses.
-                        Daily: solve at your own pace. After a match, Play Again starts another
-                        race.
+                        Classic: 6 guesses, first to solve wins. Daily: one word for everyone, no
+                        clock.
                     </Text>
                     <Button
                         label={solved ? 'Ready to play' : 'Skip practice'}
