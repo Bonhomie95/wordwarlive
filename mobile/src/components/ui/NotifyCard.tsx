@@ -1,7 +1,9 @@
 // Home-screen opt-in for notifications. Until 1.0.5 the app only asked on
 // the Friends screen, so most players never allowed notifications and never
 // heard about leaderboard results. Shown once a player has finished a match
-// and the system prompt hasn't been answered; "Not now" hides it for 3 days.
+// while notifications are off and the OS can still ask (Android 13+ reports
+// "denied" before the first ask, iOS "undetermined"); "Not now" hides it for
+// 3 days, refusing the system prompt for 14.
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -27,7 +29,7 @@ export const NotifyCard: React.FC<{ me: MeResponse }> = ({ me }) => {
         let alive = true;
         Promise.all([Notifications.getPermissionsAsync(), AsyncStorage.getItem(SNOOZE_KEY)])
             .then(([perm, until]) => {
-                if (alive) setShow(perm.status === 'undetermined' && perm.canAskAgain && Number(until ?? 0) < Date.now());
+                if (alive) setShow(perm.status !== 'granted' && perm.canAskAgain && Number(until ?? 0) < Date.now());
             })
             .catch(() => {});
         return () => {
@@ -44,7 +46,10 @@ export const NotifyCard: React.FC<{ me: MeResponse }> = ({ me }) => {
         const req = await Notifications.requestPermissionsAsync().catch(() => null);
         const granted = req?.status === 'granted';
         track('notify_prompt', { offer: granted ? 'granted' : 'denied' });
-        if (!granted) return;
+        if (!granted) {
+            AsyncStorage.setItem(SNOOZE_KEY, String(Date.now() + 14 * 86_400_000)).catch(() => {});
+            return;
+        }
         await registerForPush({ prompt: false });
         await rescheduleReminders(me);
     }
