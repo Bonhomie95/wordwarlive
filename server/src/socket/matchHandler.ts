@@ -1179,6 +1179,8 @@ export class MatchRegistry {
                       awardMatchXp({
                           userId: p1.id,
                           result: winner === 'p1' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
+                          forfeited: opts.forfeitedSlot === 1,
+                          guessed: match.p1Guesses.length > 0,
                       }),
                       noXp,
                       'awardMatchXp p1 failed'
@@ -1189,6 +1191,8 @@ export class MatchRegistry {
                       awardMatchXp({
                           userId: p2.id,
                           result: winner === 'p2' ? 'win' : winner === 'tie' ? 'tie' : 'loss',
+                          forfeited: opts.forfeitedSlot === 2,
+                          guessed: match.p2Guesses.length > 0,
                       }),
                       noXp,
                       'awardMatchXp p2 failed'

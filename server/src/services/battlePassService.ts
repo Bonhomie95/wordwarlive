@@ -16,10 +16,16 @@ const XP_PER_WIN = 60;
 const XP_PER_LOSS = 25;
 const XP_PER_TIE = 35;
 
-export function xpForMatch(result: 'win' | 'loss' | 'tie'): number {
+/** Match XP. Mirrors matchCoins: quitting, or losing without a single guess,
+ *  earns nothing, so "start a match, quit" can't farm Pass tiers. */
+export function xpForMatch(
+    result: 'win' | 'loss' | 'tie',
+    played: { forfeited: boolean; guessed: boolean } = { forfeited: false, guessed: true }
+): number {
+    if (played.forfeited) return 0;
     if (result === 'win') return XP_PER_WIN;
-    if (result === 'tie') return XP_PER_TIE;
-    return XP_PER_LOSS;
+    if (!played.guessed) return 0;
+    return result === 'tie' ? XP_PER_TIE : XP_PER_LOSS;
 }
 
 export interface SeasonRow {
@@ -83,9 +89,11 @@ export async function getCurrentSeason(now = new Date()): Promise<SeasonRow | nu
 export async function awardMatchXp(args: {
     userId: string;
     result: 'win' | 'loss' | 'tie';
+    forfeited?: boolean;
+    guessed?: boolean;
 }): Promise<{ xpAwarded: number; newXp: number; newTier: number; boosted: boolean }> {
-    const baseAward = xpForMatch(args.result);
-    const season = await getCurrentSeason();
+    const baseAward = xpForMatch(args.result, { forfeited: args.forfeited ?? false, guessed: args.guessed ?? true });
+    const season = baseAward > 0 ? await getCurrentSeason() : null;
     if (!season) {
         return { xpAwarded: 0, newXp: 0, newTier: 0, boosted: false };
     }
