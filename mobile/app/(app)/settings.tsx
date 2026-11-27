@@ -236,7 +236,7 @@ export default function SettingsScreen() {
                 />
                 <ToggleRow
                     label="Reminders"
-                    description="At most one a day: your streak, the weekly leaderboard closing, your Daily Bonus."
+                    description="At most one a day: your streak, the weekly leaderboard closing, your Daily Bonus, or a nudge after 3 days away."
                     value={reminders}
                     onValueChange={onReminders}
                 />
