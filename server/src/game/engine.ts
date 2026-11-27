@@ -186,6 +186,12 @@ export function decideOutcome(args: DecideArgs): MatchOutcome {
     return 'tie';
 }
 
+/** A player (or bot) with MAX_GUESSES guesses can't guess again; they
+ *  wait for the opponent or the clock. */
+export function outOfGuesses(guesses: readonly unknown[]): boolean {
+    return guesses.length >= MAX_GUESSES;
+}
+
 /**
  * Return whether the match should end RIGHT NOW based on the latest state.
  * The match ends if either player has solved or either has hit MAX_GUESSES.

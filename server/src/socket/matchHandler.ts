@@ -13,6 +13,7 @@ import {
     decideOutcome,
     shouldEnd,
     type GuessResult,
+    outOfGuesses,
 } from '../game/engine.js';
 import { isValidWord, pickRankAwareWord, wordsOfLength } from '../game/words.js';
 import {
@@ -461,6 +462,9 @@ export class MatchRegistry {
 
         const isP1 = match.p1UserId === userId;
         const target = isP1 ? match.p1Word : match.p2Word;
+        const list = isP1 ? match.p1Guesses : match.p2Guesses;
+        // Six guesses and done: a 7th (even a correct one) must not count.
+        if (outOfGuesses(list)) return { ok: false, error: 'No guesses left', errorCode: 'NO_GUESSES_LEFT' };
 
         // Validate BEFORE the rate limit so a typo ("not in word list")
         // doesn't burn the cooldown and lock the player out for 2s.
@@ -475,7 +479,6 @@ export class MatchRegistry {
         if (ok !== 'OK') return { ok: false, error: 'Slow down', errorCode: 'RATE_LIMITED' };
 
         const result = scoreGuess(guess, target);
-        const list = isP1 ? match.p1Guesses : match.p2Guesses;
         list.push(result);
         const guessIndex = list.length - 1;
 
@@ -940,7 +943,8 @@ export class MatchRegistry {
     }
 
     private scheduleBotGuess(io: AppIOServer, match: ActiveMatch): void {
-        if (match.ended) return;
+        // Bots get six guesses too; then they wait like a human would.
+        if (match.ended || outOfGuesses(match.p1IsBot ? match.p1Guesses : match.p2Guesses)) return;
         const delay = thinkTimeMs(match.botDifficulty ?? 'medium', {
             wordLength: (match.p1IsBot ? match.p1Word : match.p2Word).length,
             guessCount: (match.p1IsBot ? match.p1Guesses : match.p2Guesses).length,

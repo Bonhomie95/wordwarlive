@@ -36,7 +36,7 @@ import { PlayerStatsModal } from '../../src/components/game/PlayerStatsModal';
 import { RankBadge } from '../../src/components/ui/RankBadge';
 import { PlayerName } from '../../src/components/ui/PlayerName';
 import { Toast } from '../../src/components/ui/Toast';
-import { useGameStore } from '../../src/store/gameStore';
+import { MAX_GUESSES, useGameStore } from '../../src/store/gameStore';
 import { useAuthStore } from '../../src/store/authStore';
 import { makeThemedStyles, colors, type RankTier } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
@@ -439,12 +439,17 @@ export default function Match() {
             ) : null}
 
             <View style={styles.kbWrap}>
+                {myGuesses.length >= MAX_GUESSES && phase === 'playing' ? (
+                    <Text style={styles.outOfGuesses} allowFontScaling={false}>
+                        Out of guesses. Wait for your opponent, or quit.
+                    </Text>
+                ) : null}
                 <Keyboard
                     onLetter={(l) => appendLetter(l)}
                     onEnter={onEnter}
                     onBackspace={backspace}
                     letterStates={letterStates}
-                    disabled={submitting || phase !== 'playing'}
+                    disabled={submitting || phase !== 'playing' || myGuesses.length >= MAX_GUESSES}
                     keyHeight={keyHeight}
                 />
             </View>
@@ -567,5 +572,12 @@ const styles = makeThemedStyles(() => StyleSheet.create({
     kbWrap: {
         // Breathing room between the last keyboard row and the tab bar.
         paddingBottom: spacing.lg,
+    },
+    outOfGuesses: {
+        fontFamily: typography.familyMono,
+        color: colors.textDim,
+        fontSize: typography.sizes.xs,
+        textAlign: 'center',
+        marginBottom: spacing.sm,
     },
 }));

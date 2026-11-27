@@ -94,11 +94,24 @@ export function playSound(name: SoundName): void {
     const now = Date.now();
     if (!p || now - (lastPlayed[name] ?? 0) < (MIN_GAP_MS[name] ?? 120)) return;
     lastPlayed[name] = now;
+    rewindAndPlay(p);
+}
+
+/** Rewind, then play once the seek has landed. On iOS, play() straight
+ *  after seekTo() on a sound that had finished started at the end (silence),
+ *  so every other tap was mute. */
+function rewindAndPlay(p: AudioPlayer): void {
+    const play = () => {
+        try {
+            p.play();
+        } catch {
+            // best-effort
+        }
+    };
     try {
-        p.seekTo(0).catch(() => {});
-        p.play();
+        p.seekTo(0).then(play, play);
     } catch {
-        // best-effort
+        play();
     }
 }
 
@@ -108,11 +121,10 @@ export function startLoop(name: SoundName): void {
     if (!p) return;
     try {
         p.loop = true;
-        p.seekTo(0).catch(() => {});
-        p.play();
     } catch {
         // best-effort
     }
+    rewindAndPlay(p);
 }
 
 export function stopLoop(name: SoundName): void {

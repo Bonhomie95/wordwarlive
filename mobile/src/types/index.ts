@@ -353,7 +353,8 @@ export interface GuessAck {
         | 'NOT_IN_WORD_BANK'
         | 'NON_ALPHABETIC'
         | 'RATE_LIMITED'
-        | 'GAME_NOT_ACTIVE';
+        | 'GAME_NOT_ACTIVE'
+        | 'NO_GUESSES_LEFT';
 }
 
 export interface GuessBroadcast {

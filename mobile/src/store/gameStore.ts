@@ -17,6 +17,9 @@ import type {
     Tile,
 } from '../types/index';
 
+/** Guesses per player per match (the server enforces it too). */
+export const MAX_GUESSES = 6;
+
 export type GamePhase =
     | 'idle'
     | 'queueing'
@@ -494,8 +497,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     appendLetter: (l) => {
-        const { inputCells, inputCursor, matchFound, phase } = get();
-        if (phase !== 'playing' || !matchFound) return;
+        const { inputCells, inputCursor, matchFound, phase, myGuesses } = get();
+        if (phase !== 'playing' || !matchFound || myGuesses.length >= MAX_GUESSES) return;
         if (inputCursor >= matchFound.wordLength) return;
         const ch = l.toUpperCase();
         if (!/^[A-Z]$/.test(ch)) return;
@@ -541,8 +544,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     submitGuess: async () => {
-        const { inputCells, matchFound, phase, submitting } = get();
-        if (phase !== 'playing' || !matchFound) return null;
+        const { inputCells, matchFound, phase, submitting, myGuesses } = get();
+        if (phase !== 'playing' || !matchFound || myGuesses.length >= MAX_GUESSES) return null;
         if (submitting) return null;
         if (inputCells.some((c) => c === null) || inputCells.length !== matchFound.wordLength) {
             set({ lastError: `Need ${matchFound.wordLength} letters` });

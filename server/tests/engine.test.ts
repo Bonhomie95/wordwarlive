@@ -6,6 +6,7 @@ import {
     decideOutcome,
     shouldEnd,
     MAX_GUESSES,
+    outOfGuesses,
 } from '../src/game/engine.js';
 
 describe('scoreGuess', () => {
@@ -206,5 +207,14 @@ describe('shouldEnd', () => {
             scoreGuess('JUMPY', 'CRANE')
         );
         expect(shouldEnd(p1, p2)).toBe(true);
+    });
+});
+
+describe('outOfGuesses', () => {
+    it('allows guesses up to MAX_GUESSES, then refuses (no 7th-guess win)', () => {
+        expect(MAX_GUESSES).toBe(6);
+        expect(outOfGuesses(Array(5).fill(null))).toBe(false);
+        expect(outOfGuesses(Array(6).fill(null))).toBe(true);
+        expect(outOfGuesses(Array(7).fill(null))).toBe(true);
     });
 });

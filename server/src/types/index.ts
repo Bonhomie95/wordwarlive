@@ -234,7 +234,7 @@ export interface MatchStart {
 export interface GuessAck {
     ok: boolean;
     error?: string;
-    errorCode?: 'WRONG_LENGTH' | 'NOT_IN_WORD_BANK' | 'NON_ALPHABETIC' | 'RATE_LIMITED' | 'GAME_NOT_ACTIVE';
+    errorCode?: 'WRONG_LENGTH' | 'NOT_IN_WORD_BANK' | 'NON_ALPHABETIC' | 'RATE_LIMITED' | 'GAME_NOT_ACTIVE' | 'NO_GUESSES_LEFT';
 }
 
 /** Whose grid is being updated. The opponent's tiles are also sent (we
