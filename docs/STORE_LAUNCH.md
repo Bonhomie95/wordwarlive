@@ -131,16 +131,21 @@ Identifiers:
     iPhone, the keyboard locks after 6 guesses (the server also refuses a
     7th guess, live since 502d07e; bots stop at 6 too), shorter onboarding,
     and much higher rank bands (Legend 4000 RP; everyone re-tiered).
-  - **In review now:** iOS 1.0.6 build 29 (releases automatically on
-    approval) and Android 1.0.6 (23) (press **Publish** after approval).
+  - 1.0.6 was replaced in review by 1.0.7 the same day (see below).
 - ⏳ 2026-11-27 **1.0.7**: tap a leaderboard player for their daily /
   weekly / monthly / all-time standings; challenge anyone to Classic or a
   Mystery duel (animated invite, push when offline, re-delivered when their
   app connects; challenge matches don't add leaderboard wins); a short
-  Wiktionary meaning of the answer on results and Daily. Server live
-  (0612d3f, d2e39f9), checked end to end against production with two guest
-  accounts (19/19). App builds on TestFlight; submit after Apple approves
-  1.0.6.
+  Wiktionary meaning of the answer on results and Daily; a looping
+  gameplay preview on a phone on the welcome screen (animated WebP from a
+  real recording, ads cropped out); expo-doctor clean (expo-asset added,
+  SDK 57 patches). Server live (0612d3f, d2e39f9, c5baa0b), checked end to
+  end against production (19/19).
+  - **In review now (owner asked to submit at once):** iOS 1.0.7 build 32
+    (same App Store version renamed from 1.0.6; releases automatically on
+    approval) and Android 1.0.7 (27) replacing 1.0.6 (23) (press
+    **Publish** after approval). What's New covers 1.0.6 + 1.0.7 in all 78
+    listings; review notes describe challenges and the Wiktionary lookup.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
