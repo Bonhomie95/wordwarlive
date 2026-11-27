@@ -12,15 +12,16 @@ import {
 describe('tierFromPoints', () => {
     it('maps boundary values to the correct tier', () => {
         expect(tierFromPoints(0)).toBe('stone');
-        expect(tierFromPoints(1099)).toBe('stone');
-        expect(tierFromPoints(1100)).toBe('bronze');
-        expect(tierFromPoints(1299)).toBe('bronze');
-        expect(tierFromPoints(1300)).toBe('silver');
-        expect(tierFromPoints(1500)).toBe('gold');
-        expect(tierFromPoints(1700)).toBe('platinum');
-        expect(tierFromPoints(1900)).toBe('diamond');
-        expect(tierFromPoints(2100)).toBe('master');
-        expect(tierFromPoints(2400)).toBe('legend');
+        expect(tierFromPoints(1149)).toBe('stone');
+        expect(tierFromPoints(1150)).toBe('bronze');
+        expect(tierFromPoints(1399)).toBe('bronze');
+        expect(tierFromPoints(1400)).toBe('silver');
+        expect(tierFromPoints(1700)).toBe('gold');
+        expect(tierFromPoints(2100)).toBe('platinum');
+        expect(tierFromPoints(2600)).toBe('diamond');
+        expect(tierFromPoints(3200)).toBe('master');
+        expect(tierFromPoints(3999)).toBe('master');
+        expect(tierFromPoints(4000)).toBe('legend');
         expect(tierFromPoints(999999)).toBe('legend');
     });
 
@@ -30,7 +31,7 @@ describe('tierFromPoints', () => {
 
     it('produces tiers in the declared order as points climb', () => {
         const seen = new Set<string>();
-        for (let p = 0; p <= 2600; p += 50) seen.add(tierFromPoints(p));
+        for (let p = 0; p <= 4200; p += 50) seen.add(tierFromPoints(p));
         // Every tier should be reachable across the range.
         for (const tier of TIERS_IN_ORDER) expect(seen.has(tier)).toBe(true);
     });
@@ -40,20 +41,20 @@ describe('nextTierThreshold', () => {
     it('reports the gap to the next tier', () => {
         expect(nextTierThreshold(1000)).toEqual({
             nextTier: 'bronze',
-            pointsNeeded: 100,
+            pointsNeeded: 150,
         });
-        expect(nextTierThreshold(1290)).toEqual({
+        expect(nextTierThreshold(1390)).toEqual({
             nextTier: 'silver',
             pointsNeeded: 10,
         });
     });
 
     it('returns null tier at the top', () => {
-        expect(nextTierThreshold(2400)).toEqual({
+        expect(nextTierThreshold(4000)).toEqual({
             nextTier: null,
             pointsNeeded: 0,
         });
-        expect(nextTierThreshold(3000)).toEqual({
+        expect(nextTierThreshold(5000)).toEqual({
             nextTier: null,
             pointsNeeded: 0,
         });

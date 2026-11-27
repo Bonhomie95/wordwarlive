@@ -240,6 +240,13 @@ export async function applyMatchResult(args: {
     return out as unknown as UserRow;
 }
 
+/** Re-derive every user's rank_tier from rank_points (after a band change,
+ *  this promotes or demotes everyone into the right tier). Idempotent. */
+export async function retierAllUsers(): Promise<number> {
+    const r = await col('users').updateMany({}, [{ $set: { rank_tier: tierSwitch('$rank_points') } }]);
+    return r.modifiedCount;
+}
+
 /** Aggregation expression mirroring tierFromPoints() for pipeline updates. */
 function tierSwitch(pointsExpr: string) {
     return {

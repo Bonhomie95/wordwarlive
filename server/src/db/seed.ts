@@ -10,6 +10,7 @@ import type { AnyBulkWriteOperation } from 'mongodb';
 import { col, ensureIndexes, newId, registerIndexes, todayStr } from './mongo.js';
 import { logger } from '../utils/logger.js';
 import { normalizeWordBank } from '../game/wordBankSeed.js';
+import { retierAllUsers } from '../services/userService.js';
 
 const WORDS_PATH = join(dirname(fileURLToPath(import.meta.url)), '../data/words.json');
 const DAY_MS = 86_400_000;
@@ -132,5 +133,7 @@ export async function seed(): Promise<void> {
     await ensureIndexes();
     await seedWordBank();
     await seedContent();
+    const retiered = await retierAllUsers();
+    if (retiered) logger.info({ retiered }, 'rank tiers re-derived from points');
     logger.info('Seed complete');
 }

@@ -3,13 +3,13 @@ import type { RankTier } from '../theme/colors';
 
 export const TIER_BANDS: readonly { tier: RankTier; min: number }[] = [
     { tier: 'stone', min: 0 },
-    { tier: 'bronze', min: 1100 },
-    { tier: 'silver', min: 1300 },
-    { tier: 'gold', min: 1500 },
-    { tier: 'platinum', min: 1700 },
-    { tier: 'diamond', min: 1900 },
-    { tier: 'master', min: 2100 },
-    { tier: 'legend', min: 2400 },
+    { tier: 'bronze', min: 1150 },
+    { tier: 'silver', min: 1400 },
+    { tier: 'gold', min: 1700 },
+    { tier: 'platinum', min: 2100 },
+    { tier: 'diamond', min: 2600 },
+    { tier: 'master', min: 3200 },
+    { tier: 'legend', min: 4000 },
 ];
 
 export function tierFromPoints(points: number): RankTier {
