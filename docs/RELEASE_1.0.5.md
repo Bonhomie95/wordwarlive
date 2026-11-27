@@ -82,6 +82,14 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
   Season Three: XP would have gone nowhere. Seasons now roll over by
   themselves (server, live).
 - ✅ Push errors were swallowed; now logged.
+- ✅ Start-and-quit paid 25 Battle Pass XP every time (about four quits per
+  tier). Quitting, or losing without a single guess, now earns no Pass XP,
+  the same rule as match coins (server b8524dd, live with the next deploy).
+- ✅ Android check of the 1.0.5 preview build on the Pixel_9_Pro emulator
+  (API 37): starts, rewarded ad opens with KEEP_SCREEN_ON and no crash,
+  matchmaking orbit, result screen with the Pass card, the notification card
+  appears after the first match, the system prompt shows, and the weekly
+  reminder is scheduled as an alarm.
 - 🙋 Sign in with Apple for new players: Apple-side (Feedback report).
 - ✅ 1.0.5 "What's New" in all 78 store languages.
 - ✅ GitHub CI green on main before building/publishing.
