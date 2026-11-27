@@ -107,4 +107,8 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
 
 ## Still to do
 - 🙋 Publish Android 1.0.5 in Play Console once Google approves it.
+- After it's published: on a real Android phone, update, allow notifications
+  from the home card, and check the server log for `POST /register` (push
+  registration). The emulator can't show this: the app only registers real
+  devices (`Device.isDevice`). The test build did show Firebase initialising.
 - Two weeks after 1.0.5 is live: compare the store numbers with the baseline above.
