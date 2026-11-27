@@ -142,7 +142,7 @@ export type LeaderboardPeriod = 'daily' | 'weekly' | 'monthly' | 'all_time';
 export type ChallengeMode = 'classic' | 'mystery';
 
 export type ChallengeAck =
-    | { ok: true; challengeId: string; online?: boolean; notified?: boolean; expiresAt?: number }
+    | { ok: true; challengeId: string; online?: boolean; notified?: boolean; expiresAt?: number; expiresInMs?: number }
     | { ok: false; error: string };
 
 /** A player's place on one board (null in PlayerRecords = not on it). */
@@ -330,6 +330,7 @@ export interface ServerToClientEvents {
         fromUsername: string;
         mode?: 'classic';
         expiresAt?: number;
+        expiresInMs?: number;
     }) => void;
     mystery_challenge_incoming: (payload: {
         challengeId: string;
@@ -337,6 +338,7 @@ export interface ServerToClientEvents {
         fromUsername: string;
         wordLength: number;
         expiresAt: number;
+        expiresInMs?: number;
     }) => void;
     friend_challenge_declined: (payload: { byUserId: string }) => void;
     friend_challenge_cancelled: (payload: {

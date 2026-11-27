@@ -51,7 +51,7 @@ interface PendingChallenge {
 }
 
 export type ChallengeResult =
-    | { ok: true; challengeId: string; online: boolean; notified: boolean; expiresAt: number }
+    | { ok: true; challengeId: string; online: boolean; notified: boolean; expiresAt: number; expiresInMs: number }
     | { ok: false; error: string };
 
 /** True while `key` has been hit at most `max` times this hour. */
@@ -137,7 +137,7 @@ class FriendChallengeHub {
 
         if (filler) {
             logger.info({ fromId, targetId, id, mode }, 'challenge to a leaderboard filler (no one to receive it)');
-            return { ok: true, challengeId: id, online: false, notified: false, expiresAt };
+            return { ok: true, challengeId: id, online: false, notified: false, expiresAt, expiresInMs: CHALLENGE_TTL_MS };
         }
         if (targetSocketId) this.emitIncoming(io, targetSocketId, challenge);
         // Push too: reaches them when the app is closed or in the background.
@@ -150,7 +150,7 @@ class FriendChallengeHub {
             data: { type: 'friend_challenge', challengeId: id, fromUserId: fromId, fromUsername: me.username, mode },
         }).catch(() => 0);
         logger.info({ fromId, targetId, id, mode, online: !!targetSocketId, delivered }, 'challenge sent');
-        return { ok: true, challengeId: id, online: !!targetSocketId, notified: delivered > 0, expiresAt };
+        return { ok: true, challengeId: id, online: !!targetSocketId, notified: delivered > 0, expiresAt, expiresInMs: Math.max(0, expiresAt - Date.now()) };
     }
 
     /** B accepts or declines. On accept we kick off a real match. */
@@ -268,6 +268,8 @@ class FriendChallengeHub {
                 fromUsername: c.fromUsername,
                 wordLength: c.word!.length,
                 expiresAt: c.expiresAt,
+                // Time left, so phones count down on their own clock.
+                expiresInMs: Math.max(0, c.expiresAt - Date.now()),
             });
         } else {
             io.to(socketId).emit('friend_challenge_incoming', {
@@ -276,6 +278,7 @@ class FriendChallengeHub {
                 fromUsername: c.fromUsername,
                 mode: 'classic',
                 expiresAt: c.expiresAt,
+                expiresInMs: Math.max(0, c.expiresAt - Date.now()),
             });
         }
     }

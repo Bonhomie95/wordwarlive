@@ -361,8 +361,15 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
         attention();
         set({ incomingChallenge: c });
     };
-    sock.on('friend_challenge_incoming', (payload) => showIncoming({ ...payload, mode: 'classic' }));
-    sock.on('mystery_challenge_incoming', (payload) => showIncoming({ ...payload, mode: 'mystery' }));
+    // Count down on our own clock: the phone's and server's can disagree.
+    const localExpiry = (p: { expiresAt?: number; expiresInMs?: number }) =>
+        p.expiresInMs != null ? Date.now() + p.expiresInMs : p.expiresAt;
+    sock.on('friend_challenge_incoming', (payload) =>
+        showIncoming({ ...payload, mode: 'classic', expiresAt: localExpiry(payload) })
+    );
+    sock.on('mystery_challenge_incoming', (payload) =>
+        showIncoming({ ...payload, mode: 'mystery', expiresAt: localExpiry(payload) })
+    );
 
     sock.on('friend_challenge_declined', () => {
         const name = get().pendingChallenge?.friendName;
@@ -749,7 +756,12 @@ export const useGameStore = create<GameState>((set, get) => ({
                     }
                     if (resp.ok) {
                         set({
-                            pendingChallenge: { friendId: targetId, friendName: targetName, mode, expiresAt: resp.expiresAt },
+                            pendingChallenge: {
+                                friendId: targetId,
+                                friendName: targetName,
+                                mode,
+                                expiresAt: resp.expiresInMs != null ? Date.now() + resp.expiresInMs : resp.expiresAt,
+                            },
                             challengeNotice: null,
                         });
                     }

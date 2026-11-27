@@ -190,6 +190,7 @@ export interface ServerToClientEvents {
         fromUsername: string;
         mode?: 'classic';
         expiresAt?: number;
+        expiresInMs?: number;
     }) => void;
     /** A Mystery invite (its own event so older apps, which can't send a
      *  word back, never see it). */
@@ -199,6 +200,7 @@ export interface ServerToClientEvents {
         fromUsername: string;
         wordLength: number;
         expiresAt: number;
+        expiresInMs?: number;
     }) => void;
     /** Your outgoing challenge was declined by the friend. */
     friend_challenge_declined: (payload: { byUserId: string }) => void;
@@ -210,7 +212,7 @@ export interface ServerToClientEvents {
 }
 
 export type ChallengeAck =
-    | { ok: true; challengeId: string; online?: boolean; notified?: boolean; expiresAt?: number }
+    | { ok: true; challengeId: string; online?: boolean; notified?: boolean; expiresAt?: number; expiresInMs?: number }
     | { ok: false; error: string };
 
 export interface QueueStatus {
