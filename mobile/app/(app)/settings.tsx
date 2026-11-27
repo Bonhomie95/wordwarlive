@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -21,8 +22,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import { settingsApi, usersApi, authAccountApi, type UserSettings } from '../../src/api/resources';
-import { setHapticsEnabled } from '../../src/lib/haptics';
-import { setSoundEnabled } from '../../src/lib/sound';
+import { attention, HAPTIC_STEP_LABELS, HAPTIC_STEPS, hapticsStep, setHapticsEnabled, setHapticsStep } from '../../src/lib/haptics';
+import { playSound, setSoundEnabled, setSoundVolumeStep, soundVolumeStep, VOLUME_STEPS } from '../../src/lib/sound';
 import { remindersEnabled, setRemindersEnabled } from '../../src/lib/reminders';
 import type { MeResponse } from '../../src/types/index';
 import { contactSupport, openLegal, PRIVACY_URL, TERMS_URL } from '../../src/lib/links';
@@ -92,6 +93,21 @@ export default function SettingsScreen() {
     useEffect(() => {
         remindersEnabled().then(setReminders).catch(() => {});
     }, []);
+    // Volume and vibration strength live on this device only; each change
+    // plays a sample so the player hears or feels the new level.
+    const [volume, setVolume] = useState(soundVolumeStep);
+    const [strength, setStrength] = useState(hapticsStep);
+    function onVolume(step: number) {
+        setVolume(step);
+        setSoundVolumeStep(step);
+        playSound('coins');
+    }
+    function onStrength(step: number) {
+        setStrength(step);
+        setHapticsStep(step);
+        attention();
+    }
+
     function onReminders(v: boolean) {
         setReminders(v);
         const me = useAuthStore.getState().user;
@@ -222,18 +238,36 @@ export default function SettingsScreen() {
                 <SectionHeader label="Feedback" />
                 <ToggleRow
                     label="Sound"
-                    description="A chime when an opponent is found."
+                    description={`Opponent found, guesses, the last 10 seconds, wins and rewards.${Platform.OS === 'ios' ? ' The silent switch mutes them.' : ''}`}
                     value={settings?.sound ?? true}
                     onValueChange={(v) => updateSetting('sound', v)}
                     disabled={saving || !settings}
                 />
+                {settings?.sound ?? true ? (
+                    <LevelRow
+                        label="Volume"
+                        steps={VOLUME_STEPS}
+                        value={volume}
+                        valueLabel={`${Math.round((volume / VOLUME_STEPS) * 100)}%`}
+                        onChange={onVolume}
+                    />
+                ) : null}
                 <ToggleRow
-                    label="Haptics"
-                    description="Vibration when an opponent is found, on guesses and important events."
+                    label="Vibration"
+                    description="When an opponent is found, on guesses and important events."
                     value={settings?.haptics ?? true}
                     onValueChange={(v) => updateSetting('haptics', v)}
                     disabled={saving || !settings}
                 />
+                {settings?.haptics ?? true ? (
+                    <LevelRow
+                        label="Strength"
+                        steps={HAPTIC_STEPS}
+                        value={strength}
+                        valueLabel={HAPTIC_STEP_LABELS[strength - 1] ?? ''}
+                        onChange={onStrength}
+                    />
+                ) : null}
                 <ToggleRow
                     label="Reminders"
                     description="At most one a day: your streak, the weekly leaderboard closing, your Daily Bonus, or a nudge after 3 days away."
@@ -517,6 +551,46 @@ const ToggleRow: React.FC<{
     </View>
 );
 
+/** A tap-to-set level bar (volume, vibration strength). Screen readers get
+ *  one adjustable control instead of the separate segments. */
+const LevelRow: React.FC<{
+    label: string;
+    steps: number;
+    value: number;
+    valueLabel: string;
+    onChange: (step: number) => void;
+}> = ({ label, steps, value, valueLabel, onChange }) => (
+    <View
+        style={[styles.row, styles.levelRow]}
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel={label}
+        accessibilityValue={{ text: valueLabel }}
+        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+        onAccessibilityAction={(e) => {
+            const next = value + (e.nativeEvent.actionName === 'increment' ? 1 : -1);
+            if (next >= 1 && next <= steps) onChange(next);
+        }}
+    >
+        <Text style={[styles.rowLabel, styles.levelLabel]} allowFontScaling={false}>
+            {label}
+        </Text>
+        <View style={styles.levelBar}>
+            {Array.from({ length: steps }, (_, i) => (
+                <Pressable
+                    key={i}
+                    onPress={() => onChange(i + 1)}
+                    hitSlop={{ top: 12, bottom: 12 }}
+                    style={[styles.levelSeg, { height: 8 + (16 * (i + 1)) / steps }, i < value ? styles.levelSegOn : null]}
+                />
+            ))}
+        </View>
+        <Text style={styles.levelValue} allowFontScaling={false}>
+            {valueLabel}
+        </Text>
+    </View>
+);
+
 const styles = makeThemedStyles(() => StyleSheet.create({
     safe: { ...contentColumn, backgroundColor: colors.bg },
     scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
@@ -569,6 +643,18 @@ const styles = makeThemedStyles(() => StyleSheet.create({
         color: colors.textMuted,
         fontSize: typography.sizes.xs,
         marginTop: 2,
+    },
+    levelRow: { gap: spacing.md },
+    levelLabel: { width: 76, fontSize: typography.sizes.sm },
+    levelBar: { flex: 1, height: 24, flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
+    levelSeg: { flex: 1, borderRadius: 3, backgroundColor: colors.border },
+    levelSegOn: { backgroundColor: colors.primary },
+    levelValue: {
+        fontFamily: typography.familyMono,
+        color: colors.textDim,
+        fontSize: typography.sizes.xs,
+        minWidth: 52,
+        textAlign: 'right',
     },
     themeList: { gap: spacing.sm },
     themeCard: {

@@ -18,6 +18,7 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { notify, NotificationType } from '../../lib/haptics';
+import { playSound } from '../../lib/sound';
 import { makeThemedStyles, colors, rankColors, type RankTier } from '../../theme/colors';
 import { typography, spacing, radius } from '../../theme/typography';
 import { glow } from '../../theme/effects';
@@ -57,7 +58,10 @@ export const RankReveal: React.FC<Props> = ({ from, to, points, onDone }) => {
             title.value = withDelay(POP_AT_MS + 120, withTiming(1, { duration: 300 }));
         }
         const haptic = setTimeout(
-            () => notify(up ? NotificationType.Success : NotificationType.Warning),
+            () => {
+                notify(up ? NotificationType.Success : NotificationType.Warning);
+                playSound(up ? 'rankUp' : 'lose');
+            },
             reduced ? 0 : POP_AT_MS
         );
         const auto = setTimeout(onDone, AUTO_DISMISS_MS);

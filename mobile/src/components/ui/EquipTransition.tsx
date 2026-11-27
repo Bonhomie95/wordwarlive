@@ -19,6 +19,7 @@ import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, spacing, radius } from '../../theme/typography';
 import { CosmeticPreview } from './CosmeticPreview';
 import { impact, ImpactStyle } from '../../lib/haptics';
+import { playSound } from '../../lib/sound';
 import type { CosmeticCategory } from '../../types/index';
 
 export interface EquipTarget {
@@ -54,6 +55,7 @@ export const EquipTransition: React.FC<Props> = ({ visible, category, from, to, 
                 withRepeat(withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }), -1, true)
             );
             impact(ImpactStyle.Medium);
+            playSound('powerUp');
             const t = setTimeout(onDone, HOLD_MS);
             return () => {
                 clearTimeout(t);

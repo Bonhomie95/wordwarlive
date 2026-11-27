@@ -10,6 +10,7 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withDelay, withSeq
 import { create } from 'zustand';
 import { CountUp } from './CountUp';
 import { notify, NotificationType } from '../../lib/haptics';
+import { playSound } from '../../lib/sound';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, spacing, radius } from '../../theme/typography';
 import { glow } from '../../theme/effects';
@@ -38,6 +39,7 @@ export const RewardToastHost: React.FC = () => {
     useEffect(() => {
         if (!current) return;
         notify(NotificationType.Success);
+        playSound('coins');
         const dismiss = () => useToasts.setState((s) => ({ queue: s.queue.slice(1) }));
         y.value = -160;
         y.value = withSequence(

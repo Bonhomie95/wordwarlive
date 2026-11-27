@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import { impact, ImpactStyle } from '../../lib/haptics';
+import { playSound } from '../../lib/sound';
 
 export type PowerUpKind = 'reveal' | 'scramble' | 'lock';
 
@@ -46,6 +47,7 @@ export const PowerUpBar: React.FC<Props> = ({ counts, locked, onUse }) => {
         if (busy) return;
         setBusy(kind);
         impact(ImpactStyle.Medium);
+        playSound('powerUp');
         try {
             await onUse(kind);
         } finally {

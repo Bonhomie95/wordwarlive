@@ -10,6 +10,7 @@ import Animated, {
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { useGameStore } from '../../store/gameStore';
+import { playSound } from '../../lib/sound';
 
 interface Props {
     /** Optional override — if omitted, reads from the gameStore directly so
@@ -45,6 +46,10 @@ const TimerRaw: React.FC<Props> = ({ msRemaining: msProp }) => {
     }));
 
     const seconds = Math.max(0, Math.ceil(msRemaining / 1000));
+    // One tick per second through the final ten.
+    useEffect(() => {
+        if (seconds > 0 && seconds <= 10) playSound('tick');
+    }, [seconds]);
     const mm = Math.floor(seconds / 60).toString().padStart(2, '0');
     const ss = (seconds % 60).toString().padStart(2, '0');
 

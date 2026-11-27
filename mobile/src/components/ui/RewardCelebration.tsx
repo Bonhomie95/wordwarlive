@@ -20,6 +20,7 @@ import { Button } from './Button';
 import { CountUp } from './CountUp';
 import { PopIn } from './PopIn';
 import { notify, NotificationType } from '../../lib/haptics';
+import { playSound } from '../../lib/sound';
 import { buildLeaderboardShareMessage, shareText } from '../../share/shareResult';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { makeThemedStyles, colors } from '../../theme/colors';
@@ -92,6 +93,7 @@ export const RewardCelebration: React.FC<{ rewards: LeaderboardReward[]; onDone:
     const glow = useSharedValue(0);
     useEffect(() => {
         notify(total ? NotificationType.Success : NotificationType.Warning);
+        if (total) playSound('coins');
         if (!reduced) glow.value = withRepeat(withSequence(withTiming(1, { duration: 900 }), withTiming(0, { duration: 900 })), 3);
     }, [reduced, glow, total]);
     const glowStyle = useAnimatedStyle(() => ({ opacity: 0.25 + 0.35 * glow.value, transform: [{ scale: 1 + 0.12 * glow.value }] }));

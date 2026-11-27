@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { playMatchFound } from '../lib/sound';
-import { notify, NotificationType } from '../lib/haptics';
+import { playSound } from '../lib/sound';
+import { attention } from '../lib/haptics';
 import {
     ensureSocket,
     disconnectSocket,
@@ -211,8 +211,8 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
         // Ring and buzz so a player looking away notices. A resume replays
         // match_found for the same match, which stays quiet.
         if (get().matchFound?.matchId !== m.matchId) {
-            playMatchFound();
-            notify(NotificationType.Success);
+            playSound('matchFound');
+            attention();
         }
         set({
             phase: 'matched',
@@ -242,6 +242,9 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
             next[Math.min(g.guessIndex, list.length)] = item;
             return next;
         };
+        // A sound only for a row we haven't seen (a resume replays them all).
+        const seen = (g.side === 'me' ? get().myGuesses : get().oppGuesses)[g.guessIndex];
+        if (!seen) playSound(g.side === 'me' ? 'guess' : 'opponent');
         if (g.side === 'me') {
             set((s) => ({
                 myGuesses: placed(s.myGuesses, { guess: g.guess ?? '', tiles: g.tiles, solved: g.solved }),
@@ -286,6 +289,7 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
     if (sock.connected) resume();
 
     sock.on('opponent_scramble', () => {
+        playSound('powerUp');
         set({ scrambled: true });
         setTimeout(() => set({ scrambled: false }), 1500);
     });
@@ -303,10 +307,12 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
     );
 
     sock.on('powerup_locked', (payload) => {
+        playSound('powerUp');
         set({ lockedUntilMs: Date.now() + payload.durationMs });
     });
 
     sock.on('opponent_emoji', (payload: { emoji: string }) => {
+        playSound('opponent');
         set({ opponentEmoji: { emoji: payload.emoji, at: Date.now() } });
         setTimeout(() => set({ opponentEmoji: null }), 2500);
     });
@@ -333,6 +339,8 @@ function wireSocket(sock: AppSocket, set: SetFn, get: GetFn): void {
         // Can't accept while mid-match - ignore the prompt entirely.
         const phase = get().phase;
         if (phase === 'playing' || phase === 'matched') return;
+        playSound('matchFound');
+        attention();
         set({ incomingChallenge: payload });
     });
 

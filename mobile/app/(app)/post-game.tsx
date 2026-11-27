@@ -14,6 +14,7 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
+import { playSound } from '../../src/lib/sound';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';
@@ -108,8 +109,10 @@ export default function PostGame() {
                 hapticMatchRef.current = matchOver.matchId;
                 if (matchOver.result === 'win') {
                     notify(NotificationType.Success);
+                    playSound('win');
                 } else if (matchOver.result === 'loss') {
                     notify(NotificationType.Warning);
+                    playSound('lose');
                 }
             }
             return () => {

@@ -39,6 +39,7 @@ import { Podium } from '../../src/components/ui/Podium';
 import { PopIn } from '../../src/components/ui/PopIn';
 import { CountUp } from '../../src/components/ui/CountUp';
 import { notify, NotificationType } from '../../src/lib/haptics';
+import { playSound } from '../../src/lib/sound';
 
 type Cell = string | null;
 
@@ -171,6 +172,7 @@ export default function DailyChallengeScreen() {
             }));
             if (r.solved) {
                 notify(NotificationType.Success);
+                playSound('win');
                 refreshMe().catch(() => {}); // coin balance in the top bar
             }
             // Reset input row.
