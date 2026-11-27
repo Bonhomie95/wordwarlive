@@ -47,12 +47,12 @@ describe.skipIf(!hasDb)('rank reset with isolated season fixtures', () => {
             { id: PREV, name: 'Previous', starts_at: new Date(now - 48 * H), ends_at: new Date(now - 24 * H), soft_reset_delta: 200, created_at: new Date(now) },
             { id: CUR, name: 'Current', starts_at: new Date(now - H), ends_at: new Date(now + 24 * H), soft_reset_delta: 200, created_at: new Date(now) },
         ]);
-        const id = await fixtureUser({ rank_points: 1500, rank_tier: 'gold', last_rank_season_reset_id: PREV });
-        await col('rank_season_results').insertOne({ season_id: PREV, user_id: id, peak_points: 1700, final_points: 1500, final_tier: 'gold', rewarded: false });
+        const id = await fixtureUser({ rank_points: 1500, rank_tier: 'silver', last_rank_season_reset_id: PREV });
+        await col('rank_season_results').insertOne({ season_id: PREV, user_id: id, peak_points: 1700, final_points: 1500, final_tier: 'silver', rewarded: false });
         const results = await Promise.all(Array.from({ length: 6 }, () => applyReset(id)));
         expect(results.filter((r) => r.resetApplied)).toHaveLength(1);
         expect(await col('users').findOne({ id }, { projection: { _id: 0, rank_points: 1, rank_tier: 1, last_rank_season_reset_id: 1 } }))
-            .toEqual({ rank_points: 1300, rank_tier: 'silver', last_rank_season_reset_id: CUR });
+            .toEqual({ rank_points: 1300, rank_tier: 'bronze', last_rank_season_reset_id: CUR });
         expect(await col('rank_season_results').findOne({ user_id: id }, { projection: { _id: 0, peak_points: 1, final_points: 1 } }))
             .toEqual({ peak_points: 1700, final_points: 1500 });
     });
