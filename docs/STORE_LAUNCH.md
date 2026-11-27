@@ -118,11 +118,13 @@ Identifiers:
   across the game, stronger vibration, and Volume / Strength bars in
   Settings. Verified on the Android emulator in vibrate mode (playback and
   vibration logs).
-  - iOS 1.0.6 (23) uploaded to TestFlight for the owner to try.
-  - Submit only after 1.0.5 is live on each store: a new Play production
-    release would replace the 1.0.5 (16) still in review. What's New for
-    1.0.6 is in `store-assets/localized/*.json`; Android needs a fresh
-    production AAB (local build).
+  - The owner asked to ship it at once instead of after 1.0.5, so 1.0.6
+    replaces 1.0.5 in review (1.0.5 never reached players). iOS: the 1.0.5
+    submission was withdrawn and the same App Store version renamed 1.0.6
+    (subtitle, keywords and screenshots kept); build 24 (b182cb0)
+    submitted. Android: production release 1.0.6 (19) replaces 1.0.5 (16)
+    in Google's review; press **Publish** after approval.
+  - What's New covers both releases in all 78 listings.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
