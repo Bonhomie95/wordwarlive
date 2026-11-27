@@ -3,11 +3,12 @@ import { Pressable, type PressableProps } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { selection } from '../../lib/haptics';
+import { playSound } from '../../lib/sound';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /** One tactile interaction language for actions and mode cards. */
-export function MotionPressable({ style, onPressIn, onPressOut, onHoverIn, onHoverOut, disabled, ...props }: PressableProps) {
+export function MotionPressable({ style, onPress, onPressIn, onPressOut, onHoverIn, onHoverOut, disabled, ...props }: PressableProps) {
     const reduced = useReducedMotion();
     const [pressed, setPressed] = useState(false);
     const [hovered, setHovered] = useState(false);
@@ -19,6 +20,7 @@ export function MotionPressable({ style, onPressIn, onPressOut, onHoverIn, onHov
     const pressState = { pressed: pressed && !disabled, hovered };
     return <AnimatedPressable {...props} disabled={disabled}
         style={[typeof style === 'function' ? style(pressState) : style, motion]}
+        onPress={onPress ? (event) => { playSound('tap'); onPress(event); } : undefined}
         onHoverIn={(event) => { setHovered(true); onHoverIn?.(event); }}
         onHoverOut={(event) => { setHovered(false); onHoverOut?.(event); }}
         onPressIn={(event) => {

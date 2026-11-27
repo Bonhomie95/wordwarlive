@@ -7,13 +7,13 @@ import { useCallback, useState } from 'react';
 import {
     KeyboardAvoidingView,
     Platform,
-    Pressable,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
     View,
 } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';

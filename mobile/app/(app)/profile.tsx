@@ -6,12 +6,12 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
     FlatList,
     Modal,
-    Pressable,
     StyleSheet,
     Text,
     TextInput,
     View,
 } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';
 import { RankBadge } from '../../src/components/ui/RankBadge';

@@ -3,11 +3,11 @@ import {
     FlatList,
     Modal,
     ScrollView,
-    Pressable,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Grid } from '../../src/components/game/Grid';

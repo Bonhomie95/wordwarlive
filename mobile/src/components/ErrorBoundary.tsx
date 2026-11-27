@@ -4,7 +4,8 @@
 // user can retry instead of force-quitting.
 
 import React from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Pressable } from './ui/Pressable';
 import { captureError } from '../observability';
 import { makeThemedStyles, colors } from '../theme/colors';
 import { typography, radius, spacing } from '../theme/typography';

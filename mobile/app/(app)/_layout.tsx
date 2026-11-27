@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
+import { tapFeedback } from '../../src/components/ui/Pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BannerAdView } from '../../src/components/ui/BannerAdView';
@@ -112,6 +113,7 @@ export default function AppTabsLayout() {
             <ChallengeListener />
             <View style={styles.tabsWrap}>
                 <Tabs
+                    screenListeners={{ tabPress: tapFeedback }}
                     screenOptions={{
                         headerShown: false,
                         // Screens that cap their content width expose the scene

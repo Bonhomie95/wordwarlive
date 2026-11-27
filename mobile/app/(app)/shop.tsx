@@ -12,11 +12,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
-    Pressable,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';

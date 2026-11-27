@@ -1,6 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { selection } from '../../lib/haptics';
+import { playSound } from '../../lib/sound';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';
@@ -56,6 +57,7 @@ const KeyRaw: React.FC<{
             onPress={() => {
                 if (disabled) return;
                 selection();
+                playSound('key');
                 onPress();
             }}
             disabled={disabled}

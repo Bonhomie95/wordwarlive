@@ -3,7 +3,8 @@
 // reward), so XP is visibly worth something.
 
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Pressable } from './Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ProgressBar } from './ProgressBar';

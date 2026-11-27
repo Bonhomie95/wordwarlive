@@ -2,12 +2,12 @@ import { useState } from 'react';
 import {
     KeyboardAvoidingView,
     Platform,
-    Pressable,
     StyleSheet,
     Text,
     TextInput,
     View,
 } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { useRouter } from 'expo-router';
 import { Button } from '../../src/components/ui/Button';
 import { Screen } from '../../src/components/ui/Screen';

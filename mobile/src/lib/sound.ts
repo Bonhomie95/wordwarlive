@@ -20,9 +20,15 @@ const FILES = {
     tick: require('../../assets/sounds/tick.wav'),
     win: require('../../assets/sounds/win.wav'),
     lose: require('../../assets/sounds/lose.wav'),
+    draw: require('../../assets/sounds/draw.wav'),
+    drumroll: require('../../assets/sounds/drumroll.wav'),
     coins: require('../../assets/sounds/coins.wav'),
     rankUp: require('../../assets/sounds/rankup.wav'),
+    rankDown: require('../../assets/sounds/rankdown.wav'),
     powerUp: require('../../assets/sounds/powerup.wav'),
+    tap: require('../../assets/sounds/tap.wav'),
+    key: require('../../assets/sounds/key.wav'),
+    search: require('../../assets/sounds/search.wav'),
 };
 export type SoundName = keyof typeof FILES;
 
@@ -78,16 +84,43 @@ export async function restoreSoundPref(): Promise<void> {
     }
 }
 
+// Taps and keys may repeat as fast as a finger can.
+const MIN_GAP_MS: Partial<Record<SoundName, number>> = { tap: 30, key: 0 };
+
 /** Play a sound effect. A repeat within 120 ms is dropped, so a burst of
  *  replayed events (reconnecting mid-match) makes one sound, not a pile. */
 export function playSound(name: SoundName): void {
     const p = enabled ? players[name] : undefined;
     const now = Date.now();
-    if (!p || now - (lastPlayed[name] ?? 0) < 120) return;
+    if (!p || now - (lastPlayed[name] ?? 0) < (MIN_GAP_MS[name] ?? 120)) return;
     lastPlayed[name] = now;
     try {
         p.seekTo(0).catch(() => {});
         p.play();
+    } catch {
+        // best-effort
+    }
+}
+
+/** Loop a sound (the matchmaking search ping) until stopLoop. */
+export function startLoop(name: SoundName): void {
+    const p = enabled ? players[name] : undefined;
+    if (!p) return;
+    try {
+        p.loop = true;
+        p.seekTo(0).catch(() => {});
+        p.play();
+    } catch {
+        // best-effort
+    }
+}
+
+export function stopLoop(name: SoundName): void {
+    const p = players[name];
+    if (!p) return;
+    try {
+        p.loop = false;
+        p.pause();
     } catch {
         // best-effort
     }

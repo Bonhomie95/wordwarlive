@@ -9,11 +9,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Pressable,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { impact, notify, ImpactStyle, NotificationType } from '../../src/lib/haptics';
@@ -94,11 +94,15 @@ export default function Match() {
         }, [])
     );
 
-    // Bounce to post-game on match_over (only while focused).
+    // On match_over (only while focused): a drum roll over the final board,
+    // then post-game, which plays the win / loss / draw sting.
     useEffect(() => {
-        if (focusedRef.current && phase === 'finished') {
-            router.navigate('/(app)/post-game');
-        }
+        if (!focusedRef.current || phase !== 'finished') return;
+        playSound('drumroll');
+        const t = setTimeout(() => {
+            if (focusedRef.current) router.navigate('/(app)/post-game');
+        }, 1100);
+        return () => clearTimeout(t);
     }, [phase, router]);
 
     // Bounce home if we somehow landed here without a match (only while

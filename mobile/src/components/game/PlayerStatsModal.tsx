@@ -6,7 +6,8 @@
 // owns the open/close state.
 
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '../ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { makeThemedStyles, colors } from '../../theme/colors';
 import { typography, radius, spacing } from '../../theme/typography';

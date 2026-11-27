@@ -9,13 +9,14 @@
 import { useEffect, useState } from 'react';
 import {
     Platform,
-    Pressable,
+    Pressable as RNPressable,
     ScrollView,
     StyleSheet,
     Switch,
     Text,
     View,
 } from 'react-native';
+import { Pressable, tapFeedback } from '../../src/components/ui/Pressable';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
@@ -543,7 +544,10 @@ const ToggleRow: React.FC<{
         </View>
         <Switch
             value={value}
-            onValueChange={onValueChange}
+            onValueChange={(v) => {
+                onValueChange(v);
+                tapFeedback(); // after, so switching Sound on clicks and off stays quiet
+            }}
             disabled={disabled}
             trackColor={{ false: colors.border, true: colors.primaryDim }}
             thumbColor={value ? colors.primary : colors.textMuted}
@@ -577,7 +581,7 @@ const LevelRow: React.FC<{
         </Text>
         <View style={styles.levelBar}>
             {Array.from({ length: steps }, (_, i) => (
-                <Pressable
+                <RNPressable
                     key={i}
                     onPress={() => onChange(i + 1)}
                     hitSlop={{ top: 12, bottom: 12 }}

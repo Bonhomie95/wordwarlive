@@ -2,7 +2,8 @@
 // the close button to dismiss. Used for the rank ladder and the stats sheet.
 
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from './Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { makeThemedStyles, colors } from '../../theme/colors';

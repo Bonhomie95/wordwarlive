@@ -11,7 +11,8 @@
 // Alerts raised while one is open are queued.
 
 import React, { useEffect, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Modal, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from './Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { create } from 'zustand';
 import { makeThemedStyles, colors } from '../../theme/colors';

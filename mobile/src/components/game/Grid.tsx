@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable } from '../ui/Pressable';
 import { Tile } from './Tile';
 import { spacing } from '../../theme/typography';
 import type { Tile as TileColor } from '../../types/index';

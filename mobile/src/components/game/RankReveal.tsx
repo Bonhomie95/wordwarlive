@@ -3,7 +3,8 @@
 // colour. Tap anywhere (or wait) to continue. Static under reduced motion.
 
 import React, { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '../ui/Pressable';
 import Animated, {
     Easing,
     cancelAnimation,
@@ -60,7 +61,7 @@ export const RankReveal: React.FC<Props> = ({ from, to, points, onDone }) => {
         const haptic = setTimeout(
             () => {
                 notify(up ? NotificationType.Success : NotificationType.Warning);
-                playSound(up ? 'rankUp' : 'lose');
+                playSound(up ? 'rankUp' : 'rankDown');
             },
             reduced ? 0 : POP_AT_MS
         );

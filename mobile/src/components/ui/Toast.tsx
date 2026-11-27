@@ -6,7 +6,8 @@
 // 'error' (rejected guesses, validation failures).
 
 import React, { useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Pressable } from './Pressable';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,

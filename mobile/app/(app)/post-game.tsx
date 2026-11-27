@@ -3,7 +3,8 @@
 // the match played out.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, {
     Easing,
@@ -113,6 +114,8 @@ export default function PostGame() {
                 } else if (matchOver.result === 'loss') {
                     notify(NotificationType.Warning);
                     playSound('lose');
+                } else {
+                    playSound('draw');
                 }
             }
             return () => {

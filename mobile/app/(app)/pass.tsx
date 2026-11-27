@@ -6,11 +6,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
     FlatList,
-    Pressable,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/components/ui/Button';

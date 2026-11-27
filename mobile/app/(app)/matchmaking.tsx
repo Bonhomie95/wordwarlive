@@ -2,7 +2,8 @@
 // all the queue/focus/navigation logic is unchanged from before.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '../../src/components/ui/Pressable';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -24,6 +25,7 @@ import { colors, makeThemedStyles } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/typography';
 import { glow } from '../../src/theme/effects';
 import { useKeepAwakeWhileFocused } from '../../src/hooks/useKeepAwakeWhileFocused';
+import { startLoop, stopLoop } from '../../src/lib/sound';
 
 /** How long each pro tip stays on screen. 5s measured as too quick to
  *  finish a 15-word tip while the bot fills the queue. */
@@ -207,6 +209,14 @@ export default function Matchmaking() {
     }, [phase, router]);
 
     const finalizing = queueStatus?.state === 'finalizing';
+    // Sonar ping while searching; stops once an opponent is found or the
+    // player leaves the queue (match_found then chimes).
+    const searching = phase === 'queueing' && !finalizing;
+    useEffect(() => {
+        if (!searching) return;
+        startLoop('search');
+        return () => stopLoop('search');
+    }, [searching]);
     // Headline blinks while we search; solid once an opponent is found.
     const blink = useSharedValue(1);
     useEffect(() => {

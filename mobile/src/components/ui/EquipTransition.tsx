@@ -3,7 +3,8 @@
 // feels tangible. Auto-dismisses; tap anywhere to skip.
 
 import React, { useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from './Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
     useAnimatedStyle,
