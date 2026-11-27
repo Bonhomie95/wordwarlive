@@ -30,11 +30,12 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
    got on 2026-11-26 (published). Push notifications:
    - iPhone: works only if the player allowed notifications, and the app
      only asked on the Friends screen. Fix: ask at a good moment (opt-in card).
-   - Android: 🙋 no push key exists (FCM). The app side is ready: Android
-     release builds read `GOOGLE_SERVICES_JSON` (path to google-services.json,
-     kept out of git) and refuse to build without it. Waiting on the Firebase
-     terms tick (only the owner may accept them), then: register the Android
-     app, google-services.json, FCM V1 service-account key → EAS.
+   - Android: ✅ Firebase project `wordwar-f8e38` (2026-11-27) with the
+     Android app registered; its FCM V1 key (firebase-adminsdk-fbsvc) is on
+     EAS. Android release builds read `GOOGLE_SERVICES_JSON` (absolute path to
+     `mobile/google-services.json`, kept out of git) and refuse to build
+     without it. No SHA-1s in Firebase on purpose: they could make Firebase
+     create a second Android OAuth client and break Google Sign-In.
    - The opt-in card now also shows on Android 13+, which reports "denied"
      (not "undetermined") before the first ask.
    - Server now logs every push result (live since 2026-11-26).
