@@ -65,6 +65,14 @@ if (isProductionBuild) {
     }
 }
 
+// Firebase config for Android push (FCM): without it Android never gets a
+// push token. Kept out of git; local builds pass GOOGLE_SERVICES_JSON as an
+// absolute path, cloud builds use an EAS file variable of the same name.
+const googleServicesFile = process.env.GOOGLE_SERVICES_JSON;
+if (isProductionBuild && process.env.EAS_BUILD_PLATFORM === 'android' && !googleServicesFile) {
+    throw new Error('[app.config] Android release needs GOOGLE_SERVICES_JSON (path to google-services.json) for push notifications.');
+}
+
 const admobIosAppId = process.env.ADMOB_IOS_APP_ID || ADMOB_TEST_IOS_APP_ID;
 const admobAndroidAppId = process.env.ADMOB_ANDROID_APP_ID || ADMOB_TEST_ANDROID_APP_ID;
 
@@ -146,6 +154,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         android: {
             ...config.android,
             package: APP_ID,
+            ...(googleServicesFile ? { googleServicesFile } : {}),
             blockedPermissions: [
                 'android.permission.READ_EXTERNAL_STORAGE',
                 'android.permission.WRITE_EXTERNAL_STORAGE',

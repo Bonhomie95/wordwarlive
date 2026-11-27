@@ -19,3 +19,6 @@ expo-env.d.ts
 # @end expo-cli
 play-service-account.json
 .watchman-cookie-*
+
+# Firebase Android config (passed to builds via GOOGLE_SERVICES_JSON)
+google-services.json
