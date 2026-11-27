@@ -100,10 +100,11 @@ Your list (2026-11-26) plus the follow-ups, and what I found on the way.
 ## Release status
 - iOS 1.0.5 (build 22): submitted 2026-11-27 02:30 UTC, releases
   automatically once approved.
-- Android 1.0.5: held for FCM (push) so the opt-in card's promise is true on
-  Android; a preview APK is tested on the Pixel_9_Pro emulator meanwhile.
+- Android 1.0.5 (versionCode 16, with FCM): committed to the Play production
+  track 2026-11-27 (full rollout, What's New in 80 languages, new en-US short
+  description), in Google's review. Managed publishing: press **Publish**
+  after approval.
 
 ## Still to do
-- 🙋 Firebase terms tick, then Android FCM setup, Android production build
-  (check the Gradle log runs the google-services task), Play upload with
-  release notes and the listing push, then Publish after approval.
+- 🙋 Publish Android 1.0.5 in Play Console once Google approves it.
+- Two weeks after 1.0.5 is live: compare the store numbers with the baseline above.
