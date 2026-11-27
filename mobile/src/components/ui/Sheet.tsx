@@ -2,7 +2,7 @@
 // the close button to dismiss. Used for the rank ladder and the stats sheet.
 
 import React from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Pressable } from './Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +18,9 @@ export const Sheet: React.FC<{
     const insets = useSafeAreaInsets();
     return (
         <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-            <View style={styles.root}>
+            {/* iOS doesn't resize for the keyboard: lift the sheet so inputs
+                (the Mystery duel word) stay visible. Android resizes itself. */}
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
                 <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
                 <View style={[styles.card, { paddingBottom: insets.bottom + spacing.lg }]}>
                     <View style={styles.handle} />
@@ -34,7 +36,7 @@ export const Sheet: React.FC<{
                         {children}
                     </ScrollView>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };

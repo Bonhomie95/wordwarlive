@@ -4,7 +4,7 @@
 // - OutgoingChallengePill: while your own challenge waits for an answer.
 
 import React, { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
     Easing,
     cancelAnimation,
@@ -92,7 +92,8 @@ function IncomingCardBody({ incoming }: { incoming: IncomingChallenge }) {
 
     return (
         <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => answer(false)}>
-            <View style={styles.backdrop}>
+            {/* Keeps the Mystery word field and Accept above the iOS keyboard. */}
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
                 <Animated.View style={[styles.card, cardStyle]} accessibilityViewIsModal>
                     <View style={styles.badgeRow}>
                         <Ionicons name={mystery ? 'help-circle' : 'flash'} size={16} color={colors.primary} />
@@ -162,7 +163,7 @@ function IncomingCardBody({ incoming }: { incoming: IncomingChallenge }) {
                         </Pressable>
                     </View>
                 </Animated.View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
