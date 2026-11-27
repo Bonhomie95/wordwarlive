@@ -1,7 +1,8 @@
 // Short meanings for answer words, shown on the results screen. Looked up
-// once per word from the Free Dictionary API (Wiktionary text, CC BY-SA 3.0:
-// the app credits Wiktionary) and cached in Mongo, misses included, so each
-// word costs at most one outside call. Network errors aren't cached.
+// once per word from Wiktionary's REST API (CC BY-SA: the app credits
+// Wiktionary) and cached in Mongo, misses included, so each word costs at
+// most one outside call. Network errors aren't cached. (dictionaryapi.dev
+// answers 403 to Render's servers, so we go to the source.)
 
 import { col, registerIndexes } from '../db/mongo.js';
 import { logger } from '../utils/logger.js';
@@ -22,21 +23,44 @@ interface MeaningDoc {
     fetched_at: Date;
 }
 
-interface ApiEntry {
-    meanings?: { partOfSpeech?: string; definitions?: { definition?: string }[] }[];
+interface WiktionarySense {
+    partOfSpeech?: string;
+    definitions?: { definition?: string }[];
 }
 
 const MAX_LEN = 140;
+// Wikimedia asks API clients to identify themselves with a contact URL.
+const USER_AGENT = 'WordWarGame/1.0 (https://apps.apple.com/app/id6832551406)';
 
-/** The first definition from the API's entries, trimmed for a phone card. */
-export function pickMeaning(entries: unknown): { partOfSpeech: string | null; definition: string } | null {
-    if (!Array.isArray(entries)) return null;
-    for (const entry of entries as ApiEntry[]) {
-        for (const m of entry.meanings ?? []) {
-            const text = m.definitions?.find((d) => typeof d.definition === 'string' && d.definition.trim())?.definition?.trim();
+/** Wiktionary definitions are HTML; keep the top-level sense as text
+ *  (no style blocks, no nested sub-senses or quotations). */
+function plainText(html: string): string {
+    return html
+        .replace(/<(style|script)[\s\S]*?<\/\1>/gi, '')
+        .replace(/<(ol|ul|dl)[\s>][\s\S]*$/i, '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;|&apos;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/** The first English definition, trimmed for a phone card. */
+export function pickMeaning(json: unknown): { partOfSpeech: string | null; definition: string } | null {
+    const senses = (json as { en?: WiktionarySense[] } | null)?.en;
+    if (!Array.isArray(senses)) return null;
+    for (const sense of senses) {
+        for (const d of sense.definitions ?? []) {
+            const text = typeof d.definition === 'string' ? plainText(d.definition) : '';
             if (!text) continue;
-            const definition = text.length <= MAX_LEN ? text : `${text.slice(0, text.lastIndexOf(' ', MAX_LEN - 1) || MAX_LEN - 1).replace(/[,;:]$/, '')}…`;
-            return { partOfSpeech: m.partOfSpeech ?? null, definition };
+            const definition =
+                text.length <= MAX_LEN ? text : `${text.slice(0, text.lastIndexOf(' ', MAX_LEN - 1) || MAX_LEN - 1).replace(/[,;:]$/, '')}…`;
+            return { partOfSpeech: sense.partOfSpeech?.toLowerCase() ?? null, definition };
         }
     }
     return null;
@@ -50,7 +74,8 @@ export async function meaningFor(rawWord: string): Promise<WordMeaning | null> {
 
     let picked: ReturnType<typeof pickMeaning>;
     try {
-        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.toLowerCase())}`, {
+        const res = await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word.toLowerCase())}`, {
+            headers: { 'user-agent': USER_AGENT, accept: 'application/json' },
             signal: AbortSignal.timeout(4000),
         });
         if (res.status === 404) picked = null;
