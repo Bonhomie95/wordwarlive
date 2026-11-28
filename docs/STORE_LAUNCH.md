@@ -141,11 +141,13 @@ Identifiers:
   real recording, ads cropped out); expo-doctor clean (expo-asset added,
   SDK 57 patches). Server live (0612d3f, d2e39f9, c5baa0b), checked end to
   end against production (19/19).
-  - **In review now (owner asked to submit at once):** iOS 1.0.7 build 33 (32 + iOS keyboard fix for the Mystery word fields)
-    (same App Store version renamed from 1.0.6; releases automatically on
-    approval) and Android 1.0.7 (27) replacing 1.0.6 (23) (press
-    **Publish** after approval). What's New covers 1.0.6 + 1.0.7 in all 78
-    listings; review notes describe challenges and the Wiktionary lookup.
+  - ✅ **Android 1.0.7 (27) live:** Google approved it 2026-11-27 18:23Z;
+    published 19:47Z at full rollout (Play listing "Updated on Nov 27").
+  - ⏳ **iOS 1.0.7 build 33 in review** (32 + iOS keyboard fix for the
+    Mystery word fields; same App Store version renamed from 1.0.6;
+    submitted 17:47Z, releases automatically on approval). What's New
+    covers 1.0.6 + 1.0.7 in all 78 listings; review notes describe
+    challenges and the Wiktionary lookup.
 - ✅ 2026-11-15: **Updates live on both stores.** iOS 1.0.2 (build 14) released
   ("Ready for Sale"); Play published Android 1.0.1 (7) at full rollout plus the
   title "WordWar: 1v1 Word Game". Existing users get them as normal store
